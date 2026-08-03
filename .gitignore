@@ -1,0 +1,51 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Environment and secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+
+# Real business data must never enter this public repository.
+# Supplier exports, ServiceM8 exports and generated outputs live outside Git.
+# Synthetic fixtures are allowed only under tests/fixtures/ and src/demo/.
+*.xlsx
+*.xls
+*.csv
+!tests/fixtures/*.csv
+!tests/fixtures/*.xlsx
+/data/
+/exports/
+/imports/
+/output/
+/reports/
+*servicem8*
+*ServiceM8*
+*supplier-export*
+*price-list*
+*pricelist*
+rollback-*
+import-candidate-*
+change-report-*
+exceptions-*
+audit-summary-*
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local screenshots captured during visual validation
+/screenshots/
