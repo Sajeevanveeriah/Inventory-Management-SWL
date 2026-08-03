@@ -169,7 +169,7 @@ test('settings change requires confirmation and re-prices the comparison', async
   await expect(page.getByText('Confirm business-rule change.')).toBeVisible();
   await page.getByRole('button', { name: 'Confirm and apply' }).click();
   // Comparison was invalidated; re-run from mapping.
-  await page.getByRole('button', { name: 'Map columns' }).click();
+  await page.getByRole('button', { name: 'Map columns', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm mapping and run comparison' }).click();
   await page.getByRole('button', { name: 'Review proposed changes' }).click();
   await page.getByRole('cell', { name: 'FIC-002', exact: true }).click();

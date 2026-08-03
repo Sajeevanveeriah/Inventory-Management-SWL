@@ -30,6 +30,9 @@ const PRODUCTION_CSP = [
 ].join('; ');
 
 export default defineConfig({
+  // Local use serves from the root. Hosted deployments (e.g. GitHub Pages
+  // project sites) set VITE_BASE, e.g. VITE_BASE=/Inventory-Management-SWL/.
+  base: process.env.VITE_BASE ?? '/',
   plugins: [
     react(),
     {
