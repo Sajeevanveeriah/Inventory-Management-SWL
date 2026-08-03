@@ -113,9 +113,11 @@ export function useActions() {
     };
 
     const changeSettings = async (settings: Settings, description: string, businessRule = true) => {
-      await db.saveSettings(settings);
+      // Update application state immediately so anything the operator does
+      // next uses the new rules; persistence happens in the background.
       dispatch({ type: 'settings-changed', settings, description, businessRule });
       announce(`Settings updated: ${description}`);
+      await db.saveSettings(settings);
     };
 
     const approveAlias = async (supplierCode: string, itemNumber: string, persist: boolean) => {
