@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SWL Competitor Search Prototype</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 1.5rem; max-width: 70rem; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; }
+  .banner { background: #fff3cd; border: 1px solid #d4b106; padding: 0.6rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
+  label { display: block; margin-top: 0.6rem; font-weight: 600; }
+  input, select { padding: 0.35rem; margin-top: 0.2rem; min-width: 16rem; }
+  button { margin-top: 0.8rem; padding: 0.45rem 1rem; cursor: pointer; }
+  table { border-collapse: collapse; margin-top: 0.8rem; width: 100%; }
+  th, td { border: 1px solid #bbb; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
+  th { background: #f0f0f0; }
+  .error { color: #a4262c; font-weight: 600; margin-top: 0.6rem; }
+  .ok { color: #0b6a0b; }
+  .blocked { color: #a4262c; font-weight: 700; }
+  fieldset { margin-top: 1rem; border: 1px solid #ccc; padding: 1rem; }
+</style>
+</head>
+<body>
+<h1>SWL Competitor Search and Recommendation Prototype</h1>
+<p class="banner">Local prototype only. Proposal only, no price release. Production write to ServiceM8 or Xero is not authorised. Environment: {{ app_env }}</p>
+
+<fieldset>
+  <legend>1. Select product and search local competitor records</legend>
+  <label for="sku">Internal SKU</label>
+  <select id="sku" aria-label="Internal SKU"></select>
+  <label for="query">Search query (optional)</label>
+  <input id="query" type="text" placeholder="e.g. ABUS 55/40">
+  <button id="btn-search" type="button">Search local records</button>
+  <p id="search-message" role="status"></p>
+  <table id="candidates" aria-label="Candidate competitor products">
+    <thead><tr><th>ID</th><th>Source</th><th>Title</th><th>Brand</th><th>MPN</th><th>URL</th><th>Pack</th><th>Condition</th><th>Basis</th><th>Match indicators</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</fieldset>
+
+<fieldset>
+  <legend>2. Record a manual observation</legend>
+  <label for="obs-cp">Competitor product ID</label>
+  <input id="obs-cp" type="number" min="1">
+  <label for="obs-price">Observed price (AUD)</label>
+  <input id="obs-price" type="text" inputmode="decimal">
+  <label for="obs-gst">GST basis</label>
+  <select id="obs-gst">
+    <option value="inclusive">Inclusive of GST</option>
+    <option value="exclusive">Exclusive of GST</option>
+  </select>
+  <label for="obs-stock">Stock status</label>
+  <select id="obs-stock">
+    <option value="in_stock">In stock</option>
+    <option value="out_of_stock">Out of stock</option>
+    <option value="unknown">Unknown</option>
+  </select>
+  <label for="obs-url">Source URL</label>
+  <input id="obs-url" type="url" placeholder="https://example.com/...">
+  <label for="obs-confidence">Match confidence</label>
+  <select id="obs-confidence">
+    <option value="high">High</option>
+    <option value="medium">Medium</option>
+    <option value="low">Low</option>
+  </select>
+  <label for="obs-reviewer">Reviewer</label>
+  <input id="obs-reviewer" type="text" placeholder="Your name">
+  <button id="btn-observe" type="button">Record observation</button>
+  <button id="btn-accept" type="button">Accept last observation</button>
+  <p id="obs-message" role="status"></p>
+</fieldset>
+
+<fieldset>
+  <legend>3. Stored observations</legend>
+  <button id="btn-refresh" type="button">Refresh observations</button>
+  <table id="observations" aria-label="Stored competitor observations">
+    <thead><tr><th>ID</th><th>Observed at</th><th>Price</th><th>GST basis</th><th>Confidence</th><th>Review state</th><th>Stale</th><th>Usable</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</fieldset>
+
+<fieldset>
+  <legend>4. Recommendation (proposal only)</legend>
+  <label for="rec-strategy">Strategy</label>
+  <select id="rec-strategy">
+    <option value="MATCH">Match lowest competitor</option>
+    <option value="UNDERCUT_AMOUNT">Undercut by amount</option>
+    <option value="UNDERCUT_PERCENT">Undercut by percent</option>
+    <option value="MAINTAIN_FLOOR">Maintain floor</option>
+  </select>
+  <label for="rec-amount">Undercut amount or percent (optional)</label>
+  <input id="rec-amount" type="text" inputmode="decimal">
+  <button id="btn-recommend" type="button">Calculate recommendation</button>
+  <p id="rec-message" role="status"></p>
+  <table id="recommendation" aria-label="Recommendation result">
+    <tbody></tbody>
+  </table>
+  <p><strong>Note:</strong> This tool produces a proposal only. It cannot release prices and cannot write to ServiceM8 or Xero.</p>
+</fieldset>
+
+<script>
+"use strict";
+let lastObservationId = null;
+
+function el(id) { return document.getElementById(id); }
+function setMsg(id, text, isError) {
+  const node = el(id);
+  node.textContent = text;
+  node.className = isError ? "error" : "ok";
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!res.ok) {
+    const detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : ("Request failed with status " + res.status);
+    throw new Error(detail);
+  }
+  return data;
+}
+
+async function loadProducts() {
+  try {
+    const data = await api("/api/products");
+    const sel = el("sku");
+    sel.innerHTML = "";
+    for (const p of data.products) {
+      const opt = document.createElement("option");
+      opt.value = p.internal_sku;
+      opt.textContent = p.internal_sku + " (" + p.name + ")";
+      sel.appendChild(opt);
+    }
+  } catch (e) {
+    setMsg("search-message", e.message, true);
+  }
+}
+
+el("btn-search").addEventListener("click", async () => {
+  try {
+    const data = await api("/api/competitor/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ internal_sku: el("sku").value, query: el("query").value || null })
+    });
+    setMsg("search-message", data.message, false);
+    const tbody = el("candidates").querySelector("tbody");
+    tbody.innerHTML = "";
+    for (const c of data.candidates) {
+      const row = tbody.insertRow();
+      [c.competitor_product_id, c.source.name, c.title, c.brand || "", c.manufacturer_part_number || "", c.url || "", c.pack_size, c.condition, c.service_basis, c.matching_indicators.join(", ")].forEach(v => { row.insertCell().textContent = String(v); });
+    }
+  } catch (e) { setMsg("search-message", e.message, true); }
+});
+
+el("btn-observe").addEventListener("click", async () => {
+  try {
+    const data = await api("/api/competitor/observations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        internal_sku: el("sku").value,
+        competitor_product_id: Number(el("obs-cp").value),
+        observed_at: new Date().toISOString(),
+        price: el("obs-price").value,
+        currency: "AUD",
+        gst_basis: el("obs-gst").value,
+        stock_status: el("obs-stock").value,
+        source_url: el("obs-url").value,
+        match_confidence: el("obs-confidence").value,
+        reviewer: el("obs-reviewer").value || null
+      })
+    });
+    lastObservationId = data.id;
+    setMsg("obs-message", data.message + " Observation ID " + data.id + ".", false);
+    refreshObservations();
+  } catch (e) { setMsg("obs-message", e.message, true); }
+});
+
+el("btn-accept").addEventListener("click", async () => {
+  if (lastObservationId === null) { setMsg("obs-message", "Record an observation first.", true); return; }
+  const reviewer = el("obs-reviewer").value;
+  if (!reviewer) { setMsg("obs-message", "Reviewer name is required to accept.", true); return; }
+  try {
+    await api("/api/competitor/observations/" + lastObservationId + "/accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewer: reviewer })
+    });
+    setMsg("obs-message", "Observation " + lastObservationId + " accepted.", false);
+    refreshObservations();
+  } catch (e) { setMsg("obs-message", e.message, true); }
+});
+
+async function refreshObservations() {
+  try {
+    const data = await api("/api/products/" + encodeURIComponent(el("sku").value) + "/competitor");
+    const tbody = el("observations").querySelector("tbody");
+    tbody.innerHTML = "";
+    for (const o of data.observations) {
+      const row = tbody.insertRow();
+      [o.id, o.observed_at, o.price + " " + o.currency, o.gst_basis, o.match_confidence, o.review_state, o.stale_state, o.exclusion_reason ? "No: " + o.exclusion_reason : "Yes"].forEach(v => { row.insertCell().textContent = String(v); });
+    }
+  } catch (e) { setMsg("obs-message", e.message, true); }
+}
+el("btn-refresh").addEventListener("click", refreshObservations);
+
+el("btn-recommend").addEventListener("click", async () => {
+  try {
+    const strategy = el("rec-strategy").value;
+    const amount = el("rec-amount").value || null;
+    const body = { internal_sku: el("sku").value, strategy: strategy };
+    if (strategy === "UNDERCUT_AMOUNT" && amount) body.undercut_amount = amount;
+    if (strategy === "UNDERCUT_PERCENT" && amount) body.undercut_percent = amount;
+    const data = await api("/api/competitor/recommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    setMsg("rec-message", data.reason || "Recommendation calculated.", data.release_blocked);
+    const tbody = el("recommendation").querySelector("tbody");
+    tbody.innerHTML = "";
+    const rows = [
+      ["Floor ex GST", data.floor_ex_gst],
+      ["Competitor ex GST", data.selected_competitor_ex_gst],
+      ["Target ex GST", data.target_ex_gst],
+      ["Recommended ex GST", data.recommended_ex_gst],
+      ["Recommended incl GST", data.recommended_incl_gst],
+      ["Actual markup on cost", data.actual_markup],
+      ["Exception state", data.exception_state],
+      ["Release blocked", data.release_blocked ? "Yes, release blocked" : "No"]
+    ];
+    for (const [label, value] of rows) {
+      const row = tbody.insertRow();
+      const th = document.createElement("th");
+      th.textContent = label;
+      row.appendChild(th);
+      const cell = row.insertCell();
+      cell.textContent = value === null || value === undefined ? "Not available" : String(value);
+      if (label === "Release blocked" && data.release_blocked) cell.className = "blocked";
+    }
+  } catch (e) { setMsg("rec-message", e.message, true); }
+});
+
+loadProducts();
+</script>
+</body>
+</html>
