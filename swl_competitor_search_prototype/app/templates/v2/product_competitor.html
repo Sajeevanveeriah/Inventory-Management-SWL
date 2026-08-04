@@ -1,0 +1,224 @@
+{% extends "v2/base.html" %}
+{% block title %}Competitor evidence for {{ summary.product.internal_sku }}{% endblock %}
+{% block content %}
+<h1>Competitor evidence for {{ summary.product.internal_sku }}</h1>
+<p>{{ summary.product.name }}. Floor ex GST: {% if floor_ex is not none %}AUD {{ floor_ex }}{% else %}not available, active cost is missing{% endif %}.</p>
+
+<section aria-labelledby="search-heading">
+  <h2 id="search-heading">Search local competitor records</h2>
+  <p>Search operates on local records only. No external website is contacted. No live competitor source is approved until Q-011 is closed.</p>
+  <form class="stack" id="search-form">
+    <label for="search-query">Search query (optional)</label>
+    <input id="search-query" name="query" type="search">
+    <button class="btn btn-primary" type="submit">Search local records</button>
+  </form>
+  <p id="search-status" role="status"></p>
+  <div class="table-scroll">
+  <table class="data-table" id="candidates-table">
+    <caption>Candidate competitor products</caption>
+    <thead><tr><th scope="col">ID</th><th scope="col">Source</th><th scope="col">Title</th><th scope="col">Brand</th><th scope="col">Part number</th><th scope="col">GTIN</th><th scope="col">URL</th><th scope="col">Pack</th><th scope="col">Condition</th><th scope="col">Basis</th><th scope="col">Match indicators</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  </div>
+</section>
+
+<section aria-labelledby="observe-heading">
+  <h2 id="observe-heading">Record a manual observation</h2>
+  <form class="stack" id="observe-form" novalidate>
+    <fieldset>
+      <legend>Observation details</legend>
+      <label for="obs-cp">Competitor product ID</label>
+      <input id="obs-cp" name="competitor_product_id" type="number" min="1" required aria-describedby="obs-cp-error">
+      <p class="field-error" id="obs-cp-error" role="status"></p>
+      <label for="obs-price">Observed price (AUD)</label>
+      <input id="obs-price" name="price" type="text" inputmode="decimal" required aria-describedby="obs-price-error">
+      <p class="field-error" id="obs-price-error" role="status"></p>
+      <label for="obs-gst">GST basis</label>
+      <select id="obs-gst" name="gst_basis" required>
+        <option value="inclusive">Inclusive of GST</option>
+        <option value="exclusive">Exclusive of GST</option>
+      </select>
+      <label for="obs-shipping-basis">Shipping basis (optional)</label>
+      <input id="obs-shipping-basis" name="shipping_basis" type="text">
+      <label for="obs-stock">Stock status</label>
+      <select id="obs-stock" name="stock_status">
+        <option value="in_stock">In stock</option>
+        <option value="out_of_stock">Out of stock</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <label for="obs-url">Source URL</label>
+      <input id="obs-url" name="source_url" type="url" required placeholder="https://example.com/..." aria-describedby="obs-url-error">
+      <p class="field-error" id="obs-url-error" role="status"></p>
+      <label for="obs-confidence">Match confidence</label>
+      <select id="obs-confidence" name="match_confidence">
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <label for="obs-reviewer">Reviewer</label>
+      <input id="obs-reviewer" name="reviewer" type="text">
+      <label for="obs-notes">Notes (optional)</label>
+      <textarea id="obs-notes" name="notes" rows="2"></textarea>
+      <button class="btn btn-primary" type="submit">Record observation</button>
+      <button class="btn btn-secondary" type="button" id="btn-accept">Accept last observation</button>
+    </fieldset>
+  </form>
+  <p id="observe-status" role="status"></p>
+  <div class="alert alert-info">
+    Unknown GST basis is rejected. Low confidence observations are excluded from automatic recommendation.
+    Unapproved sources are rejected. Observations older than the stale limit are excluded.
+    Competitor prices below the floor recommend the floor and block release.
+  </div>
+</section>
+
+<section aria-labelledby="stored-heading">
+  <h2 id="stored-heading">Stored observations</h2>
+  {% if obs_rows %}
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead><tr><th scope="col">ID</th><th scope="col">Observed</th><th scope="col" class="numeric">Price</th><th scope="col">GST basis</th><th scope="col" class="numeric">Normalised ex GST</th><th scope="col">Confidence</th><th scope="col">Review state</th><th scope="col">Freshness</th><th scope="col">Usable for recommendation</th></tr></thead>
+    <tbody>
+      {% for row in obs_rows %}
+      <tr>
+        <td>{{ row.obs.id }}</td>
+        <td>{{ fmt(row.obs.observed_at) }}</td>
+        <td class="numeric">{{ row.obs.price }} {{ row.obs.currency }}</td>
+        <td>{{ row.obs.gst_basis }}</td>
+        <td class="numeric">{% if row.normalised_ex is not none %}{{ row.normalised_ex }}{% else %}Unknown basis{% endif %}</td>
+        <td>{{ row.obs.match_confidence }}</td>
+        <td><span class="badge badge-{{ row.obs.review_state if row.obs.review_state in ['pending','approved','rejected','quarantined'] else 'pending' }}">{{ row.obs.review_state }}</span></td>
+        <td>{% if row.stale %}<span class="badge badge-stale">Stale</span>{% else %}Fresh{% endif %}</td>
+        <td>{% if row.exclusion_reason %}<span class="badge badge-flag">No</span> {{ row.exclusion_reason }}{% else %}<span class="badge badge-safe">Yes</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><p>No observations stored. Next action: record a manual observation above.</p></div>
+  {% endif %}
+</section>
+
+<section aria-labelledby="rec-heading">
+  <h2 id="rec-heading">Recommendation (proposal only)</h2>
+  <form class="stack" id="rec-form">
+    <label for="rec-strategy">Strategy</label>
+    <select id="rec-strategy" name="strategy">
+      <option value="MATCH">Match lowest competitor</option>
+      <option value="UNDERCUT_AMOUNT">Undercut by amount</option>
+      <option value="UNDERCUT_PERCENT">Undercut by percent</option>
+      <option value="MAINTAIN_FLOOR">Maintain floor</option>
+    </select>
+    <label for="rec-amount">Undercut amount or percent (optional)</label>
+    <input id="rec-amount" type="text" inputmode="decimal">
+    <button class="btn btn-primary" type="submit">Calculate recommendation</button>
+  </form>
+  <p id="rec-status" role="status"></p>
+  <div class="table-scroll">
+  <table class="data-table" id="rec-table" aria-label="Recommendation result"><tbody></tbody></table>
+  </div>
+  <p><strong>Note:</strong> this produces a proposal only. Release is not possible from this prototype.</p>
+</section>
+
+<script>
+"use strict";
+const SKU = {{ summary.product.internal_sku | tojson }};
+let lastObservationId = null;
+function el(id) { return document.getElementById(id); }
+function setStatus(id, text, isError) { const n = el(id); n.textContent = text; n.className = isError ? "field-error" : ""; }
+async function api(path, options) {
+  const res = await fetch(path, options);
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!res.ok) {
+    const detail = data && data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : ("Request failed with status " + res.status + ". Please retry or check the entry.");
+    throw new Error(detail);
+  }
+  return data;
+}
+el("search-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  setStatus("search-status", "Searching local records...", false);
+  try {
+    const data = await api("/api/competitor/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ internal_sku: SKU, query: el("search-query").value || null }) });
+    setStatus("search-status", data.message, false);
+    const tbody = el("candidates-table").querySelector("tbody");
+    tbody.innerHTML = "";
+    for (const c of data.candidates) {
+      const row = tbody.insertRow();
+      [c.competitor_product_id, c.source.name, c.title, c.brand || "", c.manufacturer_part_number || "", c.gtin || "", c.url || "", c.pack_size, c.condition, c.service_basis, c.matching_indicators.join(", ")].forEach(v => { row.insertCell().textContent = String(v); });
+    }
+  } catch (e) { setStatus("search-status", e.message, true); }
+});
+el("observe-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  ["obs-cp-error", "obs-price-error", "obs-url-error"].forEach(id => setStatus(id, "", false));
+  let hasError = false;
+  if (!el("obs-cp").value) { setStatus("obs-cp-error", "Competitor product ID is required.", true); hasError = true; }
+  if (!el("obs-price").value) { setStatus("obs-price-error", "Observed price is required.", true); hasError = true; }
+  if (!el("obs-url").value) { setStatus("obs-url-error", "Source URL is required.", true); hasError = true; }
+  if (hasError) { setStatus("observe-status", "Please correct the highlighted fields.", true); return; }
+  try {
+    const data = await api("/api/competitor/observations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      internal_sku: SKU,
+      competitor_product_id: Number(el("obs-cp").value),
+      observed_at: new Date().toISOString(),
+      price: el("obs-price").value,
+      currency: "AUD",
+      gst_basis: el("obs-gst").value,
+      shipping_basis: el("obs-shipping-basis").value || null,
+      stock_status: el("obs-stock").value,
+      source_url: el("obs-url").value,
+      match_confidence: el("obs-confidence").value,
+      reviewer: el("obs-reviewer").value || null,
+      notes: el("obs-notes").value || null
+    }) });
+    lastObservationId = data.id;
+    setStatus("observe-status", data.message + " Observation ID " + data.id + ". Reload the page to see it in the stored list.", false);
+  } catch (e) { setStatus("observe-status", e.message, true); }
+});
+el("btn-accept").addEventListener("click", async () => {
+  if (lastObservationId === null) { setStatus("observe-status", "Record an observation first.", true); return; }
+  const reviewer = el("obs-reviewer").value;
+  if (!reviewer) { setStatus("observe-status", "Reviewer name is required to accept.", true); return; }
+  if (!window.confirm("Accept observation " + lastObservationId + " as valid competitor evidence?")) { return; }
+  try {
+    await api("/api/competitor/observations/" + lastObservationId + "/accept", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reviewer: reviewer }) });
+    setStatus("observe-status", "Observation " + lastObservationId + " accepted. Reload the page to see the updated state.", false);
+  } catch (e) { setStatus("observe-status", e.message, true); }
+});
+el("rec-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  setStatus("rec-status", "Calculating...", false);
+  try {
+    const strategy = el("rec-strategy").value;
+    const amount = el("rec-amount").value || null;
+    const body = { internal_sku: SKU, strategy: strategy };
+    if (strategy === "UNDERCUT_AMOUNT" && amount) body.undercut_amount = amount;
+    if (strategy === "UNDERCUT_PERCENT" && amount) body.undercut_percent = amount;
+    const data = await api("/api/competitor/recommendations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    setStatus("rec-status", data.reason || "Recommendation calculated.", data.release_blocked);
+    const tbody = el("rec-table").querySelector("tbody");
+    tbody.innerHTML = "";
+    const rows = [
+      ["Floor ex GST", data.floor_ex_gst],
+      ["Competitor ex GST", data.selected_competitor_ex_gst],
+      ["Target ex GST", data.target_ex_gst],
+      ["Recommended ex GST", data.recommended_ex_gst],
+      ["Recommended incl GST", data.recommended_incl_gst],
+      ["Actual markup on cost", data.actual_markup],
+      ["Exception state", data.exception_state],
+      ["Release blocked", data.release_blocked ? "Yes, release blocked" : "No"]
+    ];
+    for (const [label, value] of rows) {
+      const row = tbody.insertRow();
+      const th = document.createElement("th");
+      th.scope = "row";
+      th.textContent = label;
+      row.appendChild(th);
+      row.insertCell().textContent = value === null || value === undefined ? "Not available" : String(value);
+    }
+  } catch (e) { setStatus("rec-status", e.message, true); }
+});
+</script>
+{% endblock %}

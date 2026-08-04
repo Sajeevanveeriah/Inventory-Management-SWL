@@ -1,0 +1,17 @@
+{% extends "v2/base.html" %}
+{% block title %}Bundles{% endblock %}
+{% block content %}
+<h1>Bundles</h1>
+<div class="alert alert-info">Local prototype status: bundle management is a recorded backend dependency and is not yet implemented. This page shows the intended structure.</div>
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Bundle components (structure preview, no records loaded)</caption>
+  <thead><tr><th scope="col">Bundle</th><th scope="col">Component</th><th scope="col" class="numeric">Quantity</th><th scope="col">Type (labour or material)</th><th scope="col">Recalculation status</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+<div class="empty-state">
+  <p>No bundles recorded.</p>
+  <p>Next action: bundle definitions require the bundle module. When implemented, component cost changes will raise a warning here and mark affected bundles for recalculation before any approval.</p>
+</div>
+{% endblock %}

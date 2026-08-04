@@ -2,7 +2,7 @@
 
 Local prototype for the Stan Wootton Locksmiths Pricing Control Hub. It records manual competitor price observations as dated evidence, matches competitor candidates to internal products, normalises prices to AUD ex GST, and calculates a recommended competitive price that never breaches the approved 30 percent markup on cost floor.
 
-**Production write is not authorised.** This prototype does not connect to ServiceM8, Xero, or any competitor website, and it cannot release prices. It produces proposals only. No live competitor source is approved (Q 011 remains open); the only allowed method is local manual observation.
+**Production write and public publish are not authorised.** This prototype does not connect to ServiceM8, Xero, or any competitor website, cannot release prices, and must not be deployed or published. It produces proposals only. No live competitor source is approved (Q-011 remains open); the only allowed method is local manual observation.
 
 ## Purpose
 
@@ -38,7 +38,23 @@ Idempotent, never deletes data:
 .venv/bin/uvicorn app.main:app --reload
 ```
 
-Then open http://127.0.0.1:8000/ui/competitor-search in a browser. Health check: http://127.0.0.1:8000/health
+Then open http://127.0.0.1:8000/v2/dashboard in a browser. Health check: http://127.0.0.1:8000/health
+
+## v2 site routes
+
+The redesigned v2 experience is served at these routes:
+
+/v2/dashboard, /v2/products, /v2/products/{internal_sku}, /v2/products/{internal_sku}/competitor, /v2/supplier-files, /v2/supplier-offers, /v2/pricing-rules, /v2/bundles, /v2/trade-tiers, /v2/competitor/search, /v2/exceptions, /v2/approvals, /v2/releases, /v2/reconciliation, /v2/audit, /v2/settings, /v2/help
+
+Supplier files, bundles, trade tiers, and scoped pricing rules are page shells with a recorded backend dependency; all other pages use live local data. See docs/site_map.md.
+
+## Legacy route
+
+The original single page competitor UI remains available unchanged at /ui/competitor-search, and /legacy redirects to it.
+
+## Accessibility notes
+
+The v2 site targets WCAG 2.1 AA: semantic landmarks (header, nav, main, footer), a skip to main content link, logical heading order, labels on all form fields, fieldset and legend for grouped inputs, error messages linked with aria-describedby, table headers with scope attributes, text labels on all status badges (never colour alone), visible focus states, reduced motion support, and print styles for approval packs. Basic accessibility assertions run in the test suite; a full audit with assistive technology has not been performed.
 
 ## Local test
 

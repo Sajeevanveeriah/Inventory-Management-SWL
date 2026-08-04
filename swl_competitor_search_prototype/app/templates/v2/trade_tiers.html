@@ -1,0 +1,17 @@
+{% extends "v2/base.html" %}
+{% block title %}Trade tiers{% endblock %}
+{% block content %}
+<h1>Trade tiers</h1>
+<div class="alert alert-info">Local prototype status: trade tier management is a recorded backend dependency and is not yet implemented. This page shows the intended structure.</div>
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Trade tier definitions (structure preview, no records loaded)</caption>
+  <thead><tr><th scope="col">Tier</th><th scope="col">Customer assignment</th><th scope="col">Effective dates</th><th scope="col" class="numeric">Discount</th><th scope="col" class="numeric">Actual markup after discount</th><th scope="col">Floor check</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+<div class="empty-state">
+  <p>No trade tiers recorded.</p>
+  <p>Next action: trade tier definitions require the trade tier module. When implemented, any discount that results in less than 30 percent markup on cost will be flagged and blocked from unattended release.</p>
+</div>
+{% endblock %}

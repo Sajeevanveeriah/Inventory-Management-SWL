@@ -1,0 +1,80 @@
+{% extends "v2/base.html" %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<h1>Products</h1>
+<form class="stack" method="get" action="/v2/products" aria-label="Product filters">
+  <fieldset>
+    <legend>Search and filters</legend>
+    <label for="filter-q">Search (SKU, name, brand, model, part number, GTIN)</label>
+    <input id="filter-q" name="q" type="search" value="{{ filters.q }}">
+    <label for="filter-category">Category</label>
+    <select id="filter-category" name="category">
+      <option value="">All categories</option>
+      {% for c in categories %}<option value="{{ c }}" {% if filters.category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <label for="filter-brand">Brand</label>
+    <select id="filter-brand" name="brand">
+      <option value="">All brands</option>
+      {% for b in brands %}<option value="{{ b }}" {% if filters.brand == b %}selected{% endif %}>{{ b }}</option>{% endfor %}
+    </select>
+    <label for="filter-supplier">Supplier</label>
+    <select id="filter-supplier" name="supplier">
+      <option value="">All suppliers</option>
+      {% for s in suppliers %}<option value="{{ s }}" {% if filters.supplier == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <label for="filter-active">Active status</label>
+    <select id="filter-active" name="active">
+      <option value="">All</option>
+      <option value="1" {% if filters.active == "1" %}selected{% endif %}>Active only</option>
+      <option value="0" {% if filters.active == "0" %}selected{% endif %}>Inactive only</option>
+    </select>
+    <label for="filter-exception">Exception state</label>
+    <select id="filter-exception" name="exception_state">
+      <option value="">All</option>
+      {% for x in exception_states %}<option value="{{ x }}" {% if filters.exception_state == x %}selected{% endif %}>{{ x }}</option>{% endfor %}
+    </select>
+    <label for="filter-missing">Missing cost</label>
+    <select id="filter-missing" name="missing_cost">
+      <option value="">All</option>
+      <option value="1" {% if filters.missing_cost == "1" %}selected{% endif %}>Missing active cost only</option>
+    </select>
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+    <a class="btn btn-quiet" href="/v2/products">Clear filters</a>
+  </fieldset>
+</form>
+{% if rows %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Products ({{ rows | length }} shown, maximum 200 per page)</caption>
+  <thead>
+    <tr>
+      <th scope="col">Internal SKU</th><th scope="col">Name</th><th scope="col">Brand</th>
+      <th scope="col">Category</th><th scope="col" class="numeric">Active cost ex GST</th>
+      <th scope="col" class="numeric">Current sell ex GST</th><th scope="col" class="numeric">Markup</th>
+      <th scope="col">Exception</th><th scope="col">Updated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><a href="/v2/products/{{ r.product.internal_sku }}">{{ r.product.internal_sku }}</a></td>
+      <td>{{ r.product.name }}</td>
+      <td>{{ r.product.brand or "" }}</td>
+      <td>{{ r.product.category or "" }}</td>
+      <td class="numeric">{% if r.cost_ex is not none %}{{ r.cost_ex }}{% else %}<span class="badge badge-missing">Missing</span>{% endif %}</td>
+      <td class="numeric">{% if r.sell_ex is not none %}{{ r.sell_ex }}{% else %}Not set{% endif %}</td>
+      <td class="numeric">{% if r.markup is not none %}{{ (r.markup * 100) | round(2) }} percent{% else %}Not available{% endif %}</td>
+      <td><span class="badge badge-{{ r.badge_kind }}">{{ r.badge_label }}</span></td>
+      <td>{{ fmt(r.updated_at) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No products match the current filters.</p>
+  <p>Next action: clear the filters, or run the seed script to load illustrative products.</p>
+</div>
+{% endif %}
+{% endblock %}

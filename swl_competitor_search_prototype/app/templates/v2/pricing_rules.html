@@ -1,0 +1,40 @@
+{% extends "v2/base.html" %}
+{% block title %}Pricing rules{% endblock %}
+{% block content %}
+<h1>Pricing rules</h1>
+<p>Rule precedence, highest first: item exception, category, supplier, global default. No silent overrides are permitted. Any override requires a recorded reason and approval.</p>
+<h2>Active rules</h2>
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Pricing rules by scope</caption>
+  <thead><tr><th scope="col">Precedence</th><th scope="col">Scope</th><th scope="col">Markup rate</th><th scope="col">Rounding rule</th><th scope="col">Effective dates</th><th scope="col">Version</th><th scope="col">Approver</th><th scope="col">Status</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1</td><td>Item exception</td><td>Not defined</td><td>Not defined</td><td>Not defined</td><td>Not defined</td><td>Not defined</td>
+      <td><span class="badge badge-pending">Backend dependency</span></td>
+    </tr>
+    <tr>
+      <td>2</td><td>Category</td><td>Not defined</td><td>Not defined</td><td>Not defined</td><td>Not defined</td><td>Not defined</td>
+      <td><span class="badge badge-pending">Backend dependency</span></td>
+    </tr>
+    <tr>
+      <td>3</td><td>Supplier</td><td>Not defined</td><td>Not defined</td><td>Not defined</td><td>Not defined</td><td>Not defined</td>
+      <td><span class="badge badge-pending">Backend dependency</span></td>
+    </tr>
+    <tr>
+      <td>4</td><td>Global default</td>
+      <td>{{ (markup_rate * 100) | round(0) | int }} percent markup on cost</td>
+      <td>{{ rounding_places }} decimal places, ROUND_HALF_UP, after calculation</td>
+      <td>Rev01 baseline</td>
+      <td>{{ rule_version }}</td>
+      <td>Pending business owner approval</td>
+      <td><span class="badge badge-safe">Active in prototype</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+<div class="alert alert-info">
+  The 30 percent threshold is markup on cost, not gross margin. Example: AUD 100.00 cost gives AUD 130.00 sell ex GST.
+  GST rate: {{ (gst_rate * 100) | round(0) | int }} percent. Item, category, and supplier rule scopes are a recorded backend dependency for a later revision.
+</div>
+{% endblock %}

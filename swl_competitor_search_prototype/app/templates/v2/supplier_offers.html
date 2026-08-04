@@ -1,0 +1,37 @@
+{% extends "v2/base.html" %}
+{% block title %}Supplier offers{% endblock %}
+{% block content %}
+<h1>Supplier offers</h1>
+<form class="stack" method="get" action="/v2/supplier-offers" aria-label="Supplier offer filters">
+  <label for="offer-sku">Compare suppliers for product</label>
+  <select id="offer-sku" name="internal_sku">
+    <option value="">All products</option>
+    {% for sku in skus %}<option value="{{ sku }}" {% if selected_sku == sku %}selected{% endif %}>{{ sku }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-primary" type="submit">Show offers</button>
+</form>
+{% if offers %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>{% if selected_sku %}Multi supplier comparison for {{ selected_sku }} (lowest cost first){% else %}Supplier offers by product and supplier{% endif %}</caption>
+  <thead><tr><th scope="col">Internal SKU</th><th scope="col">Supplier</th><th scope="col" class="numeric">Cost ex GST</th><th scope="col">Currency</th><th scope="col">Effective from</th><th scope="col">Availability</th><th scope="col">Active</th><th scope="col">Source reference</th></tr></thead>
+  <tbody>
+    {% for o in offers %}
+    <tr>
+      <td><a href="/v2/products/{{ o.internal_sku }}">{{ o.internal_sku }}</a></td>
+      <td>{{ o.supplier }}</td>
+      <td class="numeric">{{ o.cost_ex_gst }}</td>
+      <td>{{ o.currency }}</td>
+      <td>{{ fmt(o.effective_from) }}</td>
+      <td>Not tracked in prototype</td>
+      <td>{{ "Active" if o.active else "Inactive" }}</td>
+      <td>Local seed data</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No supplier offers found. Next action: run the seed script to load illustrative offers.</p></div>
+{% endif %}
+{% endblock %}
