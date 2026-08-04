@@ -10,6 +10,15 @@ file — together with change, exception, rollback and audit reports.
 > outputs. Run `npm run check:data-safety` before committing; `.gitignore` also blocks common
 > export patterns. All sample data in the app and tests is clearly fictional ("Fictionville").
 
+
+## Operations hub revamp
+
+The app now uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory, suppliers, mapping profiles, pricing rules, competitors, exceptions, approvals, exports, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
+
+Competitor evidence is integrated into the TypeScript application as local-only manual or imported evidence. The nested Python prototype remains preserved as legacy reference material until documented feature-parity criteria are met.
+
+Configuration is represented by a versioned typed registry in `src/core/configRegistry.ts`; locked safety invariants cannot be changed by imported configuration.
+
 ## Privacy model
 
 - **All processing happens in the browser tab.** There is no backend, no cloud database, no

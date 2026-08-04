@@ -6,16 +6,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npx -y node@22 ./node_modules/typescript/bin/tsc -b && npx -y node@22 ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
-    "lint": "eslint .",
+    "typecheck": "npx -y node@22 ./node_modules/typescript/bin/tsc -b --noEmit",
+    "lint": "npx -y node@22 ./node_modules/eslint/bin/eslint.js .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
+    "test": "npx -y node@22 ./node_modules/vitest/vitest.mjs run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "check:data-safety": "node scripts/check-no-business-data.mjs",
+    "check:data-safety": "npx -y node@22 scripts/check-no-business-data.mjs",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -49,5 +49,9 @@
     "typescript-eslint": "8.66.0",
     "vite": "8.2.0",
     "vitest": "4.1.10"
+  },
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10"
   }
 }
