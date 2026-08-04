@@ -1,0 +1,43 @@
+{% extends "v2/base.html" %}
+{% block title %}Audit{% endblock %}
+{% block content %}
+<h1>Audit</h1>
+<p>Audit events for search, observation creation, match review, recommendation, and proposal actions. Secrets are never recorded or shown.</p>
+<form class="stack" method="get" action="/v2/audit" aria-label="Audit filters">
+  <fieldset>
+    <legend>Filters</legend>
+    <label for="audit-entity">Entity type</label>
+    <select id="audit-entity" name="entity_type">
+      <option value="">All entities</option>
+      {% for t in entity_types %}<option value="{{ t }}" {% if filters.entity_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+    <label for="audit-action">Action</label>
+    <select id="audit-action" name="action">
+      <option value="">All actions</option>
+      {% for a in actions %}<option value="{{ a }}" {% if filters.action == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <label for="audit-actor">Actor</label>
+    <input id="audit-actor" name="actor" type="text" value="{{ filters.actor }}">
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+    <a class="btn btn-quiet" href="/v2/audit">Clear filters</a>
+  </fieldset>
+</form>
+{% if events %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Audit events ({{ events | length }} shown, maximum 200 per page)</caption>
+  <thead><tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Entity type</th><th scope="col">Entity ID</th><th scope="col">Reason</th></tr></thead>
+  <tbody>
+    {% for e in events %}
+    <tr><td>{{ fmt(e.created_at) }}</td><td>{{ e.actor }}</td><td>{{ e.action }}</td><td>{{ e.entity_type }}</td><td>{{ e.entity_id or "" }}</td><td>{{ e.reason or "" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No audit events match the current filters.</p>
+  <p>Next action: clear the filters, or perform a search, observation, or recommendation to generate audit events.</p>
+</div>
+{% endif %}
+{% endblock %}

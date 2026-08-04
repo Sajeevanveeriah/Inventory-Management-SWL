@@ -1,0 +1,17 @@
+{% extends "v2/base.html" %}
+{% block title %}Supplier files{% endblock %}
+{% block content %}
+<h1>Supplier files</h1>
+<div class="alert alert-info">Local prototype status: supplier file ingestion is a recorded backend dependency and is not yet implemented. This page shows the intended structure. Upload to external storage is not available and will not be added to this prototype.</div>
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Supplier file records (structure preview, no records loaded)</caption>
+  <thead><tr><th scope="col">Supplier</th><th scope="col">Received</th><th scope="col">Filename</th><th scope="col" class="numeric">Row count</th><th scope="col">Hash placeholder</th><th scope="col">Validation status</th><th scope="col" class="numeric">Quarantine count</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+<div class="empty-state">
+  <p>No supplier files recorded.</p>
+  <p>Next action: supplier file ingestion requires the supplier catalogue module, which is not part of this prototype. Costs used in this prototype come from seeded supplier offers.</p>
+</div>
+{% endblock %}

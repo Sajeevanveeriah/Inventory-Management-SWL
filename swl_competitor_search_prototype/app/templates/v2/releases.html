@@ -1,0 +1,36 @@
+{% extends "v2/base.html" %}
+{% block title %}Releases{% endblock %}
+{% block content %}
+<h1>Releases</h1>
+<div class="alert alert-error">
+  <strong>Production release is not authorised.</strong> This page is read only. There is no live release action anywhere in this prototype.
+</div>
+{% if recommendations %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Release records (read only)</caption>
+  <thead><tr><th scope="col">Product</th><th scope="col">Created</th><th scope="col" class="numeric">Recommended ex GST</th><th scope="col" class="numeric">Recommended incl GST</th><th scope="col">Status</th></tr></thead>
+  <tbody>
+    {% for r in recommendations %}
+    <tr>
+      <td><a href="/v2/products/{{ r.internal_sku }}">{{ r.internal_sku }}</a></td>
+      <td>{{ fmt(r.created_at) }}</td>
+      <td class="numeric">{{ r.recommended_ex_gst }}</td>
+      <td class="numeric">{{ r.recommended_incl_gst }}</td>
+      <td>
+        {% if r.release_blocked %}<span class="badge badge-blocked">Blocked</span>
+        {% else %}<span class="badge badge-not-authorised">Not authorised</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p>Status meanings: draft and proposed records stay local. Blocked means an exception prevents unattended release. Not authorised means production write access has not been granted for any record.</p>
+{% else %}
+<div class="empty-state">
+  <p>No release records.</p>
+  <p>Next action: recommendations appear here as read only records once calculated. None can be released from this prototype.</p>
+</div>
+{% endif %}
+{% endblock %}

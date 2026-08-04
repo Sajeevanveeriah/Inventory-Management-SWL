@@ -1,0 +1,37 @@
+{% extends "v2/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<h2>Status</h2>
+<div class="card-grid">
+  {% for card in cards %}
+  <div class="card">
+    <p class="card-value">{{ card.value }}</p>
+    <p class="card-label"><a href="{{ card.href }}">{{ card.label }}</a></p>
+  </div>
+  {% endfor %}
+</div>
+<h2>Quick actions</h2>
+<p>
+  <a class="btn btn-primary" href="/v2/products">Product search</a>
+  <a class="btn btn-secondary" href="/v2/competitor/search">Competitor search</a>
+  <a class="btn btn-secondary" href="/v2/exceptions">Review exceptions</a>
+  <a class="btn btn-secondary" href="/v2/approvals">Review approvals</a>
+</p>
+<h2>Recent audit events</h2>
+{% if recent_audit %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Ten most recent audit events</caption>
+  <thead><tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Entity</th></tr></thead>
+  <tbody>
+    {% for e in recent_audit %}
+    <tr><td>{{ fmt(e.created_at) }}</td><td>{{ e.actor }}</td><td>{{ e.action }}</td><td>{{ e.entity_type }} {{ e.entity_id or "" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No audit events yet. Run the seed script or record a competitor observation to begin.</p></div>
+{% endif %}
+{% endblock %}

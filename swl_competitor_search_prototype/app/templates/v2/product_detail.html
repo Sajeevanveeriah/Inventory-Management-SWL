@@ -1,0 +1,96 @@
+{% extends "v2/base.html" %}
+{% block title %}Product {{ summary.product.internal_sku }}{% endblock %}
+{% block content %}
+<h1>{{ summary.product.name }}</h1>
+<p><span class="badge badge-{{ summary.badge_kind }}">{{ summary.badge_label }}</span></p>
+
+<h2>Product metadata</h2>
+<div class="table-scroll">
+<table class="data-table">
+  <tbody>
+    <tr><th scope="row">Internal SKU</th><td>{{ summary.product.internal_sku }}</td></tr>
+    <tr><th scope="row">Brand</th><td>{{ summary.product.brand or "Not recorded" }}</td></tr>
+    <tr><th scope="row">Model</th><td>{{ summary.product.model or "Not recorded" }}</td></tr>
+    <tr><th scope="row">Manufacturer part number</th><td>{{ summary.product.manufacturer_part_number or "Not recorded" }}</td></tr>
+    <tr><th scope="row">GTIN</th><td>{{ summary.product.gtin or "Not recorded" }}</td></tr>
+    <tr><th scope="row">Category</th><td>{{ summary.product.category or "Not recorded" }}</td></tr>
+    <tr><th scope="row">Active</th><td>{{ "Yes" if summary.product.active else "No" }}</td></tr>
+    <tr><th scope="row">Active cost ex GST (AUD)</th><td>{% if summary.cost_ex is not none %}{{ summary.cost_ex }}{% else %}<span class="badge badge-missing">Missing</span>{% endif %}</td></tr>
+    <tr><th scope="row">Floor ex GST (cost x 1.30)</th><td>{% if floor_ex is not none %}{{ floor_ex }}{% else %}Not available without an active cost{% endif %}</td></tr>
+    <tr><th scope="row">Current markup on cost</th><td>{% if summary.markup is not none %}{{ (summary.markup * 100) | round(2) }} percent{% else %}Not available{% endif %}</td></tr>
+  </tbody>
+</table>
+</div>
+<p><a class="btn btn-primary" href="/v2/products/{{ summary.product.internal_sku }}/competitor">Competitor evidence and recommendation</a></p>
+
+<h2>Supplier offers</h2>
+{% if offers %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Supplier offer history (active offers first)</caption>
+  <thead><tr><th scope="col">Supplier</th><th scope="col" class="numeric">Cost ex GST</th><th scope="col">Currency</th><th scope="col">Effective from</th><th scope="col">Active</th></tr></thead>
+  <tbody>
+    {% for o in offers %}
+    <tr><td>{{ o.supplier }}</td><td class="numeric">{{ o.cost_ex_gst }}</td><td>{{ o.currency }}</td><td>{{ fmt(o.effective_from) }}</td><td>{{ "Active" if o.active else "Inactive" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No supplier offers recorded. Next action: add a supplier offer through the seed data or supplier offers workflow.</p></div>
+{% endif %}
+
+<h2>Pricing rule scope</h2>
+<p>Global default rule applies: 30 percent markup on cost, rounding after calculation. Item, category, and supplier rule scopes are a recorded backend dependency and are not yet implemented in this prototype. See <a href="/v2/pricing-rules">Pricing rules</a>.</p>
+
+<h2>Bundle links and trade tier warnings</h2>
+<p>Bundle membership and trade tier discount checks are a recorded backend dependency and are not yet implemented in this prototype. See <a href="/v2/bundles">Bundles</a> and <a href="/v2/trade-tiers">Trade tiers</a>.</p>
+
+<h2>Competitor observations</h2>
+{% if observations %}
+<div class="table-scroll">
+<table class="data-table">
+  <thead><tr><th scope="col">ID</th><th scope="col">Observed</th><th scope="col" class="numeric">Price</th><th scope="col">GST basis</th><th scope="col">Confidence</th><th scope="col">Review state</th></tr></thead>
+  <tbody>
+    {% for o in observations %}
+    <tr><td>{{ o.id }}</td><td>{{ fmt(o.observed_at) }}</td><td class="numeric">{{ o.price }} {{ o.currency }}</td><td>{{ o.gst_basis }}</td><td>{{ o.match_confidence }}</td><td><span class="badge badge-{{ o.review_state if o.review_state in ['pending','approved','rejected','quarantined'] else 'pending' }}">{{ o.review_state }}</span></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No competitor observations. Next action: record a manual observation on the competitor page.</p></div>
+{% endif %}
+
+<h2>Recommendations</h2>
+{% if recommendations %}
+<div class="table-scroll">
+<table class="data-table">
+  <thead><tr><th scope="col">Created</th><th scope="col">Strategy</th><th scope="col" class="numeric">Floor ex GST</th><th scope="col" class="numeric">Recommended ex GST</th><th scope="col">Exception</th><th scope="col">Release</th></tr></thead>
+  <tbody>
+    {% for r in recommendations %}
+    <tr><td>{{ fmt(r.created_at) }}</td><td>{{ r.strategy }}</td><td class="numeric">{{ r.floor_ex_gst }}</td><td class="numeric">{{ r.recommended_ex_gst }}</td><td><span class="badge badge-{{ 'safe' if r.exception_state == 'OK' else 'blocked' }}">{{ r.exception_state }}</span></td><td>{% if r.release_blocked %}<span class="badge badge-blocked">Release blocked</span>{% else %}<span class="badge badge-pending">Proposal only</span>{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No recommendations yet. Next action: accept a competitor observation and calculate a recommendation.</p></div>
+{% endif %}
+
+<h2>Audit events</h2>
+{% if audit_events %}
+<div class="table-scroll">
+<table class="data-table">
+  <thead><tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Action</th><th scope="col">Reason</th></tr></thead>
+  <tbody>
+    {% for e in audit_events %}
+    <tr><td>{{ fmt(e.created_at) }}</td><td>{{ e.actor }}</td><td>{{ e.action }}</td><td>{{ e.reason or "" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No audit events recorded for this product yet.</p></div>
+{% endif %}
+{% endblock %}

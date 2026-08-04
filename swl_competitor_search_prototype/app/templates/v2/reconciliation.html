@@ -1,0 +1,32 @@
+{% extends "v2/base.html" %}
+{% block title %}Reconciliation{% endblock %}
+{% block content %}
+<h1>Reconciliation</h1>
+<div class="alert alert-info">
+  Local mock reconciliation only. This prototype does not read from live ServiceM8 or Xero. Actual values are placeholders until an approved integration exists.
+</div>
+{% if recommendations %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Mock reconciliation of proposed values</caption>
+  <thead><tr><th scope="col">Product</th><th scope="col" class="numeric">Proposed value ex GST</th><th scope="col" class="numeric">Expected value ex GST</th><th scope="col">Actual value (placeholder)</th><th scope="col">Mismatch state</th></tr></thead>
+  <tbody>
+    {% for r in recommendations %}
+    <tr>
+      <td><a href="/v2/products/{{ r.internal_sku }}">{{ r.internal_sku }}</a></td>
+      <td class="numeric">{{ r.recommended_ex_gst }}</td>
+      <td class="numeric">{{ r.recommended_ex_gst }}</td>
+      <td>Not available, no live source</td>
+      <td><span class="badge badge-pending">Cannot verify</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>Nothing to reconcile.</p>
+  <p>Next action: reconciliation entries appear once recommendations exist. Live verification requires an approved ServiceM8 or Xero read integration, which is not part of this prototype.</p>
+</div>
+{% endif %}
+{% endblock %}

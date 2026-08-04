@@ -1,0 +1,61 @@
+{% extends "v2/base.html" %}
+{% block title %}Competitor search{% endblock %}
+{% block content %}
+<h1>Competitor search</h1>
+<p>Search local competitor product records only. No external website is fetched. No live competitor source is approved until Q-011 is closed.</p>
+<form class="stack" id="global-search-form">
+  <fieldset>
+    <legend>Search local competitor records</legend>
+    <label for="gs-sku">Internal SKU</label>
+    <select id="gs-sku" name="internal_sku">
+      {% for p in products %}<option value="{{ p.internal_sku }}">{{ p.internal_sku }} ({{ p.name }})</option>{% endfor %}
+    </select>
+    <label for="gs-query">Search query (optional)</label>
+    <input id="gs-query" type="search" placeholder="e.g. ABUS 55/40">
+    <button class="btn btn-primary" type="submit">Search local records</button>
+  </fieldset>
+</form>
+<p id="gs-status" role="status"></p>
+<div class="table-scroll">
+<table class="data-table" id="gs-results">
+  <caption>Candidate competitor products from local records</caption>
+  <thead><tr><th scope="col">ID</th><th scope="col">Source</th><th scope="col">Title</th><th scope="col">Brand</th><th scope="col">Part number</th><th scope="col">GTIN</th><th scope="col">URL</th><th scope="col">Pack size</th><th scope="col">Condition</th><th scope="col">Service basis</th><th scope="col">Match indicators</th></tr></thead>
+  <tbody></tbody>
+</table>
+</div>
+<h2>Registered competitor sources</h2>
+{% if sources %}
+<div class="table-scroll">
+<table class="data-table">
+  <thead><tr><th scope="col">Name</th><th scope="col">Method</th><th scope="col">Approved</th><th scope="col">Terms reviewed</th></tr></thead>
+  <tbody>
+    {% for s in sources %}
+    <tr><td>{{ s.name }}</td><td>{{ s.method }}</td><td>{% if s.approved %}<span class="badge badge-approved">Approved</span>{% else %}<span class="badge badge-not-authorised">Not approved</span>{% endif %}</td><td>{{ "Yes" if s.terms_reviewed else "No" }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state"><p>No competitor sources registered. Next action: run the seed script to register the Manual Entry source.</p></div>
+{% endif %}
+<script>
+"use strict";
+document.getElementById("global-search-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const status = document.getElementById("gs-status");
+  status.textContent = "Searching local records...";
+  try {
+    const res = await fetch("/api/competitor/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ internal_sku: document.getElementById("gs-sku").value, query: document.getElementById("gs-query").value || null }) });
+    const data = await res.json();
+    if (!res.ok) { throw new Error(data && data.detail ? String(data.detail) : "Search failed. Please retry."); }
+    status.textContent = data.message;
+    const tbody = document.getElementById("gs-results").querySelector("tbody");
+    tbody.innerHTML = "";
+    for (const c of data.candidates) {
+      const row = tbody.insertRow();
+      [c.competitor_product_id, c.source.name, c.title, c.brand || "", c.manufacturer_part_number || "", c.gtin || "", c.url || "", c.pack_size, c.condition, c.service_basis, c.matching_indicators.join(", ")].forEach(v => { row.insertCell().textContent = String(v); });
+    }
+  } catch (e) { status.textContent = e.message; status.className = "field-error"; }
+});
+</script>
+{% endblock %}

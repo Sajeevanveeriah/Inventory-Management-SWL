@@ -1,0 +1,51 @@
+{% extends "v2/base.html" %}
+{% block title %}Approvals{% endblock %}
+{% block content %}
+<h1>Approvals</h1>
+<div class="alert alert-warning">
+  Approval in this prototype creates a local proposal record only. It does not release prices and does not update ServiceM8 or Xero.
+  Exception approval is not granted in this prototype.
+</div>
+<h2>Approval summary</h2>
+<div class="table-scroll">
+<table class="data-table">
+  <tbody>
+    <tr><th scope="row">Change count</th><td>{{ line_items | length }}</td></tr>
+    <tr><th scope="row">Exception count</th><td>{{ line_items | selectattr("rec.exception_state", "ne", "OK") | list | length }}</td></tr>
+    <tr><th scope="row">Rule version</th><td>{{ rule_version }}</td></tr>
+    <tr><th scope="row">Source snapshot</th><td>Local seed and manual observations only</td></tr>
+    <tr><th scope="row">Approver</th><td>Not assigned. Business owner approval required.</td></tr>
+    <tr><th scope="row">Change set hash placeholder</th><td>Not calculated in prototype</td></tr>
+  </tbody>
+</table>
+</div>
+<h2>Line item review</h2>
+{% if line_items %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Proposed price changes (proposals only, no release possible)</caption>
+  <thead><tr><th scope="col">Product</th><th scope="col">Proposed at</th><th scope="col" class="numeric">Cost ex GST</th><th scope="col" class="numeric">Floor ex GST</th><th scope="col" class="numeric">Proposed sell ex GST</th><th scope="col" class="numeric">Markup</th><th scope="col">Exception</th><th scope="col">Reason</th></tr></thead>
+  <tbody>
+    {% for li in line_items %}
+    <tr>
+      <td><a href="/v2/products/{{ li.rec.internal_sku }}">{{ li.rec.internal_sku }}</a></td>
+      <td>{{ fmt(li.rec.created_at) }}</td>
+      <td class="numeric">{% if li.cost_ex is not none %}{{ li.cost_ex }}{% else %}Missing{% endif %}</td>
+      <td class="numeric">{{ li.rec.floor_ex_gst }}</td>
+      <td class="numeric">{{ li.rec.recommended_ex_gst }}</td>
+      <td class="numeric">{{ (li.rec.actual_markup * 100) | round(2) }} percent</td>
+      <td><span class="badge badge-{{ 'safe' if li.rec.exception_state == 'OK' else 'blocked' }}">{{ li.rec.exception_state }}</span></td>
+      <td>{{ li.rec.reason or "Within pricing rules" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No proposals awaiting review.</p>
+  <p>Next action: calculate a recommendation from accepted competitor evidence to create a proposal.</p>
+</div>
+{% endif %}
+<p><strong>There is no release action on this page.</strong> Production release is not authorised.</p>
+{% endblock %}

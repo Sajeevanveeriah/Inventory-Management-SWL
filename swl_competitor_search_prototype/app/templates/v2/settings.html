@@ -1,0 +1,31 @@
+{% extends "v2/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<div class="alert alert-info">Local configuration display only. Production configuration cannot be changed from this prototype. No secrets are stored or shown.</div>
+<h2>Local configuration</h2>
+<div class="table-scroll">
+<table class="data-table">
+  <tbody>
+    {% for key, value in config.items() %}
+    <tr><th scope="row">{{ key }}</th><td>{{ value }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<h2>Feature flags</h2>
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Feature flags (production write features default to off and cannot be enabled here)</caption>
+  <thead><tr><th scope="col">Flag</th><th scope="col">State</th></tr></thead>
+  <tbody>
+    {% for flag, state in feature_flags.items() %}
+    <tr>
+      <td>{{ flag }}</td>
+      <td>{% if state == "on" %}<span class="badge badge-safe">On</span>{% else %}<span class="badge badge-not-authorised">Off</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "v2/base.html" %}
+{% block title %}Exceptions{% endblock %}
+{% block content %}
+<h1>Exceptions</h1>
+<p>Exception first review queue. Exceptions are never hidden and never silently resolved.</p>
+<form class="stack" method="get" action="/v2/exceptions" aria-label="Exception filters">
+  <fieldset>
+    <legend>Filters</legend>
+    <label for="ex-type">Exception type</label>
+    <select id="ex-type" name="exception_type">
+      <option value="">All types</option>
+      {% for t in exception_types %}<option value="{{ t }}" {% if filters.exception_type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+    </select>
+    <label for="ex-sku">Product (internal SKU)</label>
+    <input id="ex-sku" name="internal_sku" type="text" value="{{ filters.internal_sku }}">
+    <label for="ex-severity">Severity</label>
+    <select id="ex-severity" name="severity">
+      <option value="">All</option>
+      <option value="blocked" {% if filters.severity == "blocked" %}selected{% endif %}>Blocked</option>
+      <option value="flag" {% if filters.severity == "flag" %}selected{% endif %}>Flag</option>
+    </select>
+    <label for="ex-state">State</label>
+    <input id="ex-state" name="state" type="text" value="{{ filters.state }}">
+    <button class="btn btn-primary" type="submit">Apply filters</button>
+    <a class="btn btn-quiet" href="/v2/exceptions">Clear filters</a>
+  </fieldset>
+</form>
+{% if items %}
+<div class="table-scroll">
+<table class="data-table">
+  <caption>Exception queue ({{ items | length }} shown)</caption>
+  <thead><tr><th scope="col">Type</th><th scope="col">Product</th><th scope="col">Severity</th><th scope="col">State</th><th scope="col">Reason</th><th scope="col">Evidence</th><th scope="col">Recommended action</th><th scope="col">Required approval</th><th scope="col">Raised</th></tr></thead>
+  <tbody>
+    {% for i in items %}
+    <tr>
+      <td><span class="badge badge-{{ 'blocked' if i.severity == 'blocked' else 'flag' }}">{{ i.type }}</span></td>
+      <td><a href="/v2/products/{{ i.internal_sku }}">{{ i.internal_sku }}</a></td>
+      <td>{{ i.severity | capitalize }}</td>
+      <td>{{ i.state | capitalize }}</td>
+      <td>{{ i.reason }}</td>
+      <td><a href="{{ i.evidence_href }}">View evidence</a></td>
+      <td>{{ i.recommended_action }}</td>
+      <td>{{ i.required_approval }}</td>
+      <td>{{ fmt(i.created_at) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+  <p>No exceptions match the current filters.</p>
+  <p>Next action: clear the filters, or review products and competitor observations to confirm the queue is genuinely clear.</p>
+</div>
+{% endif %}
+{% endblock %}

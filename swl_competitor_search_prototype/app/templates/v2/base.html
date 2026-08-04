@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Pricing Control Hub{% endblock %} | SWL Pricing Control Hub v2</title>
+<link rel="stylesheet" href="/static/v2.css">
+</head>
+<body data-layout="v2">
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<header class="site-header">
+  <p class="site-title">SWL Pricing Control Hub <span aria-hidden="true">v2</span><span class="visually-hidden"> version 2</span></p>
+  <p class="env-note">Local prototype, Rev01 draft for stakeholder validation. Environment: {{ app_env }}</p>
+</header>
+<nav class="site-nav" aria-label="Main navigation">
+  <ul>
+    {% for item in nav_items %}
+    <li><a href="{{ item.href }}" {% if item.href == active_path %}aria-current="page"{% endif %}>{{ item.label }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+<main id="main-content">
+  <div class="alert alert-warning" role="note">
+    <strong>Production write access is not authorised.</strong>
+    This local prototype cannot release prices and cannot update ServiceM8 or Xero.
+    Competitor data is evidence, not an automatic override. The 30 percent threshold is markup on cost.
+  </div>
+  {% if breadcrumbs %}
+  <nav class="breadcrumbs" aria-label="Breadcrumb">
+    {% for crumb in breadcrumbs %}{% if not loop.last %}<a href="{{ crumb.href }}">{{ crumb.label }}</a> / {% else %}<span aria-current="page">{{ crumb.label }}</span>{% endif %}{% endfor %}
+  </nav>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="site-footer">
+  <p>Stan Wootton Locksmiths Pricing Control Hub, local prototype only. No live competitor source is approved until Q-011 is closed. Prices below the 30 percent markup floor are blocked from unattended release. No ServiceM8 or Xero production update is performed by this prototype.</p>
+</footer>
+</body>
+</html>

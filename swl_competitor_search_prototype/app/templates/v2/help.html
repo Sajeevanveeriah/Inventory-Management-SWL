@@ -1,0 +1,69 @@
+{% extends "v2/base.html" %}
+{% block title %}Help{% endblock %}
+{% block content %}
+<h1>Help</h1>
+
+<h2>Glossary</h2>
+<dl>
+  <dt>Internal SKU</dt><dd>The approved internal product identifier used across the hub.</dd>
+  <dt>Cost ex GST</dt><dd>The active supplier cost for a product, excluding GST, in AUD.</dd>
+  <dt>Floor ex GST</dt><dd>The minimum permitted sell price excluding GST: cost ex GST multiplied by 1.30.</dd>
+  <dt>Markup on cost</dt><dd>(sell ex GST minus cost ex GST) divided by cost ex GST. The 30 percent threshold is markup on cost, not gross margin.</dd>
+  <dt>Competitor observation</dt><dd>A dated, manually recorded competitor price with source evidence. Evidence only, never an automatic override.</dd>
+  <dt>Recommendation</dt><dd>A proposed sell price. It is a proposal only and cannot be released from this prototype.</dd>
+  <dt>Release blocked</dt><dd>The proposal cannot proceed to unattended release without an approved exception. No exception approval is granted in this prototype.</dd>
+</dl>
+
+<h2>Markup formula</h2>
+<p>floor_ex = cost_ex x 1.30. Example: AUD 100.00 cost gives AUD 130.00 sell ex GST. markup = (sell_ex minus cost_ex) / cost_ex.</p>
+
+<h2>GST basis</h2>
+<p>Observed prices marked inclusive are divided by 1.10 to get the ex GST value. Prices marked exclusive are used as recorded. An unknown GST basis cannot be used and is rejected, because comparing on an unknown basis would misstate the competitor position.</p>
+
+<h2>Competitor evidence rules</h2>
+<ul>
+  <li>Only local manual observation is permitted. No live competitor source is approved until Q-011 is closed.</li>
+  <li>An observation must have an approved source, a known GST basis, AUD currency, a source URL, and a dated observation time.</li>
+  <li>Low confidence matches are excluded from automatic recommendations.</li>
+  <li>Observations older than the stale limit (default 30 days) are excluded.</li>
+  <li>Pack size must be 1, condition must be new, and the price must be product only.</li>
+</ul>
+
+<h2>Status definitions</h2>
+<dl>
+  <dt>Safe</dt><dd>Within pricing rules, no exception.</dd>
+  <dt>Flag</dt><dd>Needs review but does not block a proposal.</dd>
+  <dt>Blocked</dt><dd>An exception prevents unattended release.</dd>
+  <dt>Pending</dt><dd>Awaiting review or approval.</dd>
+  <dt>Approved</dt><dd>Accepted by a named reviewer. In this prototype, approval creates a local proposal record only.</dd>
+  <dt>Rejected</dt><dd>Declined by a named reviewer with a recorded reason.</dd>
+  <dt>Quarantined</dt><dd>Set aside because validation failed. Requires correction and re-review.</dd>
+  <dt>Stale</dt><dd>Older than the configured validity period.</dd>
+  <dt>Missing</dt><dd>Required data, such as an active cost, is absent.</dd>
+  <dt>Not authorised</dt><dd>The action requires production access that has not been granted.</dd>
+</dl>
+
+<h2>Exception meanings</h2>
+<dl>
+  <dt>COMPETITOR_BELOW_FLOOR</dt><dd>The competitor target is below the 30 percent markup floor. The floor is recommended and release is blocked.</dd>
+  <dt>LOW_CONFIDENCE</dt><dd>The competitor match confidence is low, so the observation cannot be used automatically.</dd>
+  <dt>UNKNOWN_GST</dt><dd>The GST basis of the observed price is unknown, so it cannot be normalised.</dd>
+  <dt>UNAPPROVED_SOURCE</dt><dd>The competitor source is not on the approved list.</dd>
+  <dt>STALE_OBSERVATION</dt><dd>The observation is older than the validity period.</dd>
+  <dt>NO_VALID_OBSERVATION</dt><dd>No usable accepted observation exists, so the floor is recommended.</dd>
+  <dt>MISSING_COST</dt><dd>The product has no active supplier cost, so no floor or recommendation can be calculated.</dd>
+  <dt>AMBIGUOUS_MATCH</dt><dd>More than one competitor product matches and a reviewer must choose.</dd>
+</dl>
+
+<h2>Module flow</h2>
+<p>Text description: an operator searches local competitor records for a product, records a manual observation, and a reviewer accepts or rejects it. Accepted observations are normalised to AUD ex GST and the recommendation engine compares the lowest competitor price with the cost floor. The higher of floor and target becomes the proposal. Below floor targets raise an exception and block release. Every step writes an audit event.</p>
+
+<h2>Local prototype limitations</h2>
+<ul>
+  <li>Production write access is not authorised. Nothing here updates ServiceM8 or Xero.</li>
+  <li>Supplier files, pricing rule scopes beyond the global default, bundles, and trade tiers are recorded backend dependencies.</li>
+  <li>Reconciliation is a local mock with placeholder actual values.</li>
+  <li>AUD only. Currency conversion is not implemented.</li>
+  <li>No authentication. Intended for a single local operator on a trusted machine.</li>
+</ul>
+{% endblock %}
