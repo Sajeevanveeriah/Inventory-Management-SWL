@@ -17,7 +17,8 @@ const SUSPICIOUS_NAME = [
   { re: /supplier.*(price|list|export)/i, why: 'supplier export name' },
   { re: /(price-?list)/i, why: 'price list name' },
   { re: /\.(pem|key|p12|pfx)$/i, why: 'private key material' },
-  { re: /^\.env(\..+)?$/, why: 'environment file' },
+  // .env.example is the committed placeholder template; real env files stay blocked.
+  { re: /^\.env(?!\.example$)(\..+)?$/, why: 'environment file' },
   { re: /(credential|secret)s?.*\.(json|ya?ml|txt)$/i, why: 'credential file name' },
   {
     re: /^(rollback|import-candidate|change-report|exceptions|audit-summary)-/i,
