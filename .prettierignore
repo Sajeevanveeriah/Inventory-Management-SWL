@@ -4,3 +4,7 @@ playwright-report
 test-results
 coverage
 package-lock.json
+src-tauri/target
+src-tauri/gen
+screenshots
+swl_competitor_search_prototype

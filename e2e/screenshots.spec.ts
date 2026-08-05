@@ -140,3 +140,34 @@ test.describe('mobile 390px', () => {
     await shot(page, '21-files-mobile');
   });
 });
+
+test.describe('operations shell', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('dashboard, search, exceptions, approvals, integrations', async ({ page }) => {
+    await page.goto('/#/dashboard');
+    await shot(page, '22-dashboard-empty');
+    await demoToValidate(page);
+    await page.getByRole('button', { name: 'Dashboard' }).click();
+    await shot(page, '23-dashboard-loaded');
+    await page.getByRole('button', { name: 'Inventory search' }).click();
+    await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
+    await shot(page, '24-search-results');
+    await page.getByRole('button', { name: 'Exceptions' }).click();
+    await shot(page, '25-exceptions');
+    await page.getByRole('button', { name: 'Approvals' }).click();
+    await shot(page, '26-approvals');
+    await page.getByRole('button', { name: 'Integrations' }).click();
+    await shot(page, '27-integrations');
+    await page.getByRole('button', { name: 'Suppliers' }).click();
+    await shot(page, '28-suppliers');
+  });
+
+  test('search on mobile 390px', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await demoToValidate(page);
+    await page.getByRole('button', { name: 'Inventory search' }).click();
+    await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
+    await shot(page, '29-search-mobile');
+  });
+});
