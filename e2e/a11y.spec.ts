@@ -83,20 +83,28 @@ test('dialogs: settings, privacy and confirmation', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('competitor search: empty, results, no-results; source registry', async ({ page }) => {
+test('competitor search: empty, live results, no-results, provider failure; sources', async ({
+  page,
+}) => {
   await page.goto('/#/competitors');
   await expect(page.getByRole('heading', { name: 'Competitor search' })).toBeVisible();
   await expectNoSeriousViolations(page, 'competitor-search-empty');
 
-  await page.getByLabel('SKU or product').fill('LW4570');
-  await page.getByLabel('Observed price (AUD)').fill('143.00');
-  await page.getByRole('button', { name: 'Store observation' }).click();
-  await expect(page.getByRole('heading', { name: /Price band/ })).toBeVisible();
-  await expectNoSeriousViolations(page, 'competitor-search-results');
+  const searchBox = page.getByLabel(/Product name, part number/);
+  await searchBox.fill('LW4570');
+  await page.getByRole('button', { name: 'Search live prices' }).click();
+  await expect(page.getByRole('region', { name: 'Live search results' })).toBeVisible();
+  await expectNoSeriousViolations(page, 'competitor-search-live-results');
 
-  await page.getByLabel('Search all sources').fill('no-such-product-zzz');
-  await expect(page.getByText('No stored evidence matches this search')).toBeVisible();
+  await searchBox.fill('fixture-none');
+  await page.getByRole('button', { name: 'Search live prices' }).click();
+  await expect(page.getByText(/No live prices found/)).toBeVisible();
   await expectNoSeriousViolations(page, 'competitor-search-no-results');
+
+  await searchBox.fill('fixture-error');
+  await page.getByRole('button', { name: 'Search live prices' }).click();
+  await expect(page.getByText('The search provider returned an error')).toBeVisible();
+  await expectNoSeriousViolations(page, 'competitor-search-provider-error');
 
   await page.getByRole('button', { name: 'Source registry' }).click();
   await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();

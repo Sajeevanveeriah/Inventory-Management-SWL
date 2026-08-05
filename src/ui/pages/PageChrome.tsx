@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 
-/** Shared page frame: breadcrumb, heading and optional primary action. */
+/** Shared page frame: breadcrumb, heading, optional lead line and primary action top right. */
 export function Page({
   title,
+  lead,
   primary,
   children,
 }: {
   title: string;
+  lead?: string;
   primary?: ReactNode;
   children: ReactNode;
 }) {
@@ -16,8 +18,9 @@ export function Page({
         <div>
           <p className="breadcrumbs">SWL / {title}</p>
           <h1>{title}</h1>
+          {lead && <p className="page-lead">{lead}</p>}
         </div>
-        {primary}
+        {primary && <div className="page-primary">{primary}</div>}
       </div>
       {children}
     </>
@@ -36,7 +39,7 @@ export function OperationalList({ items }: { items: string[] }) {
   );
 }
 
-/** Consistent empty state used when no comparison data is loaded yet. */
+/** Consistent teaching empty state: says what the surface is for and what to do next. */
 export function EmptyState({
   title,
   detail,

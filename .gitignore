@@ -9,6 +9,7 @@ test-results/
 # Environment and secrets — never commit
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.p12
@@ -25,6 +26,8 @@ secrets*.json
 !tests/fixtures/*.csv
 !tests/fixtures/*.xlsx
 /data/
+server/data/
+.e2e-data/
 /exports/
 /imports/
 /output/

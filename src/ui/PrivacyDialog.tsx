@@ -19,16 +19,21 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
       <Dialog open={open} title="Privacy — what is and is not stored" onClose={onClose}>
         <h3>Processing</h3>
         <p className="small">
-          Everything happens locally in this browser tab. The production build ships with a Content
-          Security Policy whose <code>connect-src 'none'</code> directive makes the browser refuse
-          any network transmission of page data. There is no server, no account, no analytics and no
-          telemetry.
+          Business files are processed locally in this browser tab. The production build ships with
+          a Content Security Policy whose <code>connect-src 'self'</code> directive lets the browser
+          talk to this application's own server only — used for live competitor search through a
+          licensed provider and for pricing history. No third-party origin is reachable from this
+          page. There is no account, no analytics and no telemetry.
         </p>
         <h3>Never stored, never sent</h3>
         <ul className="small">
           <li>Uploaded supplier and ServiceM8 files (memory only; gone when the tab closes)</li>
           <li>Imported rows, prices, descriptions and identifiers</li>
           <li>Generated import files and reports (created on demand, downloaded by you)</li>
+          <li>
+            Only a typed competitor search query ever leaves this machine, via this application's
+            own server
+          </li>
         </ul>
         <h3>Stored in this browser only (IndexedDB), if you choose to save them</h3>
         <ul className="small">

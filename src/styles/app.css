@@ -1185,3 +1185,343 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* --- 2026 interface rebuild: nav rail groups, metrics, charts, pills, states --- */
+.nav-group {
+  display: grid;
+  gap: 0.1rem;
+  margin-bottom: 0.9rem;
+}
+.nav-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: color-mix(in srgb, var(--nav-ink) 55%, transparent);
+  padding: 0.15rem 0.75rem;
+}
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  opacity: 0.85;
+}
+.side-nav button {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.page-lead {
+  color: var(--ink-secondary);
+  margin: 0.15rem 0 0;
+  max-width: 46rem;
+}
+.page-primary {
+  flex: none;
+}
+
+/* Summary metric cards */
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+.metric-card {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 0.95rem;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+}
+.metric-link {
+  cursor: pointer;
+  font: inherit;
+}
+.metric-link:hover {
+  border-color: var(--primary);
+}
+.metric-label {
+  color: var(--ink-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.metric-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.metric-state {
+  justify-self: start;
+  font-size: 0.78rem;
+}
+
+/* Status pills (colour + wording, never colour alone) */
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  color: var(--ink-secondary);
+  background: var(--info-bg);
+}
+.pill-ok {
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+}
+.pill-warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+}
+.pill-error {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+/* Charts (SVG, validated palette for light and dark surfaces) */
+:root {
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #eb6834;
+}
+[data-theme='dark'] {
+  --chart-series-1: #3987e5;
+  --chart-series-2: #d95926;
+}
+.chart-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+.chart-row > .card {
+  /* Grid items default to min-width auto; without this a wide chart would
+     stretch the track and overflow the page instead of scrolling in place. */
+  min-width: 0;
+}
+.chart {
+  margin: 0;
+}
+.chart figcaption {
+  font-weight: 650;
+  margin-bottom: 0.5rem;
+}
+.chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.chart-tick {
+  fill: var(--ink-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-series-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+.chart-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 0.35rem;
+}
+.chart-note {
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  margin: 0.4rem 0 0;
+}
+
+/* Live search states */
+.searchbar {
+  display: flex;
+  gap: 0.6rem;
+  align-items: end;
+}
+.searchbar .grow {
+  flex: 1;
+  display: grid;
+  gap: 0.25rem;
+  font-weight: 700;
+  color: var(--ink-secondary);
+}
+.searchbar input {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.75rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  width: 100%;
+}
+.state-loading {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+}
+.spinner {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spinner {
+    animation: swl-spin 0.9s linear infinite;
+  }
+}
+@keyframes swl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.state-banner h2 {
+  margin-bottom: 0.3rem;
+}
+.state-banner {
+  border-left: 4px solid var(--border-strong);
+}
+.state-warn {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+.state-error {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+}
+.state-info {
+  border-left-color: var(--primary);
+  background: var(--info-bg);
+}
+
+/* Sortable dense data tables */
+.th-sort {
+  font: inherit;
+  font-weight: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.sort-arrow {
+  font-size: 0.75rem;
+  min-width: 0.7rem;
+  display: inline-block;
+}
+.hint-block {
+  display: block;
+  color: var(--ink-faint);
+  font-size: 0.78rem;
+}
+
+/* Narrow layout: data tables become card lists at 430px and below */
+@media (max-width: 430px) {
+  .data-table thead {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+  }
+  .data-table,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+    width: 100%;
+  }
+  .data-table tr {
+    border-bottom: 4px solid var(--canvas);
+    padding: 0.5rem 0.2rem;
+  }
+  .data-table td {
+    border-bottom: 0;
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 40%) 1fr;
+    gap: 0.5rem;
+    padding: 0.22rem 0.5rem;
+  }
+  .data-table td.num {
+    text-align: left;
+  }
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: var(--ink-secondary);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .searchbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .metric-row,
+  .chart-row {
+    grid-template-columns: 1fr;
+  }
+  /* Keep chart text legible: the drawing scrolls inside its own container
+     instead of shrinking below readable size. */
+  .chart {
+    overflow-x: auto;
+  }
+  .chart svg {
+    min-width: 480px;
+  }
+}
+
+/* Motion cap: opacity + small translate only, 160 ms, honours reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .card,
+  .metric-card,
+  .state-banner {
+    animation: swl-enter 160ms ease-out;
+  }
+}
+/* Translate only: opacity is excluded so automated contrast checks and
+   screenshots are never sampled mid-fade. */
+@keyframes swl-enter {
+  from {
+    transform: translateY(3px);
+  }
+  to {
+    transform: none;
+  }
+}
