@@ -78,7 +78,7 @@ const STATE_COPY: Record<
     title: 'The application server is not reachable',
     tone: 'error',
     detail:
-      'Live search runs through this application’s own server, which did not respond. Start it with: npm run server. Manual entry below still works.',
+      'Live search runs through this application’s own server, which did not respond. A static host such as GitHub Pages cannot run it. On the machine that should run the app: npm run seed, npm run build, then npm run server, and open the address it prints (http://127.0.0.1:8787). Manual entry below still works.',
   },
 };
 
@@ -200,7 +200,8 @@ export function CompetitorsPage() {
   const [submitted, setSubmitted] = useState('');
   const [loading, setLoading] = useState(false);
   const [outcome, setOutcome] = useState<LiveSearchOutcome | null>(null);
-  const [health, setHealth] = useState<LiveHealth | null>(null);
+  // 'checking' -> probe in flight; null -> probe finished, server unreachable.
+  const [health, setHealth] = useState<LiveHealth | null | 'checking'>('checking');
   const [attachTarget, setAttachTarget] = useState('');
   const requestSeq = useRef(0);
 
@@ -328,13 +329,15 @@ export function CompetitorsPage() {
           </label>
         </form>
         <p className="hint" role="status">
-          {health === null
+          {health === 'checking'
             ? 'Checking live search availability…'
-            : health.fixtureMode
-              ? 'Fixture provider active: deterministic offline results for testing and demos.'
-              : health.liveSearchConfigured
-                ? 'Live search ready: server-side provider, Australian region, AUD, rate limited and cached.'
-                : 'Live search is NOT configured: set SERPAPI_KEY on the server (.env.example shows how). Manual entry works now.'}
+            : health === null
+              ? 'Live search unavailable: this page is not being served by the application server. Static hosting (for example GitHub Pages) cannot run it; start it with npm run server and open the address it prints. Manual entry works now.'
+              : health.fixtureMode
+                ? 'Fixture provider active: deterministic offline results for testing and demos.'
+                : health.liveSearchConfigured
+                  ? 'Live search ready: server-side provider, Australian region, AUD, rate limited and cached.'
+                  : 'Live search is NOT configured: set SERPAPI_KEY on the server (.env.example shows how). Manual entry works now.'}
         </p>
       </section>
 
