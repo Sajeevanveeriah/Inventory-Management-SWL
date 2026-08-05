@@ -213,6 +213,8 @@ export function parseCompetitorEvidenceRows(
       productOnly: (row.productOnly ?? 'true') === 'true',
       matchConfidence: Number(row.matchConfidence ?? 0),
       reviewState,
+      ...(row.url || row.sourceUrl ? { url: row.url || row.sourceUrl } : {}),
+      ...(row.packSize ? { packSize: row.packSize } : {}),
     });
   });
   return { observations, errors };

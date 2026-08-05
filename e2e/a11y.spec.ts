@@ -83,6 +83,39 @@ test('dialogs: settings, privacy and confirmation', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
+test('competitor search: empty, results, no-results; source registry', async ({ page }) => {
+  await page.goto('/#/competitors');
+  await expect(page.getByRole('heading', { name: 'Competitor search' })).toBeVisible();
+  await expectNoSeriousViolations(page, 'competitor-search-empty');
+
+  await page.getByLabel('SKU or product').fill('LW4570');
+  await page.getByLabel('Observed price (AUD)').fill('143.00');
+  await page.getByRole('button', { name: 'Store observation' }).click();
+  await expect(page.getByRole('heading', { name: /Price band/ })).toBeVisible();
+  await expectNoSeriousViolations(page, 'competitor-search-results');
+
+  await page.getByLabel('Search all sources').fill('no-such-product-zzz');
+  await expect(page.getByText('No stored evidence matches this search')).toBeVisible();
+  await expectNoSeriousViolations(page, 'competitor-search-no-results');
+
+  await page.getByRole('button', { name: 'Source registry' }).click();
+  await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
+  await expectNoSeriousViolations(page, 'source-registry');
+});
+
+test('dashboard, catalogue search and approvals with demo data', async ({ page }) => {
+  await demoToValidate(page);
+  await page.getByRole('button', { name: 'Dashboard' }).click();
+  await expectNoSeriousViolations(page, 'dashboard');
+  await page.getByRole('button', { name: 'Inventory search' }).click();
+  await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
+  await expectNoSeriousViolations(page, 'inventory-search');
+  await page.getByRole('button', { name: 'Approvals' }).click();
+  await expectNoSeriousViolations(page, 'approvals');
+  await page.getByRole('button', { name: 'Exceptions' }).click();
+  await expectNoSeriousViolations(page, 'exceptions');
+});
+
 test('dark theme keeps contrast on the review screen', async ({ page }) => {
   await demoToValidate(page);
   await page.getByRole('button', { name: 'Settings' }).click();

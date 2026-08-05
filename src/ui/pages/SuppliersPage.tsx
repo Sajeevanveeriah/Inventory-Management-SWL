@@ -147,7 +147,7 @@ export function SuppliersPage() {
           detail="Profiles store supplier-specific column mappings and header fingerprints locally in this browser, so repeat runs map instantly. No business rows are ever stored."
         />
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-label="Saved profiles" tabIndex={0}>
           <table>
             <thead>
               <tr>

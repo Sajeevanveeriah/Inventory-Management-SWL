@@ -1036,6 +1036,12 @@ dialog::backdrop {
   .side-nav nav {
     grid-template-columns: 1fr;
   }
+  .kv {
+    grid-template-columns: 1fr;
+  }
+  .kv dd {
+    margin-bottom: 0.35rem;
+  }
   .topbar,
   .page-head {
     align-items: stretch;

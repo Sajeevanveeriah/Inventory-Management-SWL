@@ -22,6 +22,13 @@ import {
   undo,
   type ReviewState,
 } from '../core/review';
+import type { CompetitorObservation } from '../core/competitors';
+import {
+  defaultSources,
+  toggleSource,
+  type AttachedReference,
+  type CompetitorSource,
+} from '../core/sources';
 import { DEFAULT_SETTINGS, type Settings, type SettingsChangeLogEntry } from '../core/settings';
 import type { FileRole, ParsedTable } from '../core/table';
 import type { GeneratedOutput } from '../io/exportWorkbooks';
@@ -75,6 +82,9 @@ export interface AppState {
   comparisonStartedAt: string | null;
   review: ReviewState;
   outputs: GeneratedOutput[] | null;
+  competitorEvidence: CompetitorObservation[];
+  competitorSources: CompetitorSource[];
+  references: AttachedReference[];
   demoMode: boolean;
   /** Text for the aria-live status region. */
   announcement: string;
@@ -99,6 +109,9 @@ export const INITIAL_STATE: AppState = {
   comparisonStartedAt: null,
   review: EMPTY_REVIEW,
   outputs: null,
+  competitorEvidence: [],
+  competitorSources: defaultSources(),
+  references: [],
   demoMode: false,
   announcement: '',
 };
@@ -133,6 +146,9 @@ export type Action =
   | { type: 'outputs-ready'; outputs: GeneratedOutput[] }
   | { type: 'announce'; message: string }
   | { type: 'set-demo-mode'; on: boolean }
+  | { type: 'evidence-added'; observations: CompetitorObservation[] }
+  | { type: 'source-toggled'; sourceId: string }
+  | { type: 'reference-attached'; reference: AttachedReference }
   | { type: 'clear-session' };
 
 function slotKey(role: FileRole): 'supplier' | 'servicem8' {
@@ -284,6 +300,20 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, announcement: action.message };
     case 'set-demo-mode':
       return { ...state, demoMode: action.on };
+    case 'evidence-added':
+      return {
+        ...state,
+        competitorEvidence: [...state.competitorEvidence, ...action.observations],
+      };
+    case 'source-toggled':
+      return {
+        ...state,
+        competitorSources: toggleSource(state.competitorSources, action.sourceId),
+      };
+    // Reference only: stores the observation against a row without touching
+    // the comparison, so no cost or sell price can change through this path.
+    case 'reference-attached':
+      return { ...state, references: [...state.references, action.reference] };
     case 'clear-session':
       return {
         ...INITIAL_STATE,

@@ -4,7 +4,8 @@ import { isDesktop } from './platform/desktop';
 import { STEP_ORDER, STEP_TITLES, useAppDispatch, useAppState, type StepId } from './state/store';
 import { PrivacyDialog } from './ui/PrivacyDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
-import { CompetitorsPage, SettingsPage } from './ui/pages/ConfigPages';
+import { SettingsPage } from './ui/pages/ConfigPages';
+import { CompetitorsPage, SourcesPage } from './ui/pages/CompetitorSearchPage';
 import { IntegrationsPage } from './ui/pages/IntegrationsPage';
 import {
   ApprovalsPage,
@@ -34,7 +35,8 @@ const ROUTES = [
   ['#/suppliers', 'Suppliers'],
   ['#/mapping-profiles', 'Mapping profiles'],
   ['#/pricing-rules', 'Pricing rules'],
-  ['#/competitors', 'Competitors'],
+  ['#/competitors', 'Competitor search'],
+  ['#/sources', 'Source registry'],
   ['#/exceptions', 'Exceptions'],
   ['#/approvals', 'Approvals'],
   ['#/exports', 'Exports'],
@@ -222,6 +224,7 @@ export default function App() {
             {route === '#/mapping-profiles' && <MappingProfilesPage />}
             {route === '#/pricing-rules' && <PricingRulesPage />}
             {route === '#/competitors' && <CompetitorsPage />}
+            {route === '#/sources' && <SourcesPage />}
             {route === '#/exceptions' && <ExceptionsPage />}
             {route === '#/approvals' && <ApprovalsPage go={goRoute} />}
             {route === '#/exports' && <ExportsPage />}

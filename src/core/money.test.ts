@@ -8,6 +8,8 @@ import {
   formatAmount,
   formatAud,
   markupFormula,
+  MINIMUM_MARKUP_ON_COST,
+  minimumSellPrice,
   parseMoney,
 } from './money';
 
@@ -81,6 +83,32 @@ describe('applyMarkup', () => {
         const amount = new Big(cents).div(100).toFixed(2);
         const parsed = parseMoney(amount);
         expect(parsed).toEqual({ ok: true, amount, wasRounded: false });
+      }),
+    );
+  });
+});
+
+describe('minimumSellPrice', () => {
+  it('is markup on cost, not gross margin: cost 100 -> 130, never 142.86', () => {
+    expect(minimumSellPrice(100)).toBe('130.00');
+    expect(Number(minimumSellPrice(100))).toBe(130);
+    expect(minimumSellPrice('100.00')).toBe('130.00');
+    expect(minimumSellPrice('100.00')).not.toBe('142.86');
+  });
+
+  it('handles zero, small and large costs exactly', () => {
+    expect(minimumSellPrice(0)).toBe('0.00');
+    expect(minimumSellPrice('0.01')).toBe('0.01');
+    expect(minimumSellPrice('9.99')).toBe('12.99');
+    expect(minimumSellPrice('1234567.89')).toBe('1604938.26');
+  });
+
+  it('uses the single named markup constant', () => {
+    expect(MINIMUM_MARKUP_ON_COST).toBe('1.30');
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10_000_000 }), (cents) => {
+        const cost = new Big(cents).div(100).toFixed(2);
+        expect(minimumSellPrice(cost)).toBe(applyMarkup(cost, '30'));
       }),
     );
   });
