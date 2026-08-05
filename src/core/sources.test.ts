@@ -68,7 +68,8 @@ describe('searchEvidence', () => {
   it('is fully usable with an empty database', () => {
     const outcome = searchEvidence([], sources, 'anything');
     expect(outcome.results).toHaveLength(0);
-    expect(outcome.sourcesWithoutResults).toHaveLength(3);
+    // Live provider + manual + two fictional file/manual sources are enabled.
+    expect(outcome.sourcesWithoutResults).toHaveLength(4);
   });
 });
 

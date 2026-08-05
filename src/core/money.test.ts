@@ -132,3 +132,15 @@ describe('amount helpers', () => {
     expect(markupFormula('100.00', '30')).toBe('$100.00 × 1.3 = $130.00');
   });
 });
+
+describe('money path source hygiene', () => {
+  it('uses no floating point arithmetic in the client money modules', async () => {
+    const { readFileSync } = await import('node:fs');
+    for (const file of ['src/core/money.ts', 'src/core/compare.ts', 'src/core/competitors.ts']) {
+      const source = readFileSync(file, 'utf8');
+      expect(source, file).not.toMatch(/parseFloat|Number\.EPSILON|toPrecision/);
+      // Arithmetic must go through big.js, never JS number operators on amounts.
+      expect(source, file).not.toMatch(/amount\s*[*/+-]\s*\d/);
+    }
+  });
+});

@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchPriceHistory, type PriceHistoryVersion } from '../../core/liveSearch';
 import { applyMarkup, CURRENCY, parseMoney, ROUNDING_RULE_LABEL } from '../../core/money';
+import { BarChart, LineChart, type ChartSeries } from '../Charts';
 import { buildApprovalProposals, buildRunMetadata, deriveExceptions } from '../../core/operations';
 import { isExcludable, STATUS_LABELS } from '../../core/statuses';
 import { triggerDownload } from '../../io/download';
@@ -8,43 +10,188 @@ import { useActions } from '../../state/useActions';
 import { StatusBadge } from '../StatusBadge';
 import { EmptyState, OperationalList, Page } from './PageChrome';
 
+const MONTH_LABEL = new Intl.DateTimeFormat('en-AU', { month: 'short', year: '2-digit' });
+
+/** Average sell and cost per calendar month from persisted price history. */
+function historySeries(history: PriceHistoryVersion[]): ChartSeries[] {
+  const byMonth = new Map<number, { costCents: number[]; sellCents: number[] }>();
+  for (const version of history) {
+    const at = new Date(version.recordedAt);
+    if (Number.isNaN(at.getTime())) continue;
+    const key = new Date(at.getFullYear(), at.getMonth(), 1).getTime();
+    const bucket = byMonth.get(key) ?? { costCents: [], sellCents: [] };
+    bucket.costCents.push(version.costCents);
+    bucket.sellCents.push(version.sellPriceCents);
+    byMonth.set(key, bucket);
+  }
+  const months = [...byMonth.entries()].sort((a, b) => a[0] - b[0]);
+  const avg = (values: number[]) =>
+    Math.round(values.reduce((sum, v) => sum + v, 0) / Math.max(1, values.length));
+  return [
+    {
+      label: 'Avg sell',
+      points: months.map(([x, b]) => ({ x, y: avg(b.sellCents) / 100 })),
+    },
+    {
+      label: 'Avg cost',
+      points: months.map(([x, b]) => ({ x, y: avg(b.costCents) / 100 })),
+    },
+  ];
+}
+
+/** Distribution of latest sell prices across brackets. */
+function priceBuckets(history: PriceHistoryVersion[]) {
+  const latest = new Map<string, PriceHistoryVersion>();
+  for (const version of history) {
+    const existing = latest.get(version.itemId);
+    if (!existing || version.recordedAt > existing.recordedAt) latest.set(version.itemId, version);
+  }
+  const brackets = [
+    ['Under $25', 0, 2500],
+    ['$25-$75', 2500, 7500],
+    ['$75-$150', 7500, 15000],
+    ['$150-$250', 15000, 25000],
+    ['$250+', 25000, Number.MAX_SAFE_INTEGER],
+  ] as const;
+  return brackets.map(([label, lo, hi]) => ({
+    label,
+    count: [...latest.values()].filter((v) => v.sellPriceCents >= lo && v.sellPriceCents < hi)
+      .length,
+  }));
+}
+
 export function DashboardPage({ go }: { go: (route: string) => void }) {
   const state = useAppState();
   const rows = state.comparison?.rows ?? [];
   const decisions = Object.values(state.review.decisions);
+  const [history, setHistory] = useState<PriceHistoryVersion[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPriceHistory().then((versions) => {
+      if (!cancelled) setHistory(versions);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const series = useMemo(() => historySeries(history ?? []), [history]);
+  const buckets = useMemo(() => priceBuckets(history ?? []), [history]);
+  const hasHistory = (history?.length ?? 0) > 0;
+  const changed = rows.filter((r) => r.status === 'price-changed').length;
+  const blocked = rows.filter((r) => r.status === 'ambiguous' || r.status === 'invalid').length;
+  const approved = decisions.filter((d) => d.state === 'approved').length;
+
   const cards = [
-    [
-      'Changed awaiting review',
-      rows.filter((r) => r.status === 'price-changed').length,
-      '#/approvals',
-    ],
-    ['New items proposed', rows.filter((r) => r.status === 'new-item').length, '#/approvals'],
-    [
-      'Blocking exceptions',
-      rows.filter((r) => r.status === 'ambiguous' || r.status === 'invalid').length,
-      '#/exceptions',
-    ],
-    [
-      'Missing from supplier',
-      rows.filter((r) => r.status === 'missing-from-supplier').length,
-      '#/exceptions',
-    ],
-    ['Approved for import', decisions.filter((d) => d.state === 'approved').length, '#/exports'],
-    ['Saved supplier profiles', state.profiles.length, '#/suppliers'],
-  ] as const;
+    {
+      label: 'Changed awaiting review',
+      value: changed,
+      route: '#/approvals',
+      state: changed > 0 ? 'attention' : 'ok',
+      note: changed > 0 ? 'needs review' : 'nothing waiting',
+    },
+    {
+      label: 'New items proposed',
+      value: rows.filter((r) => r.status === 'new-item').length,
+      route: '#/approvals',
+      state: 'ok',
+      note: 'require explicit approval',
+    },
+    {
+      label: 'Blocking exceptions',
+      value: blocked,
+      route: '#/exceptions',
+      state: blocked > 0 ? 'error' : 'ok',
+      note: blocked > 0 ? 'blocked from import' : 'all clear',
+    },
+    {
+      label: 'Approved for import',
+      value: approved,
+      route: '#/exports',
+      state: 'ok',
+      note: approved > 0 ? 'ready to export' : 'none yet',
+    },
+    {
+      label: 'Price versions on record',
+      value: history?.length ?? 0,
+      route: '#/runs',
+      state: 'ok',
+      note: hasHistory ? 'append-only history' : 'server not seeded',
+    },
+    {
+      label: 'Saved supplier profiles',
+      value: state.profiles.length,
+      route: '#/suppliers',
+      state: 'ok',
+      note: 'stored in this browser',
+    },
+  ];
+
   return (
     <Page
       title="Dashboard"
+      lead="Pricing position, exceptions and history at a glance."
       primary={
         <button type="button" className="btn btn-primary" onClick={() => go('#/new-run')}>
           Start a comparison
         </button>
       }
     >
+      <div className="metric-row" role="group" aria-label="Key metrics">
+        {cards.map((card) => (
+          <button
+            key={card.label}
+            type="button"
+            className="metric-card metric-link"
+            onClick={() => go(card.route)}
+          >
+            <span className="metric-label">{card.label}</span>
+            <strong className="metric-value">{card.value}</strong>
+            <span
+              className={`metric-state pill ${
+                card.state === 'error'
+                  ? 'pill-error'
+                  : card.state === 'attention'
+                    ? 'pill-warn'
+                    : 'pill-ok'
+              }`}
+            >
+              {card.note}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {hasHistory ? (
+        <div className="chart-row">
+          <section className="card">
+            <LineChart
+              series={series}
+              title="Average cost and sell price over time (AUD, from persisted price history)"
+              formatY={(y) => `$${Math.round(y)}`}
+              formatX={(x) => MONTH_LABEL.format(new Date(x))}
+            />
+          </section>
+          <section className="card">
+            <BarChart
+              buckets={buckets}
+              title="Catalogue items by current sell price bracket"
+              unit="items"
+            />
+          </section>
+        </div>
+      ) : (
+        <EmptyState
+          title={history === null ? 'Loading price history…' : 'No persisted price history yet'}
+          detail="The dashboard charts draw from the server's append-only price history. Seed fictional sample data with `npm run seed` (then refresh), or publish approved price versions through a run. If the server is not running, start it with `npm run server`."
+        />
+      )}
+
       {state.comparison === null && (
         <EmptyState
           title="No run in progress"
-          detail="Import a supplier price file and the current ServiceM8 export to compare costs, review proposed prices and produce a candidate import file. Everything stays in this browser."
+          detail="Import a supplier price file and the current ServiceM8 export to compare costs, review proposed prices and produce a candidate import file. Business rows stay in this browser."
           action={
             <div className="btn-row">
               <button type="button" className="btn btn-primary" onClick={() => go('#/new-run')}>
@@ -54,31 +201,6 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
           }
         />
       )}
-      <div className="ops-grid">
-        {cards.map(([label, value, route]) => (
-          <button key={label} type="button" className="ops-card" onClick={() => go(route)}>
-            <strong>{value}</strong>
-            <span>{label}</span>
-          </button>
-        ))}
-      </div>
-      <section className="card">
-        <h2>Quick actions</h2>
-        <div className="btn-row">
-          <button type="button" className="btn" onClick={() => go('#/inventory')}>
-            Search products
-          </button>
-          <button type="button" className="btn" onClick={() => go('#/suppliers')}>
-            Manage supplier profiles
-          </button>
-          <button type="button" className="btn" onClick={() => go('#/integrations')}>
-            Integration status
-          </button>
-          <button type="button" className="btn" onClick={() => go('#/audit')}>
-            Audit trail
-          </button>
-        </div>
-      </section>
     </Page>
   );
 }

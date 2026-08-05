@@ -4,16 +4,15 @@ import { normaliseObservationEx, type CompetitorObservation } from './competitor
 /**
  * Competitor / supplier source registry.
  *
- * Every source records honestly how it is accessed. This application performs
- * no live fetching, scraping or automated competitor access: the production
- * CSP is `connect-src 'none'` and the repository policy (docs/COMPETITOR-
- * EVIDENCE.md) prohibits it. Automated access therefore appears here as
- * "not permitted" with the reason, and manual entry or operator-provided file
- * import is the supported path. Sources that cannot be supported lawfully are
- * disabled in this registry rather than failing silently.
+ * Every source records honestly how it is accessed. Live competitor search is
+ * performed SERVER-SIDE through a licensed shopping-search API (rate limited,
+ * cached, honest user agent) — never by scraping retailer websites directly.
+ * Manual entry and operator-provided file import remain supported paths.
+ * Sources that cannot be supported lawfully are disabled in this registry
+ * rather than failing silently. See docs/COMPETITOR-EVIDENCE.md.
  */
 
-export type SourceAccessMethod = 'manual-entry' | 'file-import';
+export type SourceAccessMethod = 'live-api' | 'manual-entry' | 'file-import';
 
 export interface CompetitorSource {
   id: string;
@@ -28,6 +27,14 @@ export interface CompetitorSource {
 /** Fictional example sources following the repository's demo-data convention. */
 export function defaultSources(): CompetitorSource[] {
   return [
+    {
+      id: 'live-provider',
+      name: 'Licensed shopping search API (live)',
+      accessMethod: 'live-api',
+      automatedAccessNote:
+        'Performed server-side through a licensed provider (Australian region, AUD), rate limited and cached. Retailer websites are never scraped directly.',
+      enabled: true,
+    },
     {
       id: 'manual',
       name: 'Manual operator entry',

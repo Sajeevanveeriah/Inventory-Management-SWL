@@ -27,13 +27,19 @@ Key operational capabilities:
   reviewed decision state as the Review step.
 - **Integrations** (`#/integrations`): honest adapter status for ServiceM8 (file handoff) and
   Xero (locked boundary). No live external writes are possible from the application.
-- **Competitor search** (`#/competitors`): one search box across every enabled evidence source,
-  a lowest/median/highest price band (AUD ex GST), explicit coverage gaps, manual entry with a
-  source URL, and attach-as-reference. Reference prices never change a cost or a sell price.
-  Fully usable on an empty database. Search is local: no live fetching or scraping.
-- **Source registry** (`#/sources`): every competitor/supplier source with its access method,
-  why automated access is not performed, and an enable/disable toggle. Sources that cannot be
-  supported lawfully are disabled here with the reason instead of failing silently.
+- **Competitor search** (`#/competitors`): **live internet search** for a typed-in product name,
+  part number, SKU, brand, partial description or barcode — no prior import required. The
+  browser calls the bundled Node server on its own origin; the server queries a licensed
+  shopping-search provider (SerpAPI Google Shopping, Australian region, AUD), rate limited and
+  cached, with an honest user agent. Results carry title, AUD price, GST basis (or "unknown"),
+  unit/pack size where determinable, seller/source domain, retrieval timestamp and a working
+  source link. A lowest/median/highest price band with source counts sits above the results, and
+  coverage gaps (empty and failed sources) are always disclosed. Provider failure, timeout,
+  quota exhaustion and zero results render as four distinct visible states. Manual entry stays
+  as the fallback. Attaching a result to a catalogue item stores reference information only: it
+  is provably incapable of altering a cost or sell price (asserted byte-for-byte in tests).
+- **Source registry** (`#/sources`): every competitor/supplier source with its access method
+  and an enable/disable toggle, including the live provider.
 
 ## Windows desktop application (Tauri)
 
@@ -54,8 +60,8 @@ npm run desktop:build   # produces MSI and NSIS installers via tauri build
 npm run desktop:dev     # development shell
 ```
 
-The desktop production build uses a Content Security Policy that permits only the local Tauri
-IPC bridge (`--mode desktop`); the web build keeps `connect-src 'none'`.
+The desktop production build uses a Content Security Policy that permits its own origin plus the
+local Tauri IPC bridge (`--mode desktop`); the web build permits `connect-src 'self'` only.
 
 Competitor evidence is integrated into the TypeScript application as local-only manual or imported evidence. The nested Python prototype remains preserved as legacy reference material until documented feature-parity criteria are met.
 
@@ -63,12 +69,17 @@ Configuration is represented by a versioned typed registry in `src/core/configRe
 
 ## Privacy model
 
-- **All processing happens in the browser tab.** There is no backend, no cloud database, no
-  authentication service, no analytics, no telemetry, no remote fonts and no CDN assets.
-- The production build ships a restrictive Content Security Policy including
-  `connect-src 'none'`, so the browser itself refuses any network transmission of page data.
-  This is verified by an automated end-to-end test that monitors network activity against the
-  production build.
+> **Invariant change (authorised by the repository owner, August 2026).** The application is no
+> longer "no network". A small bundled Node server performs live competitor searches through a
+> licensed provider and persists pricing history. The browser may still connect to **its own
+> origin only** (`connect-src 'self'`); no third-party origin is ever reachable from the page.
+
+- **Business file processing still happens in the browser tab.** Imported supplier and
+  ServiceM8 rows are never transmitted anywhere: only the operator's typed competitor search
+  query reaches the server, which forwards it to the licensed search provider.
+- No analytics, no telemetry, no remote fonts and no CDN assets.
+- The production build ships a restrictive Content Security Policy with `connect-src 'self'`,
+  so the browser refuses any connection except to the application's own origin.
 - Uploaded files stay in memory. **Imported business rows are never persisted.**
 - Only three kinds of operator-authored configuration can be stored (IndexedDB, this browser
   only): mapping profiles, approved aliases, and settings (markup %, tax selection, theme).
@@ -152,15 +163,45 @@ The output is labelled a _candidate_ import file until it is validated against a
 import template — see [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the
 adaptation workflow.
 
+## Deployment shape
+
+The application is now **one SPA plus one small Node server** (`server/`, plain Node, zero extra
+runtime dependencies):
+
+- the browser calls its own origin only; the server performs outbound provider searches and
+  returns normalised results;
+- the server persists catalogue items, append-only price history, approval records, competitor
+  reference prices and source-registry state in a JSON/JSONL directory store (`server/data/`,
+  gitignored; configurable via `SWL_DATA_DIR`);
+- in production the same server serves the built SPA from `dist/`, so everything runs as a
+  single origin.
+
+> **GitHub Pages alone can no longer host the full application.** Pages can serve the static
+> SPA, but live competitor search and persistence need the Node server running somewhere with
+> outbound network access — a small VPS, an always-on office machine, or a Node-capable host.
+> Without the server the SPA still runs; the competitor search surface then reports that live
+> search is unavailable and manual entry remains usable.
+
+### Live search API key
+
+Live search uses SerpAPI (Google Shopping, Australian region) behind a provider interface
+(`server/search/`) so the provider can be swapped. Copy `.env.example` to `.env` (placeholders
+only — never commit a real key) and set `SERPAPI_KEY`. Without a key the application still
+starts and the search surface states clearly that live search is not configured and how to
+configure it.
+
 ## Getting started
 
 Prerequisites: Node.js ≥ 20.19 and npm (no global installs required).
 
 ```bash
 npm install          # install pinned dependencies (see below)
-npm run dev          # development server
+npm run seed         # seed realistic fictional sample data into server/data/
+SERPAPI_KEY=... npm run server   # API + persistence server on http://127.0.0.1:8787
+npm run dev          # development server (proxies /api to the Node server)
 npm run build        # type-check + production build (dist/)
-npm run preview      # serve the production build locally
+npm run server       # production: serves dist/ AND the API on one origin
+npm run server:fixture  # offline deterministic fixture provider (testing/demo)
 ```
 
 Quality gates:

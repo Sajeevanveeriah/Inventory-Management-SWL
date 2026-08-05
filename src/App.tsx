@@ -48,6 +48,53 @@ const ROUTES = [
 
 type Route = (typeof ROUTES)[number][0];
 
+/** Left rail grouping: section label + routes, commercial-platform style. */
+const NAV_GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<Route>]> = [
+  ['Overview', ['#/dashboard', '#/new-run', '#/runs']],
+  ['Catalogue', ['#/inventory', '#/suppliers', '#/mapping-profiles']],
+  ['Pricing', ['#/pricing-rules', '#/competitors', '#/sources']],
+  ['Review', ['#/exceptions', '#/approvals', '#/exports']],
+  ['System', ['#/integrations', '#/audit', '#/settings', '#/help']],
+];
+
+/** 16px stroke icons keyed by route. Decorative: labels carry the meaning. */
+const NAV_ICONS: Record<Route, string> = {
+  '#/dashboard': 'M2 9h4v5H2zM7 5h4v9H7zM12 2h4v12h-4z',
+  '#/new-run': 'M8 3v10M3 8h10',
+  '#/runs': 'M3 4h10M3 8h10M3 12h6',
+  '#/inventory': 'M7 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM10 10l4 4',
+  '#/suppliers': 'M2 12V6l6-3 6 3v6l-6 3zM8 3v6M2 6l6 3 6-3',
+  '#/mapping-profiles': 'M3 3h4v4H3zM9 9h4v4H9zM7 5h4M11 5v4',
+  '#/pricing-rules': 'M8 2v12M5 5h4.5a2 2 0 1 1 0 4H6a2 2 0 1 0 0 4h5',
+  '#/competitors': 'M2 13l3-4 3 2 3-5 3 3M2 3v10h12',
+  '#/sources': 'M8 2c3 0 6 .8 6 2s-3 2-6 2-6-.8-6-2 3-2 6-2zM2 4v8c0 1.2 3 2 6 2s6-.8 6-2V4',
+  '#/exceptions': 'M8 2l6 11H2zM8 6.5v3M8 11.5v.5',
+  '#/approvals': 'M3 8.5l3.5 3.5L13 5',
+  '#/exports': 'M8 10V2M5 5l3-3 3 3M3 10v3h10v-3',
+  '#/integrations': 'M5 8H2M14 8h-3M8 5V2M8 14v-3M5.5 5.5h5v5h-5z',
+  '#/audit': 'M4 2h8v12H4zM6 5h4M6 8h4M6 11h2',
+  '#/settings':
+    'M8 5.5A2.5 2.5 0 1 1 8 10.5 2.5 2.5 0 0 1 8 5.5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4',
+  '#/help': 'M6 6a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.8M8 12v.5',
+};
+
+function NavIcon({ route }: { route: Route }) {
+  return (
+    <svg
+      className="nav-icon"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={NAV_ICONS[route]} />
+    </svg>
+  );
+}
+
 function currentRoute(): Route {
   const hash = window.location.hash || '#/new-run';
   return ROUTES.some(([route]) => route === hash) ? (hash as Route) : '#/dashboard';
@@ -116,6 +163,7 @@ function ExportsPage() {
 
 export default function App() {
   const state = useAppState();
+  const dispatch = useAppDispatch();
   const [route, setRoute] = useState<Route>(currentRoute);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -166,18 +214,29 @@ export default function App() {
         <aside className="side-nav">
           <h1>{APP_NAME}</h1>
           <span className="local-badge">
-            {isDesktop() ? 'Desktop · local processing only' : 'Local processing only'}
+            {isDesktop() ? 'Desktop · own-origin only' : 'Own-origin connections only'}
           </span>
           <nav aria-label="Primary">
-            {ROUTES.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                aria-current={route === id ? 'page' : undefined}
-                onClick={() => go(id)}
-              >
-                {label}
-              </button>
+            {NAV_GROUPS.map(([group, routes]) => (
+              <div className="nav-group" key={group}>
+                <span className="nav-group-label" aria-hidden="true">
+                  {group}
+                </span>
+                {routes.map((id) => {
+                  const label = ROUTES.find(([r]) => r === id)?.[1] ?? id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-current={route === id ? 'page' : undefined}
+                      onClick={() => go(id)}
+                    >
+                      <NavIcon route={id} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             ))}
           </nav>
         </aside>
@@ -202,6 +261,24 @@ export default function App() {
             {state.demoMode && (
               <span className="badge badge-missing-from-supplier">Fictional demo data</span>
             )}
+            <button
+              type="button"
+              className="header-btn"
+              aria-pressed={state.settings.theme === 'dark'}
+              onClick={() =>
+                dispatch({
+                  type: 'settings-changed',
+                  settings: {
+                    ...state.settings,
+                    theme: state.settings.theme === 'dark' ? 'light' : 'dark',
+                  },
+                  description: 'Theme toggled',
+                  businessRule: false,
+                })
+              }
+            >
+              {state.settings.theme === 'dark' ? 'Light theme' : 'Dark theme'}
+            </button>
             <button type="button" className="header-btn" onClick={() => setPrivacyOpen(true)}>
               Privacy &amp; data
             </button>

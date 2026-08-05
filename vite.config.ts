@@ -4,10 +4,11 @@ import react from '@vitejs/plugin-react';
 /**
  * Content Security Policy for the production build only.
  *
- * The application is a fully static, local-first tool: every script and style
- * is bundled by Vite and served from the same origin. `connect-src 'none'`
- * blocks fetch/XHR/WebSocket/beacon at the browser level so business data can
- * never leave the page, even if a dependency misbehaved.
+ * Invariant change (authorised by the repository owner, August 2026): the
+ * application is no longer no-network. The browser may call ITS OWN ORIGIN
+ * ONLY (`connect-src 'self'`), which is the small bundled Node server that
+ * performs live competitor searches through a licensed provider and owns
+ * persistence. No third-party origin is ever reachable from the page.
  *
  * The policy is not applied in dev because Vite's HMR client requires inline
  * scripts and a WebSocket connection.
@@ -21,9 +22,9 @@ const productionCsp = (desktop: boolean) =>
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
-    // The desktop (Tauri) build must reach the local IPC bridge only; the web
-    // build keeps every outbound connection blocked.
-    desktop ? 'connect-src ipc: http://ipc.localhost' : "connect-src 'none'",
+    // Own origin only: the API lives on the same origin as the page. The
+    // desktop (Tauri) build additionally reaches the local IPC bridge.
+    desktop ? "connect-src 'self' ipc: http://ipc.localhost" : "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -49,6 +50,13 @@ export default defineConfig(({ mode }) => ({
       },
     },
   ],
+  server: {
+    // Dev: the SPA calls its own origin; Vite forwards /api to the Node server.
+    proxy: { '/api': 'http://127.0.0.1:8787' },
+  },
+  preview: {
+    proxy: { '/api': 'http://127.0.0.1:8787' },
+  },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1500,

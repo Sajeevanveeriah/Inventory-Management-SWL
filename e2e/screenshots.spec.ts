@@ -165,46 +165,66 @@ test.describe('operations shell', () => {
     await shot(page, '28-suppliers');
   });
 
-  test('competitor search states and source registry', async ({ page }) => {
+  test('competitor search: all five live states and source registry', async ({ page }) => {
     await page.goto('/#/competitors');
     await shot(page, '30-competitor-search-empty');
-    await page.getByLabel('SKU or product').fill('LW4570');
-    await page.getByLabel('Observed price (AUD)').fill('143.00');
-    await page.getByLabel('Source URL').fill('https://example.invalid/lw4570');
-    await page.getByRole('button', { name: 'Store observation' }).click();
-    await expect(page.getByRole('heading', { name: /Price band/ })).toBeVisible();
-    await shot(page, '31-competitor-search-results');
-    await page.getByLabel('Search all sources').fill('no-such-product-zzz');
-    await expect(page.getByText('No stored evidence matches this search')).toBeVisible();
-    await shot(page, '32-competitor-search-no-results');
+
+    const searchBox = page.getByLabel(/Product name, part number/);
+    // Loading state: the fixture provider delays "fixture-slow" long enough to
+    // capture. The unique suffix defeats the server-side cache across runs.
+    await searchBox.fill(`fixture-slow deadlatch ${Date.now()}`);
+    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await expect(page.getByText(/Searching live sources/)).toBeVisible();
+    await shot(page, '31-competitor-search-loading');
+
+    await searchBox.fill('LW4570');
+    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await expect(page.getByRole('region', { name: 'Live search results' })).toBeVisible();
+    await shot(page, '32-competitor-search-results');
+
+    await searchBox.fill('fixture-none');
+    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await expect(page.getByText(/No live prices found/)).toBeVisible();
+    await shot(page, '33-competitor-search-no-results');
+
+    await searchBox.fill('fixture-error');
+    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await expect(page.getByText('The search provider returned an error')).toBeVisible();
+    await shot(page, '34-competitor-search-provider-unavailable');
+
+    await searchBox.fill('fixture-quota');
+    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await expect(page.getByText('Provider quota is exhausted')).toBeVisible();
+    await shot(page, '35-competitor-search-quota');
+
     await page.getByRole('button', { name: 'Source registry' }).click();
     await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
-    await shot(page, '33-source-registry');
+    await shot(page, '36-source-registry');
   });
 
   test('competitor search and source registry on mobile 390px', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/#/competitors');
-    await shot(page, '34-competitor-search-mobile-empty');
-    await page.getByLabel('SKU or product').fill('LW4570');
-    await page.getByLabel('Observed price (AUD)').fill('143.00');
-    await page.getByRole('button', { name: 'Store observation' }).click();
-    await expect(page.getByRole('heading', { name: /Price band/ })).toBeVisible();
-    await shot(page, '35-competitor-search-mobile-results');
+    await shot(page, '37-competitor-search-mobile-empty');
+    const searchBox = page.getByLabel(/Product name, part number/);
+    await searchBox.fill('LW4570');
+    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await expect(page.getByRole('region', { name: 'Live search results' })).toBeVisible();
+    await shot(page, '38-competitor-search-mobile-results');
     await page.getByRole('button', { name: 'Source registry' }).click();
     await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
-    await shot(page, '36-source-registry-mobile');
+    await shot(page, '39-source-registry-mobile');
   });
 
   test('dashboard and approvals on mobile 390px', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/#/dashboard');
-    await shot(page, '37-dashboard-mobile-empty');
+    await shot(page, '40-dashboard-mobile-empty');
     await demoToValidate(page);
     await page.getByRole('button', { name: 'Dashboard' }).click();
-    await shot(page, '38-dashboard-mobile-loaded');
+    await shot(page, '41-dashboard-mobile-loaded');
     await page.getByRole('button', { name: 'Approvals' }).click();
-    await shot(page, '39-approvals-mobile');
+    await shot(page, '42-approvals-mobile');
   });
 
   test('search on mobile 390px', async ({ page }) => {
@@ -214,4 +234,50 @@ test.describe('operations shell', () => {
     await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
     await shot(page, '29-search-mobile');
   });
+});
+
+/**
+ * Full surface tour: every routed surface at 1440 px and 390 px, in light and
+ * dark theme, for the mandatory visual inspection pass.
+ */
+test.describe('surface tour, light and dark, 1440px and 390px', () => {
+  const SURFACES = [
+    ['#/dashboard', 'dashboard'],
+    ['#/new-run', 'new-run'],
+    ['#/runs', 'runs'],
+    ['#/inventory', 'inventory'],
+    ['#/suppliers', 'suppliers'],
+    ['#/mapping-profiles', 'mapping-profiles'],
+    ['#/pricing-rules', 'pricing-rules'],
+    ['#/competitors', 'competitors'],
+    ['#/sources', 'sources'],
+    ['#/exceptions', 'exceptions'],
+    ['#/approvals', 'approvals'],
+    ['#/exports', 'exports'],
+    ['#/integrations', 'integrations'],
+    ['#/audit', 'audit'],
+    ['#/settings', 'settings'],
+    ['#/help', 'help'],
+  ] as const;
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const [width, widthName] of [
+      [1440, '1440'],
+      [390, '390'],
+    ] as const) {
+      test(`all surfaces ${theme} ${widthName}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        await page.goto('/#/dashboard');
+        if (theme === 'dark') {
+          await page.getByRole('button', { name: 'Dark theme' }).click();
+          await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+        }
+        for (const [route, name] of SURFACES) {
+          await page.goto(`/${route}`);
+          await expect(page.locator('.page-head h1')).toBeVisible();
+          await shot(page, `tour-${name}-${theme}-${widthName}`);
+        }
+      });
+    }
+  }
 });
