@@ -194,13 +194,17 @@ configure it.
 
 Prerequisites: Node.js ≥ 20.19 and npm (no global installs required).
 
+**Windows one-click:** double-click `start-swl.cmd` in the repository folder. On first run it
+installs, seeds and builds; then it starts the server and opens the app in the browser at
+http://127.0.0.1:8787. Keep the window open while using the app. For real live prices, first
+copy `.env.example` to `.env` and set `SERPAPI_KEY` — the server loads `.env` automatically.
+
 ```bash
 npm install          # install pinned dependencies (see below)
 npm run seed         # seed realistic fictional sample data into server/data/
-SERPAPI_KEY=... npm run server   # API + persistence server on http://127.0.0.1:8787
+npm run server       # serves the app AND the API on http://127.0.0.1:8787 (.env auto-loaded)
 npm run dev          # development server (proxies /api to the Node server)
 npm run build        # type-check + production build (dist/)
-npm run server       # production: serves dist/ AND the API on one origin
 npm run server:fixture  # offline deterministic fixture provider (testing/demo)
 ```
 
