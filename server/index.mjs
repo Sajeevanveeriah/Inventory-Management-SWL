@@ -148,6 +148,17 @@ export const server = createServer((req, res) => {
   serveStatic(res, url);
 });
 
+server.on('error', (error) => {
+  if (error?.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${port} is already in use: another copy of this server is probably running. ` +
+        `Open http://127.0.0.1:${port} in the browser, or start this one on another port: npm run server -- --port 8790`,
+    );
+    process.exit(1);
+  }
+  throw error;
+});
+
 server.listen(port, '127.0.0.1', () => {
   console.log(
     `SWL server listening on http://127.0.0.1:${port} | provider=${provider.name} configured=${provider.configured} | data=${dataDir}`,
