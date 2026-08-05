@@ -10,10 +10,45 @@ file — together with change, exception, rollback and audit reports.
 > outputs. Run `npm run check:data-safety` before committing; `.gitignore` also blocks common
 > export patterns. All sample data in the app and tests is clearly fictional ("Fictionville").
 
-
 ## Operations hub revamp
 
-The app now uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory, suppliers, mapping profiles, pricing rules, competitors, exceptions, approvals, exports, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
+The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, suppliers, mapping profiles, pricing rules, competitors, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
+
+Key operational capabilities:
+
+- **Product search** (`#/inventory` and the topbar search, shortcut `/`): deterministic,
+  exact-first ranked search across supplier codes, ServiceM8 item numbers and descriptions,
+  with status filter chips. See `src/core/search.ts`.
+- **Supplier profiles** (`#/suppliers`): save, apply, export, import (JSON) and delete mapping
+  profiles stored locally in the browser.
+- **Exceptions** (`#/exceptions`): searchable queue with exclude-with-reason for eligible rows;
+  ambiguous and invalid rows stay blocked.
+- **Approvals** (`#/approvals`): per-proposal approve and withdraw actions backed by the same
+  reviewed decision state as the Review step.
+- **Integrations** (`#/integrations`): honest adapter status for ServiceM8 (file handoff) and
+  Xero (locked boundary). No live external writes are possible from the application.
+
+## Windows desktop application (Tauri)
+
+The same application ships as a Windows desktop shell built with Tauri 2 (`src-tauri/`):
+
+- native output-folder picker on the Export step, with all generated files written straight to
+  the chosen folder;
+- Rust-side filename sanitisation (Windows-invalid characters, reserved device names, path
+  traversal) with unit tests;
+- no extra JavaScript dependencies — the shell injects its API (`withGlobalTauri`), and the web
+  build contains zero desktop code paths.
+
+Build on a Windows machine with Rust and the WebView2 runtime installed:
+
+```bash
+npm install
+npm run desktop:build   # produces MSI and NSIS installers via tauri build
+npm run desktop:dev     # development shell
+```
+
+The desktop production build uses a Content Security Policy that permits only the local Tauri
+IPC bridge (`--mode desktop`); the web build keeps `connect-src 'none'`.
 
 Competitor evidence is integrated into the TypeScript application as local-only manual or imported evidence. The nested Python prototype remains preserved as legacy reference material until documented feature-parity criteria are met.
 

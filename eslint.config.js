@@ -4,7 +4,16 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'node_modules', 'playwright-report', 'test-results', 'coverage'],
+    ignores: [
+      'dist',
+      'node_modules',
+      'playwright-report',
+      'test-results',
+      'coverage',
+      'src-tauri/target',
+      'src-tauri/gen',
+      'screenshots',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

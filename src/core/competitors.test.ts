@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseObservationEx, recommendCompetitivePrice, type CompetitorObservation } from './competitors';
+import {
+  normaliseObservationEx,
+  recommendCompetitivePrice,
+  type CompetitorObservation,
+} from './competitors';
 
 const base: CompetitorObservation = {
   sku: '00123',
@@ -24,14 +28,22 @@ describe('competitor recommendations', () => {
   });
 
   it('blocks below-floor competitor recommendations', () => {
-    const recommendation = recommendCompetitivePrice({ costEx: '100.00', observations: [{ ...base, price: '110.00' }], now: '2026-08-04T00:00:00.000Z' });
+    const recommendation = recommendCompetitivePrice({
+      costEx: '100.00',
+      observations: [{ ...base, price: '110.00' }],
+      now: '2026-08-04T00:00:00.000Z',
+    });
     expect(recommendation.exception).toBe('COMPETITOR_BELOW_FLOOR');
     expect(recommendation.recommendedEx).toBe('130.00');
     expect(recommendation.blocked).toBe(true);
   });
 
   it('excludes stale and low-confidence observations', () => {
-    const recommendation = recommendCompetitivePrice({ costEx: '100.00', observations: [{ ...base, matchConfidence: 0.2 }], now: '2026-08-04T00:00:00.000Z' });
+    const recommendation = recommendCompetitivePrice({
+      costEx: '100.00',
+      observations: [{ ...base, matchConfidence: 0.2 }],
+      now: '2026-08-04T00:00:00.000Z',
+    });
     expect(recommendation.exception).toBe('NO_VALID_OBSERVATION');
   });
 });

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { SETTING_REGISTRY, defaultConfig, resolveConfigValue, validateConfigImport } from './configRegistry';
+import {
+  SETTING_REGISTRY,
+  defaultConfig,
+  resolveConfigValue,
+  validateConfigImport,
+} from './configRegistry';
 
 describe('configuration registry', () => {
   it('contains required defaults and locked invariants', () => {
@@ -22,10 +27,20 @@ describe('configuration registry', () => {
     expect(validateConfigImport({ 'pricing.markupPercent': 999 })).toEqual([
       'pricing.markupPercent: outside allowed range',
     ]);
-    expect(resolveConfigValue('pricing.markupPercent', { global: { 'pricing.markupPercent': 30 }, supplier: { 'pricing.markupPercent': 35 }, run: { 'pricing.markupPercent': 32 } })).toEqual({ value: 32, source: 'run' });
+    expect(
+      resolveConfigValue('pricing.markupPercent', {
+        global: { 'pricing.markupPercent': 30 },
+        supplier: { 'pricing.markupPercent': 35 },
+        run: { 'pricing.markupPercent': 32 },
+      }),
+    ).toEqual({ value: 32, source: 'run' });
   });
 
   it('has documentation metadata for every setting', () => {
-    expect(SETTING_REGISTRY.every((setting) => setting.helpText && setting.category && setting.schemaVersion === 1)).toBe(true);
+    expect(
+      SETTING_REGISTRY.every(
+        (setting) => setting.helpText && setting.category && setting.schemaVersion === 1,
+      ),
+    ).toBe(true);
   });
 });
