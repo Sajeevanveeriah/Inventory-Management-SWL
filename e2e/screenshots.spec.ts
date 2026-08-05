@@ -12,6 +12,8 @@ test.beforeAll(() => {
 });
 
 async function shot(page: Page, name: string) {
+  // Reset scroll so sticky chrome is not stitched mid-page in full-page shots.
+  await page.evaluate('window.scrollTo(0, 0)');
   await page.screenshot({ path: `${DIR}/${name}.png`, fullPage: true });
 }
 
@@ -161,6 +163,48 @@ test.describe('operations shell', () => {
     await shot(page, '27-integrations');
     await page.getByRole('button', { name: 'Suppliers' }).click();
     await shot(page, '28-suppliers');
+  });
+
+  test('competitor search states and source registry', async ({ page }) => {
+    await page.goto('/#/competitors');
+    await shot(page, '30-competitor-search-empty');
+    await page.getByLabel('SKU or product').fill('LW4570');
+    await page.getByLabel('Observed price (AUD)').fill('143.00');
+    await page.getByLabel('Source URL').fill('https://example.invalid/lw4570');
+    await page.getByRole('button', { name: 'Store observation' }).click();
+    await expect(page.getByRole('heading', { name: /Price band/ })).toBeVisible();
+    await shot(page, '31-competitor-search-results');
+    await page.getByLabel('Search all sources').fill('no-such-product-zzz');
+    await expect(page.getByText('No stored evidence matches this search')).toBeVisible();
+    await shot(page, '32-competitor-search-no-results');
+    await page.getByRole('button', { name: 'Source registry' }).click();
+    await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
+    await shot(page, '33-source-registry');
+  });
+
+  test('competitor search and source registry on mobile 390px', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#/competitors');
+    await shot(page, '34-competitor-search-mobile-empty');
+    await page.getByLabel('SKU or product').fill('LW4570');
+    await page.getByLabel('Observed price (AUD)').fill('143.00');
+    await page.getByRole('button', { name: 'Store observation' }).click();
+    await expect(page.getByRole('heading', { name: /Price band/ })).toBeVisible();
+    await shot(page, '35-competitor-search-mobile-results');
+    await page.getByRole('button', { name: 'Source registry' }).click();
+    await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
+    await shot(page, '36-source-registry-mobile');
+  });
+
+  test('dashboard and approvals on mobile 390px', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#/dashboard');
+    await shot(page, '37-dashboard-mobile-empty');
+    await demoToValidate(page);
+    await page.getByRole('button', { name: 'Dashboard' }).click();
+    await shot(page, '38-dashboard-mobile-loaded');
+    await page.getByRole('button', { name: 'Approvals' }).click();
+    await shot(page, '39-approvals-mobile');
   });
 
   test('search on mobile 390px', async ({ page }) => {

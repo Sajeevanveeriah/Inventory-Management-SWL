@@ -1,4 +1,5 @@
 import Big from 'big.js';
+import { minimumSellPrice } from './money';
 
 export type ReviewState = 'accepted' | 'rejected' | 'quarantined';
 export type CompetitorException =
@@ -30,6 +31,10 @@ export interface CompetitorObservation {
   matchConfidence: number;
   reviewState: ReviewState;
   ambiguousMatch?: boolean;
+  /** Link to the source page, for manual evidence and imported evidence. */
+  url?: string;
+  /** Unit or pack size as stated by the source, e.g. "each", "box of 10". */
+  packSize?: string;
 }
 
 export interface CompetitiveRecommendation {
@@ -69,7 +74,7 @@ export function recommendCompetitivePrice(params: {
   if (!params.costEx)
     return { exception: 'MISSING_COST', blocked: true, reason: 'Active product cost is missing.' };
   const cost = money(params.costEx);
-  const floor = cost.times(1.3).round(2, Big.roundHalfUp);
+  const floor = new Big(minimumSellPrice(cost.toFixed(2)));
   const eligible = params.observations.flatMap((observation) => {
     if (observation.ambiguousMatch) return [];
     if (

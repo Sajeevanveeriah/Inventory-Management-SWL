@@ -103,7 +103,7 @@ export function SearchPage({
           detail="No supplier code, item number or description matched. Check the spelling, clear status filters, or search a shorter fragment of the code."
         />
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-label="Search results" tabIndex={0}>
           <table>
             <thead>
               <tr>

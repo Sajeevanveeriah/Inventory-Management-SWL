@@ -1,10 +1,5 @@
 import { useState } from 'react';
 import {
-  recommendCompetitivePrice,
-  type CompetitorObservation,
-  type ReviewState,
-} from '../../core/competitors';
-import {
   changeImpact,
   defaultConfig,
   resetConfigSection,
@@ -12,122 +7,7 @@ import {
   SETTING_REGISTRY,
   validateConfigImport,
 } from '../../core/configRegistry';
-import { parseCompetitorEvidenceRows } from '../../core/operations';
 import { Page } from './PageChrome';
-
-/** Manual local competitor evidence with a deterministic recommendation preview. */
-export function CompetitorsPage() {
-  const [sku, setSku] = useState('00123');
-  const [price, setPrice] = useState('143.00');
-  const [confidence, setConfidence] = useState('0.91');
-  const [reviewState, setReviewState] = useState<ReviewState>('accepted');
-  const [observations, setObservations] = useState<CompetitorObservation[]>([]);
-  const imported = parseCompetitorEvidenceRows(
-    [
-      {
-        sku,
-        sourceName: 'Example Manual Source',
-        price,
-        gstBasis: 'inc-gst',
-        matchConfidence: confidence,
-      },
-    ],
-    reviewState,
-  );
-  const working = observations.length ? observations : imported.observations;
-  const rec = recommendCompetitivePrice({
-    costEx: '100.00',
-    observations: working,
-    strategy: 'MATCH',
-    now: new Date().toISOString(),
-  });
-  return (
-    <Page title="Competitors">
-      <section className="card">
-        <h2>Local evidence</h2>
-        <div className="form-grid">
-          <label>
-            Internal SKU
-            <input value={sku} onChange={(e) => setSku(e.target.value)} />
-          </label>
-          <label>
-            Observed price inc GST
-            <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" />
-          </label>
-          <label>
-            Match confidence
-            <input
-              value={confidence}
-              onChange={(e) => setConfidence(e.target.value)}
-              inputMode="decimal"
-            />
-          </label>
-          <label>
-            Review state
-            <select
-              value={reviewState}
-              onChange={(e) => setReviewState(e.target.value as ReviewState)}
-            >
-              <option value="accepted">accepted</option>
-              <option value="rejected">rejected</option>
-              <option value="quarantined">quarantined</option>
-            </select>
-          </label>
-        </div>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setObservations(imported.observations)}
-          >
-            Add observation
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() =>
-              setObservations(
-                parseCompetitorEvidenceRows([
-                  {
-                    sku: '00123',
-                    sourceName: 'Example CSV',
-                    price: '110.00',
-                    gstBasis: 'inc-gst',
-                    matchConfidence: '0.95',
-                  },
-                ]).observations,
-              )
-            }
-          >
-            Import local evidence sample
-          </button>
-          <button type="button" className="btn" onClick={() => setReviewState('quarantined')}>
-            Quarantine match
-          </button>
-        </div>
-        <p className="form-error" role="status">
-          {imported.errors.join('; ') ||
-            `${working.length} local observation(s). Live fetching and scraping are locked off.`}
-        </p>
-      </section>
-      <section className="card">
-        <h2>Recommendation preview</h2>
-        <dl className="kv">
-          <dt>Normalised competitor ex GST</dt>
-          <dd>AUD {rec.normalisedCompetitorEx ?? 'n/a'}</dd>
-          <dt>Cost floor</dt>
-          <dd>AUD {rec.floorEx ?? 'n/a'}</dd>
-          <dt>Recommendation</dt>
-          <dd>{rec.blocked ? 'Blocked' : `AUD ${rec.recommendedEx}`}</dd>
-          <dt>State</dt>
-          <dd>{rec.exception}</dd>
-          <dt>Reason</dt>
-          <dd>{rec.reason}</dd>
-        </dl>
-      </section>
-    </Page>
-  );
-}
 
 /** Versioned configuration registry: locked invariants stay locked. */
 export function SettingsPage({ openSettingsDialog }: { openSettingsDialog: () => void }) {

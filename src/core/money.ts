@@ -15,6 +15,12 @@ import Big from 'big.js';
 export const CURRENCY = 'AUD';
 export const ROUNDING_RULE_LABEL = 'Round half up to 2 decimal places';
 
+/**
+ * The settled business rule: minimum sell price is markup ON COST, not gross
+ * margin. cost 100.00 -> minimum sell 130.00 (never 142.86).
+ */
+export const MINIMUM_MARKUP_ON_COST = '1.30';
+
 /** big.js rounding mode 3 is ROUND_UP (away from zero); 1 is ROUND_HALF_UP. */
 const HALF_UP = Big.roundHalfUp;
 
@@ -76,6 +82,14 @@ export function applyMarkup(costAmount: string, markupPercent: string | number):
   const cost = new Big(costAmount);
   const factor = new Big(1).plus(new Big(markupPercent).div(100));
   return cost.times(factor).round(2, HALF_UP).toFixed(2);
+}
+
+/**
+ * The single pure minimum-sell-price function: cost × 1.30 (markup on cost),
+ * rounded half-up to 2 decimal places. Every floor check must use this.
+ */
+export function minimumSellPrice(costAmount: string | number): string {
+  return new Big(costAmount).times(MINIMUM_MARKUP_ON_COST).round(2, HALF_UP).toFixed(2);
 }
 
 /** Exact comparison of two canonical amount strings. */

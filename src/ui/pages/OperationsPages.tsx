@@ -186,7 +186,7 @@ export function ExceptionsPage() {
           detail="Every record classified cleanly, or the search filtered everything out."
         />
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-label="Exceptions" tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -279,7 +279,7 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
           detail="The comparison produced no price changes, new items or blocked records."
         />
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-label="Proposals" tabIndex={0}>
           <table>
             <thead>
               <tr>

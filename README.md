@@ -12,7 +12,7 @@ file — together with change, exception, rollback and audit reports.
 
 ## Operations hub revamp
 
-The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, suppliers, mapping profiles, pricing rules, competitors, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
+The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, suppliers, mapping profiles, pricing rules, competitor search, source registry, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
 
 Key operational capabilities:
 
@@ -27,6 +27,13 @@ Key operational capabilities:
   reviewed decision state as the Review step.
 - **Integrations** (`#/integrations`): honest adapter status for ServiceM8 (file handoff) and
   Xero (locked boundary). No live external writes are possible from the application.
+- **Competitor search** (`#/competitors`): one search box across every enabled evidence source,
+  a lowest/median/highest price band (AUD ex GST), explicit coverage gaps, manual entry with a
+  source URL, and attach-as-reference. Reference prices never change a cost or a sell price.
+  Fully usable on an empty database. Search is local: no live fetching or scraping.
+- **Source registry** (`#/sources`): every competitor/supplier source with its access method,
+  why automated access is not performed, and an enable/disable toggle. Sources that cannot be
+  supported lawfully are disabled here with the reason instead of failing silently.
 
 ## Windows desktop application (Tauri)
 
@@ -74,7 +81,9 @@ See [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md).
 ## Business rules
 
 - **Pricing**: `selling price = supplier cost × 1.30` (markup on cost, not gross margin).
-  Example: supplier cost AUD 100.00 → selling price AUD 130.00.
+  Example: supplier cost AUD 100.00 → selling price AUD 130.00. The floor is one named
+  constant and one pure function (`MINIMUM_MARKUP_ON_COST`, `minimumSellPrice` in
+  `src/core/money.ts`), unit-tested with `minimumSellPrice(100) === 130.00`.
 - Decimal-safe arithmetic via [big.js] — never binary floats. Rounding is **half-up to
   2 decimal places**, shown in the UI and audit report. Currency is displayed as AUD.
 - The original supplier cost is preserved separately from the calculated selling price, and the
