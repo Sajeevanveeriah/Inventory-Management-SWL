@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react';
 
-/** Shared page frame: breadcrumb, heading, optional lead line and primary action top right. */
+/** Shared page frame: one route heading and an optional primary action. */
 export function Page({
   title,
-  lead,
   primary,
   children,
 }: {
   title: string;
-  lead?: string;
   primary?: ReactNode;
   children: ReactNode;
 }) {
@@ -16,9 +14,7 @@ export function Page({
     <>
       <div className="page-head">
         <div>
-          <p className="breadcrumbs">SWL / {title}</p>
           <h1>{title}</h1>
-          {lead && <p className="page-lead">{lead}</p>}
         </div>
         {primary && <div className="page-primary">{primary}</div>}
       </div>

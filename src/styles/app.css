@@ -4,15 +4,15 @@
    navigation, steel blue actions, maroon accent, consistent status colours. */
 
 :root {
-  --canvas: #faf8f5;
+  --canvas: #f6f7f9;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --ink: #22292f;
-  --ink-secondary: #4b5560;
-  --ink-faint: #5f6a75;
-  --border: #d9d4cc;
-  --border-strong: #b8b2a8;
-  --nav-bg: #1c2b3a;
+  --ink: #17212b;
+  --ink-secondary: #5d6975;
+  --ink-faint: #687582;
+  --border: #d7dee6;
+  --border-strong: #b8c3ce;
+  --nav-bg: #132230;
   --nav-ink: #f2f5f8;
   --primary: #2f6690;
   --primary-hover: #275577;
@@ -27,22 +27,22 @@
   --info-bg: #e9f1f7;
   --focus: #1d4ed8;
   --shadow: 0 1px 3px rgb(28 35 43 / 0.09), 0 1px 2px rgb(28 35 43 / 0.06);
-  --radius: 6px;
+  --radius: 8px;
   --radius-lg: 10px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 }
 
 [data-theme='dark'] {
-  --canvas: #171c22;
-  --surface: #20272f;
-  --surface-raised: #262e38;
-  --ink: #e8ebee;
-  --ink-secondary: #b3bcc5;
-  --ink-faint: #97a1ab;
-  --border: #3a434e;
-  --border-strong: #4d5966;
-  --nav-bg: #10161d;
+  --canvas: #111820;
+  --surface: #18212b;
+  --surface-raised: #202b36;
+  --ink: #eef2f6;
+  --ink-secondary: #afbac6;
+  --ink-faint: #9daab7;
+  --border: #344250;
+  --border-strong: #526171;
+  --nav-bg: #0c141c;
   --nav-ink: #eef2f6;
   --primary: #5b96c4;
   --primary-hover: #74a9d1;
@@ -128,116 +128,6 @@ code {
 }
 .skip-link:focus {
   left: 0;
-}
-
-/* Header ------------------------------------------------------------------ */
-.app-header {
-  background: var(--nav-bg);
-  color: var(--nav-ink);
-  padding: 0.55rem 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-.app-header h1 {
-  margin: 0;
-  letter-spacing: 0.01em;
-}
-.app-header .spacer {
-  flex: 1;
-}
-.local-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  background: rgb(255 255 255 / 0.12);
-  border: 1px solid rgb(255 255 255 / 0.25);
-  color: var(--nav-ink);
-  border-radius: 999px;
-  padding: 0.25rem 0.7rem;
-}
-.local-badge::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #6fc78f;
-}
-.header-btn {
-  background: transparent;
-  color: var(--ink-secondary);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 0.38rem 0.75rem;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  min-height: 34px;
-}
-.header-btn:hover {
-  color: var(--primary);
-  border-color: var(--primary);
-}
-
-/* Stepper ------------------------------------------------------------------ */
-.stepper {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 1.25rem;
-  overflow-x: auto;
-}
-.stepper ol {
-  display: flex;
-  gap: 0.25rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.stepper button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 0.88rem;
-  padding: 0.7rem 0.8rem;
-  cursor: pointer;
-  color: var(--ink-secondary);
-  border-bottom: 3px solid transparent;
-  white-space: nowrap;
-  min-height: 44px;
-}
-.stepper button[aria-current='step'] {
-  color: var(--ink);
-  font-weight: 650;
-  border-bottom-color: var(--primary);
-}
-.stepper button:disabled {
-  color: var(--ink-faint);
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.step-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 1.5px solid currentColor;
-  font-size: 0.75rem;
-  font-weight: 650;
-  flex: none;
-}
-.stepper button.step-done .step-index {
-  background: var(--ok);
-  border-color: var(--ok);
-  color: #fff;
 }
 
 /* Layout ------------------------------------------------------------------- */
@@ -784,7 +674,6 @@ dialog::backdrop {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .stepper button,
   .btn,
   .status-tabs button {
     transition:
@@ -792,14 +681,14 @@ dialog::backdrop {
       border-color 120ms ease,
       color 120ms ease;
   }
+  .side-nav {
+    transition: transform 160ms ease;
+  }
 }
 
 @media (max-width: 720px) {
   main {
     padding: 0.8rem;
-  }
-  .app-header {
-    padding: 0.5rem 0.8rem;
   }
   .before-after {
     grid-template-columns: 1fr;
@@ -807,8 +696,6 @@ dialog::backdrop {
 }
 
 @media print {
-  .app-header,
-  .stepper,
   .app-footer,
   .btn,
   .review-toolbar {
@@ -819,7 +706,7 @@ dialog::backdrop {
 /* Operational application shell ------------------------------------------- */
 .app-shell {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   min-height: 100vh;
 }
 .side-nav {
@@ -831,9 +718,31 @@ dialog::backdrop {
   height: 100vh;
   overflow-y: auto;
 }
-.side-nav h1 {
+.nav-brand {
   font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
   padding: 0 0.45rem;
+  margin-bottom: 0.5rem;
+}
+.local-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.1);
+  color: var(--nav-ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+.local-badge::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6fc78f;
+  content: '';
 }
 .side-nav nav {
   display: grid;
@@ -865,7 +774,8 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.65rem 1rem;
+  min-height: 56px;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   position: sticky;
@@ -873,10 +783,26 @@ dialog::backdrop {
   z-index: 10;
   flex-wrap: wrap;
 }
+.header-btn {
+  min-height: 36px;
+  padding: 0.38rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.header-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
 .global-search {
   min-width: 0;
   flex: 1 1 200px;
-  max-width: 340px;
+  max-width: 560px;
 }
 .notice {
   color: var(--accent);
@@ -892,8 +818,7 @@ dialog::backdrop {
     display: none;
   }
 }
-.run-status,
-.breadcrumbs {
+.run-status {
   color: var(--ink-secondary);
   font-size: 0.84rem;
 }
@@ -901,33 +826,8 @@ dialog::backdrop {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  align-items: end;
-  margin-bottom: 1rem;
-}
-.ops-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-}
-.ops-card {
-  text-align: left;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 0.9rem;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-  color: var(--ink);
-}
-.ops-card strong {
-  display: block;
-  font-size: 1.75rem;
-  font-variant-numeric: tabular-nums;
-}
-.ops-card span {
-  color: var(--ink-secondary);
-  font-weight: 600;
+  align-items: center;
+  margin-bottom: 1.25rem;
 }
 .run-stepper {
   background: var(--surface);
@@ -956,10 +856,27 @@ dialog::backdrop {
   min-height: 42px;
   cursor: pointer;
 }
+.step-index {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
 .run-stepper button[aria-current='step'] {
   color: var(--ink);
   border-bottom: 3px solid var(--primary);
   font-weight: 700;
+}
+.run-stepper button.step-done .step-index {
+  color: #fff;
+  background: var(--ok);
+  border-color: var(--ok);
 }
 .settings-grid {
   display: grid;
@@ -1021,13 +938,65 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
   .side-nav {
-    position: static;
-    height: auto;
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(320px, calc(100vw - 48px));
+    height: 100dvh;
+    z-index: 40;
+    transform: translateX(-105%);
+    box-shadow: 8px 0 24px rgb(0 0 0 / 0.22);
   }
-  .side-nav nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .side-nav.nav-open {
+    transform: translateX(0);
+  }
+  .nav-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    border: 0;
+    background: rgb(8 15 22 / 0.62);
+    cursor: pointer;
+  }
+  .nav-close {
+    display: inline-flex;
   }
   .setting-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.menu-button,
+.nav-close {
+  display: none;
+}
+.nav-close {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.7rem;
+  min-height: 44px;
+  align-items: center;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--nav-ink);
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .menu-button {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+  .topbar {
+    align-items: center;
+  }
+  .topbar .global-search {
+    flex-basis: calc(100% - 5rem);
+  }
+  .side-nav nav {
     grid-template-columns: 1fr;
   }
 }
@@ -1059,7 +1028,7 @@ dialog::backdrop {
 .form-grid label {
   display: grid;
   gap: 0.25rem;
-  color: var(--muted);
+  color: var(--ink-secondary);
   font-weight: 700;
 }
 .form-grid input,
@@ -1069,7 +1038,7 @@ dialog::backdrop {
   border-radius: 0.65rem;
   padding: 0.65rem 0.75rem;
   background: var(--surface);
-  color: var(--text);
+  color: var(--ink);
   font: inherit;
 }
 .config-textarea {
@@ -1079,7 +1048,7 @@ dialog::backdrop {
 }
 .form-error {
   margin: 0.75rem 0 0;
-  color: var(--muted);
+  color: var(--danger);
   font-weight: 700;
 }
 
@@ -1210,11 +1179,6 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-}
-.page-lead {
-  color: var(--ink-secondary);
-  margin: 0.15rem 0 0;
-  max-width: 46rem;
 }
 .page-primary {
   flex: none;

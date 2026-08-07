@@ -167,8 +167,11 @@ export default function App() {
   const [route, setRoute] = useState<Route>(currentRoute);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const pageTitle = ROUTES.find(([id]) => id === route)?.[1] ?? 'Dashboard';
   const totalRecords = state.comparison?.rows.length ?? 0;
   const approvedCount = Object.values(state.review.decisions).filter(
@@ -178,6 +181,7 @@ export default function App() {
   const go = (next: Route) => {
     window.location.assign(next);
     setRoute(next);
+    setMenuOpen(false);
   };
   const goRoute = (next: string) => go(next as Route);
 
@@ -187,6 +191,32 @@ export default function App() {
     if (!window.location.hash) window.location.hash = '#/new-run';
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const nav = navRef.current;
+    nav?.querySelector<HTMLElement>('button[aria-current="page"]')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'Tab' || !nav) return;
+      const focusable = [...nav.querySelectorAll<HTMLElement>('button:not(:disabled)')];
+      const first = focusable.at(0);
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   useEffect(() => {
     document.title = `${pageTitle} - ${APP_NAME}`;
@@ -211,8 +241,26 @@ export default function App() {
         Skip to main content
       </a>
       <div className="app-shell">
-        <aside className="side-nav">
-          <h1>{APP_NAME}</h1>
+        <aside
+          ref={navRef}
+          id="primary-navigation"
+          className={`side-nav${menuOpen ? ' nav-open' : ''}`}
+          aria-label="Application navigation"
+          role={menuOpen ? 'dialog' : undefined}
+          aria-modal={menuOpen ? 'true' : undefined}
+        >
+          <div className="nav-brand">{APP_NAME}</div>
+          <button
+            type="button"
+            className="nav-close"
+            aria-label="Close menu"
+            onClick={() => {
+              setMenuOpen(false);
+              menuButtonRef.current?.focus();
+            }}
+          >
+            Close
+          </button>
           <span className="local-badge">
             {isDesktop() ? 'Desktop · own-origin only' : 'Own-origin connections only'}
           </span>
@@ -240,8 +288,29 @@ export default function App() {
             ))}
           </nav>
         </aside>
+        {menuOpen && (
+          <button
+            type="button"
+            className="nav-scrim"
+            aria-label="Close menu"
+            onClick={() => {
+              setMenuOpen(false);
+              menuButtonRef.current?.focus();
+            }}
+          />
+        )}
         <div className="app-frame">
           <header className="topbar">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="header-btn menu-button"
+              aria-expanded={menuOpen}
+              aria-controls="primary-navigation"
+              onClick={() => setMenuOpen(true)}
+            >
+              Menu
+            </button>
             <input
               ref={searchRef}
               className="global-search"

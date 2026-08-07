@@ -298,7 +298,6 @@ export function CompetitorsPage() {
   return (
     <Page
       title="Competitor search"
-      lead="Search the live market for any product and keep every price as reference evidence."
       primary={
         <button
           type="button"
@@ -586,7 +585,7 @@ export function SourcesPage() {
   const dispatch = useAppDispatch();
   const actions = useActions();
   return (
-    <Page title="Source registry" lead="Where competitor evidence comes from, honestly stated.">
+    <Page title="Source registry">
       <div className="table-scroll" role="region" aria-label="Registered sources" tabIndex={0}>
         <table className="data-table">
           <thead>

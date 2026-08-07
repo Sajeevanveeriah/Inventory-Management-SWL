@@ -131,7 +131,6 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
   return (
     <Page
       title="Dashboard"
-      lead="Pricing position, exceptions and history at a glance."
       primary={
         <button type="button" className="btn btn-primary" onClick={() => go('#/new-run')}>
           Start a comparison
