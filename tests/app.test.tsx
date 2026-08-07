@@ -21,9 +21,8 @@ describe('application workflow (jsdom integration)', () => {
     renderApp();
 
     // Start screen.
-    expect(
-      screen.getByRole('heading', { name: /SWL Pricing and Inventory Control/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText('SWL Pricing and Inventory Control')).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getAllByText(/local processing only/i).length).toBeGreaterThan(0);
 
     // Load the demo.
@@ -100,4 +99,18 @@ describe('application workflow (jsdom integration)', () => {
     expect(screen.getByText(/Nothing is approved yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue to export/i })).toBeDisabled();
   }, 30_000);
+
+  it('opens and closes the compact navigation with focus return', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const menu = screen.getByRole('button', { name: 'Menu' });
+
+    await user.click(menu);
+    expect(menu).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Application navigation')).toHaveClass('nav-open');
+
+    await user.keyboard('{Escape}');
+    expect(menu).toHaveAttribute('aria-expanded', 'false');
+    expect(menu).toHaveFocus();
+  });
 });
