@@ -18,6 +18,6 @@ describe('outputFilename', () => {
       'AB12CD',
       'xlsx',
     );
-    expect(name).toBe('2026-08-03_acme-locks-monthly_import-candidate_run-AB12CD.xlsx');
+    expect(name).toBe('20260803-acme-locks-monthly_import-candidate_run-AB12CD.xlsx');
   });
 });

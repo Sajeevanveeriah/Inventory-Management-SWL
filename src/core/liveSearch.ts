@@ -5,6 +5,7 @@
  * timeout, quota exhaustion and empty results as four different screens, plus
  * not-configured and server-unreachable.
  */
+import { isDesktop, readDesktopHealth } from '../platform/desktop';
 
 export type LiveSearchState =
   | 'ok'
@@ -74,6 +75,17 @@ export function centsToAud(cents: number): string {
 }
 
 export async function fetchLiveSearch(query: string): Promise<LiveSearchOutcome> {
+  if (isDesktop()) {
+    return {
+      state: 'not_configured',
+      query,
+      queryKind: query.trim() ? 'free-text' : 'empty',
+      provider: 'not-configured',
+      results: [],
+      band: null,
+      detail: 'Native live search is not configured. Manual competitor evidence remains available.',
+    };
+  }
   try {
     const response = await fetch(`/api/competitor-search?q=${encodeURIComponent(query)}`, {
       headers: { accept: 'application/json' },
@@ -96,6 +108,7 @@ export async function fetchLiveSearch(query: string): Promise<LiveSearchOutcome>
 }
 
 export async function fetchLiveHealth(): Promise<LiveHealth | null> {
+  if (isDesktop()) return readDesktopHealth();
   try {
     const response = await fetch('/api/health', { headers: { accept: 'application/json' } });
     if (!response.ok) return null;
@@ -110,6 +123,7 @@ export async function postReference(
   itemId: string,
   observation: LiveSearchResult,
 ): Promise<boolean> {
+  if (isDesktop()) return false;
   try {
     const response = await fetch('/api/references', {
       method: 'POST',
@@ -134,6 +148,7 @@ export interface PriceHistoryVersion {
 }
 
 export async function fetchPriceHistory(): Promise<PriceHistoryVersion[]> {
+  if (isDesktop()) return [];
   try {
     const response = await fetch('/api/price-history', {
       headers: { accept: 'application/json' },

@@ -1,0 +1,39 @@
+name: Windows desktop
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Select pinned Rust toolchain
+        run: rustup override set 1.89.0
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run check:data-safety
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+      - run: npm run desktop:build
+      - name: Create SHA-256 manifest
+        shell: pwsh
+        run: Get-FileHash src-tauri/target/release/bundle/nsis/*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swl-windows-unsigned-internal-${{ github.sha }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

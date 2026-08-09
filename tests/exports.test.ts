@@ -104,7 +104,7 @@ describe('buildAllOutputs', () => {
     ]);
     for (const out of outputs) {
       expect(out.filename).toMatch(
-        /^2026-08-03_fictionville-demo_[a-z-]+_run-[A-Z0-9]{6}\.(xlsx|txt)$/,
+        /^20260803-fictionville-demo_[a-z-]+_run-[A-Z0-9]{6}\.(xlsx|txt)$/,
       );
     }
     // All five share the same run id.

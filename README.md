@@ -1,5 +1,17 @@
 # SWL Pricing and Inventory Control
 
+## Windows desktop status
+
+The repository contains one React frontend with a Tauri 2 desktop target. The Windows target opens in its own native WebView2 window and its production build does not start the Node demonstration server or a loopback listener. The browser demonstration remains available through the existing Node adapter.
+
+Desktop operational metadata is stored in SQLite under the per-user application local-data directory resolved by Tauri for `au.com.stanwoottonlocksmiths.swl-pricing`; it is never stored in the installation directory. Raw supplier and ServiceM8 import rows remain memory-only. Credentials are not stored in SQLite. Native live search remains disabled until a reviewed Windows-protected credential implementation and allowlisted provider are completed; manual evidence remains available offline.
+
+The canonical package target is an unsigned NSIS current-user installer for Windows 10/11 x64. Packaging is configured for the Evergreen WebView2 offline installer, which increases installer size so first installation can work without network access. This configuration still requires native Windows build and installed-app acceptance before release. Uninstall is intended to preserve application data. Production signing, automatic updates, MSI distribution and installation on the real SWL computer are outside the current release boundary.
+
+New dated exports use `YYYYMMDD-<existing-remainder>.<ext>`. Existing files are never silently overwritten.
+
+Development requires Node 22.22.2, npm, Rust 1.89.0 and the Windows MSVC build prerequisites. Install project dependencies with `npm ci`, verify with `npm run verify`, and build the Windows package on native Windows x64 with `npm run desktop:build`. The installed computer does not require Node.js, Rust, npm or a repository checkout.
+
 > Competitor intelligence architecture, pricing evidence policy, provider setup and operations: [docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md](docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md).
 
 A local-first browser application for **Stan Wootton Locksmiths** that compares an untouched

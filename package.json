@@ -6,26 +6,27 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npx -y node@22 ./node_modules/typescript/bin/tsc -b && npx -y node@22 ./node_modules/vite/bin/vite.js build",
-    "build:desktop": "npx -y node@22 ./node_modules/typescript/bin/tsc -b && npx -y node@22 ./node_modules/vite/bin/vite.js build --mode desktop",
-    "desktop:build": "npx -y @tauri-apps/cli@2 build",
-    "desktop:dev": "npx -y @tauri-apps/cli@2 dev",
+    "build": "tsc -b && vite build",
+    "build:desktop": "tsc -b && vite build --mode desktop",
+    "desktop:build": "tauri build --bundles nsis",
+    "desktop:dev": "tauri dev",
     "preview": "vite preview",
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "server": "node --env-file-if-exists=.env server/index.mjs",
     "server:fixture": "node --env-file-if-exists=.env server/index.mjs --fixture",
     "seed": "node server/seed.mjs",
-    "typecheck": "npx -y node@22 ./node_modules/typescript/bin/tsc -b --noEmit",
-    "lint": "npx -y node@22 ./node_modules/eslint/bin/eslint.js .",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npx -y node@22 ./node_modules/vitest/vitest.mjs run",
+    "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "check:data-safety": "npx -y node@22 scripts/check-no-business-data.mjs",
+    "check:data-safety": "node scripts/check-no-business-data.mjs",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.11.1",
     "big.js": "7.0.1",
     "exceljs": "4.4.0",
     "idb": "8.0.3",
@@ -38,6 +39,7 @@
     "@axe-core/playwright": "4.12.1",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.1",
+    "@tauri-apps/cli": "2.11.4",
     "@testing-library/jest-dom": "7.0.0",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.3",
@@ -58,7 +60,7 @@
     "vitest": "4.1.10"
   },
   "engines": {
-    "node": ">=22 <23",
+    "node": "22.22.2",
     "npm": ">=10"
   },
   "overrides": {

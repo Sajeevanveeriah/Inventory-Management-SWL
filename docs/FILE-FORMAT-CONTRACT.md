@@ -64,7 +64,7 @@ and flagged as a warning.
 ## Outputs
 
 All outputs are XLSX (audit summary is plain text), generated locally, named
-`<yyyy-mm-dd>_<profile>_<purpose>_run-<runid>.<ext>` with a sanitised profile name.
+`<yyyymmdd>-<profile>_<purpose>_run-<runid>.<ext>` with a sanitised profile name.
 
 1. **`import-candidate`** — sheet `Import` plus `Summary`.
    - Contains **only approved, valid** price changes and new items. Never unchanged, excluded,

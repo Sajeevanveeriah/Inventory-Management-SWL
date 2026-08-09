@@ -5,10 +5,88 @@
 //! that folder. All filenames are sanitised here so a compromised or buggy
 //! frontend can never traverse outside the operator-chosen folder.
 
-use std::fs;
-use std::path::{Component, PathBuf};
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+
+const MAX_EXPORT_BYTES: usize = 50 * 1024 * 1024;
+
+struct Database(Mutex<Connection>);
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopHealth {
+    ok: bool,
+    provider: &'static str,
+    live_search_configured: bool,
+    fixture_mode: bool,
+    schema_version: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApprovalInput {
+    item_id: String,
+    approved_by: String,
+    proposed_sell_cents: i64,
+    reason: String,
+}
+
+fn validate_identifier(value: &str, label: &str) -> Result<(), String> {
+    if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+        return Err(format!("{label} is invalid."));
+    }
+    Ok(())
+}
+
+fn open_database(path: &Path) -> Result<Connection, String> {
+    let mut connection = Connection::open(path)
+        .map_err(|_| "The local database could not be opened.".to_string())?;
+    connection
+        .execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;")
+        .map_err(|_| "The local database safety settings could not be enabled.".to_string())?;
+    let transaction = connection
+        .transaction()
+        .map_err(|_| "The database migration could not start.".to_string())?;
+    transaction.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_metadata(version INTEGER NOT NULL);
+         INSERT INTO schema_metadata(version) SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_metadata);
+         CREATE TABLE IF NOT EXISTS catalogue_items(
+           id TEXT PRIMARY KEY, item_number TEXT NOT NULL UNIQUE, description TEXT NOT NULL,
+           cost_cents INTEGER NOT NULL CHECK(cost_cents >= 0), sell_price_cents INTEGER NOT NULL CHECK(sell_price_cents >= 0),
+           gst_basis TEXT NOT NULL CHECK(gst_basis IN ('inc-gst','ex-gst','unknown')), updated_at TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS approvals(
+           id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+           approved_by TEXT NOT NULL, proposed_sell_cents INTEGER NOT NULL CHECK(proposed_sell_cents >= 0),
+           reason TEXT NOT NULL, approved_at TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS price_history(
+           id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+           cost_cents INTEGER NOT NULL CHECK(cost_cents >= 0), sell_price_cents INTEGER NOT NULL CHECK(sell_price_cents >= 0),
+           approval_id TEXT NOT NULL REFERENCES approvals(id) ON DELETE RESTRICT, recorded_at TEXT NOT NULL);
+         CREATE TRIGGER IF NOT EXISTS price_history_no_update BEFORE UPDATE ON price_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+         CREATE TRIGGER IF NOT EXISTS price_history_no_delete BEFORE DELETE ON price_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+         CREATE TABLE IF NOT EXISTS competitor_references(
+           id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+           observation_json TEXT NOT NULL, attached_at TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS source_registry(id TEXT PRIMARY KEY, state_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS mapping_profiles(id TEXT PRIMARY KEY, profile_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS approved_aliases(supplier_code TEXT PRIMARY KEY, item_number TEXT NOT NULL, approved_at TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY CHECK(id='settings'), settings_json TEXT NOT NULL, updated_at TEXT NOT NULL);"
+    ).map_err(|_| "The database migration failed; existing data was not changed.".to_string())?;
+    transaction
+        .commit()
+        .map_err(|_| "The database migration could not be committed.".to_string())?;
+    connection
+        .execute_batch("PRAGMA integrity_check;")
+        .map_err(|_| "The local database failed its integrity check.".to_string())?;
+    Ok(connection)
+}
 
 /// Windows reserved device names that must not be used as file stems.
 const WINDOWS_RESERVED: &[&str] = &[
@@ -41,9 +119,7 @@ pub fn sanitise_filename(requested: &str) -> String {
         cleaned.pop();
     }
 
-    if cleaned.len() > 180 {
-        cleaned.truncate(180);
-    }
+    cleaned = cleaned.chars().take(180).collect();
 
     let stem = cleaned.split('.').next().unwrap_or_default().to_uppercase();
     if cleaned.is_empty() || WINDOWS_RESERVED.contains(&stem.as_str()) {
@@ -88,6 +164,9 @@ async fn write_export_file(
     filename: String,
     contents: Vec<u8>,
 ) -> Result<String, String> {
+    if contents.is_empty() || contents.len() > MAX_EXPORT_BYTES {
+        return Err("The output file size is outside the supported range.".into());
+    }
     let dir = validate_folder(&folder)?;
     let safe_name = sanitise_filename(&filename);
     let destination: PathBuf = dir.join(&safe_name);
@@ -95,9 +174,73 @@ async fn write_export_file(
     if destination.parent() != Some(dir.as_path()) {
         return Err("The output filename resolved outside the chosen folder.".into());
     }
-    fs::write(&destination, contents)
-        .map_err(|err| format!("The file could not be written: {}", err.kind()))?;
+    if destination.exists() {
+        return Err("A file with this name already exists. No file was overwritten.".into());
+    }
+    let temporary = dir.join(format!(".swl-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| -> io::Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        file.write_all(&contents)?;
+        file.flush()?;
+        file.sync_all()?;
+        if file.metadata()?.len() != contents.len() as u64 {
+            return Err(io::Error::new(io::ErrorKind::WriteZero, "length mismatch"));
+        }
+        fs::rename(&temporary, &destination)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!(
+            "The file could not be written safely: {}.",
+            error.kind()
+        ));
+    }
     Ok(destination.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn desktop_health(database: tauri::State<'_, Database>) -> Result<DesktopHealth, String> {
+    let connection = database
+        .0
+        .lock()
+        .map_err(|_| "The local database is busy.".to_string())?;
+    let schema_version = connection
+        .query_row("SELECT version FROM schema_metadata LIMIT 1", [], |row| {
+            row.get(0)
+        })
+        .map_err(|_| "The database schema could not be read.".to_string())?;
+    Ok(DesktopHealth {
+        ok: true,
+        provider: "not-configured",
+        live_search_configured: false,
+        fixture_mode: false,
+        schema_version,
+    })
+}
+
+#[tauri::command]
+fn append_approval(
+    database: tauri::State<'_, Database>,
+    input: ApprovalInput,
+) -> Result<String, String> {
+    validate_identifier(&input.item_id, "Item identifier")?;
+    validate_identifier(&input.approved_by, "Approver")?;
+    if !(0..=1_000_000_000).contains(&input.proposed_sell_cents) || input.reason.len() > 1000 {
+        return Err("The approval values are outside the supported range.".into());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let connection = database
+        .0
+        .lock()
+        .map_err(|_| "The local database is busy.".to_string())?;
+    connection.execute("INSERT INTO approvals(id,item_id,approved_by,proposed_sell_cents,reason,approved_at) VALUES(?1,?2,?3,?4,?5,datetime('now'))",
+        params![id, input.item_id, input.approved_by, input.proposed_sell_cents, input.reason])
+        .map_err(|_| "The approval could not be recorded.".to_string())?;
+    Ok(id)
 }
 
 #[tauri::command]
@@ -112,11 +255,21 @@ fn shell_info() -> serde_json::Value {
 /// Referenced by `main.rs`; also usable as a mobile/library entry point.
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            let data_dir = app.path().app_local_data_dir()?;
+            fs::create_dir_all(&data_dir)?;
+            let database =
+                open_database(&data_dir.join("swl-pricing.sqlite3")).map_err(io::Error::other)?;
+            app.manage(Database(Mutex::new(database)));
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             choose_output_folder,
             write_export_file,
-            shell_info
+            shell_info,
+            desktop_health,
+            append_approval
         ])
         .run(tauri::generate_context!())
         .expect("error while running the SWL desktop application");
@@ -170,6 +323,31 @@ mod tests {
     fn bounds_filename_length() {
         let long = "x".repeat(400) + ".xlsx";
         assert!(sanitise_filename(&long).len() <= 180);
+    }
+
+    #[test]
+    fn unicode_filename_truncation_is_safe() {
+        let value = format!("{}-report.xlsx", "🔐".repeat(200));
+        let cleaned = sanitise_filename(&value);
+        assert!(cleaned.chars().count() <= 180);
+    }
+
+    #[test]
+    fn database_migration_is_idempotent_and_enforces_foreign_keys() {
+        let path = std::env::temp_dir().join(format!("swl-{}.sqlite3", uuid::Uuid::new_v4()));
+        let connection = open_database(&path).unwrap();
+        drop(connection);
+        let connection = open_database(&path).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT version FROM schema_metadata", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert!(connection.execute("INSERT INTO approvals(id,item_id,approved_by,proposed_sell_cents,reason,approved_at) VALUES('a','missing','operator',100,'test','now')", []).is_err());
+        drop(connection);
+        fs::remove_file(path).ok();
     }
 
     #[test]

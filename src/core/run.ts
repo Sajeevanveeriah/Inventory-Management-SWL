@@ -13,7 +13,7 @@ export type OutputPurpose =
 
 /**
  * Deterministic, sanitised output filename:
- *   <yyyy-mm-dd>_<profile>_<purpose>_run-<id>.<ext>
+ *   <yyyymmdd>-<profile>_<purpose>_run-<id>.<ext>
  */
 export function outputFilename(
   date: Date,
@@ -25,5 +25,5 @@ export function outputFilename(
   const yyyy = date.getFullYear();
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}_${sanitizeFilenamePart(profileName)}_${purpose}_run-${runId}.${extension}`;
+  return `${yyyy}${mm}${dd}-${sanitizeFilenamePart(profileName)}_${purpose}_run-${runId}.${extension}`;
 }
