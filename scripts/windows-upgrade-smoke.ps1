@@ -75,7 +75,7 @@ function Stop-ExactProcessTree {
   throw 'The installed application process tree did not stop.'
 }
 
-function Start-And-CloseApplication {
+function Start-ApplicationAndWaitForWindow {
   param([IO.FileInfo]$Application)
   $process = Start-Process -FilePath $Application.FullName -PassThru
   $deadline = (Get-Date).AddSeconds(30)
@@ -83,6 +83,9 @@ function Start-And-CloseApplication {
   do {
     Start-Sleep -Milliseconds 250
     $nativeProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+    if (!$nativeProcess) {
+      throw 'The installed upgrade-test application exited before becoming ready.'
+    }
     if ($nativeProcess -and $nativeProcess.MainWindowHandle -ne 0) {
       $windowTitle = $nativeProcess.MainWindowTitle
     }
@@ -91,23 +94,59 @@ function Start-And-CloseApplication {
     Stop-ExactProcessTree -RootProcessId $process.Id
     throw 'The installed upgrade-test application did not expose the expected native window.'
   }
-  Stop-ExactProcessTree -RootProcessId $process.Id
-  Start-Sleep -Seconds 1
-  return $windowTitle
+  return [pscustomobject]@{
+    ProcessId = $process.Id
+    WindowTitle = $windowTitle
+  }
 }
 
 function Invoke-JsonAcceptanceBinary {
-  param([string]$Binary, [switch]$DisposableMarker)
+  param(
+    [string]$Binary,
+    [switch]$DisposableMarker,
+    [ValidateRange(1, 60000)][int]$TimeoutMilliseconds = 30000
+  )
   $priorMarker = $env:SWL_DISPOSABLE_ACCEPTANCE
+  $captureId = [Guid]::NewGuid().ToString('N')
+  $standardOutput = Join-Path $env:RUNNER_TEMP "swl-acceptance-$captureId.stdout"
+  $standardError = Join-Path $env:RUNNER_TEMP "swl-acceptance-$captureId.stderr"
   try {
     if ($DisposableMarker) { $env:SWL_DISPOSABLE_ACCEPTANCE = 'YES' }
     else { Remove-Item Env:SWL_DISPOSABLE_ACCEPTANCE -ErrorAction SilentlyContinue }
-    $raw = @(& cargo run --quiet --locked --manifest-path src-tauri/Cargo.toml --features acceptance-tools --bin $Binary 2>&1)
-    if ($LASTEXITCODE -ne 0) { throw "The scoped $Binary acceptance helper failed." }
-    try { return ($raw -join [Environment]::NewLine) | ConvertFrom-Json }
+    try {
+      $cargo = Get-Command cargo -CommandType Application -ErrorAction Stop
+      $process = Start-Process -FilePath $cargo.Source -ArgumentList @(
+        'run',
+        '--quiet',
+        '--locked',
+        '--manifest-path',
+        'src-tauri/Cargo.toml',
+        '--features',
+        'acceptance-tools',
+        '--bin',
+        $Binary
+      ) -NoNewWindow -RedirectStandardOutput $standardOutput -RedirectStandardError $standardError -PassThru
+    }
+    catch {
+      throw "The scoped $Binary acceptance helper could not be started."
+    }
+    if (!$process.WaitForExit($TimeoutMilliseconds)) {
+      Stop-ExactProcessTree -RootProcessId $process.Id
+      throw "The scoped $Binary acceptance helper timed out."
+    }
+    if ($process.ExitCode -ne 0) { throw "The scoped $Binary acceptance helper failed." }
+    if (!(Test-Path -LiteralPath $standardOutput -PathType Leaf) -or
+        (Get-Item -LiteralPath $standardOutput).Length -gt 65536 -or
+        (Test-Path -LiteralPath $standardError -PathType Leaf) -and
+        (Get-Item -LiteralPath $standardError).Length -gt 65536) {
+      throw "The scoped $Binary acceptance helper returned invalid output."
+    }
+    try { return (Get-Content -LiteralPath $standardOutput -Raw) | ConvertFrom-Json }
     catch { throw "The scoped $Binary acceptance helper returned invalid JSON." }
   }
   finally {
+    Remove-Item -LiteralPath $standardOutput -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $standardError -Force -ErrorAction SilentlyContinue
     if ($null -eq $priorMarker) { Remove-Item Env:SWL_DISPOSABLE_ACCEPTANCE -ErrorAction SilentlyContinue }
     else { $env:SWL_DISPOSABLE_ACCEPTANCE = $priorMarker }
   }
@@ -120,6 +159,20 @@ function Assert-ExactLegacyEvidence {
       $Value.approvalId -ne 'approval-legacy' -or
       $Value.priceHistoryId -ne 'history-legacy') {
     throw 'The former-version seeder did not create the exact reviewed synthetic records.'
+  }
+}
+
+function Assert-EmptyFormerDatabaseEvidence {
+  param($Value)
+  if ($Value.integrity -ne 'ok' -or $Value.schemaVersion -ne 1 -or
+      $Value.catalogueItems -ne 0 -or $Value.approvals -ne 0 -or $Value.priceHistory -ne 0 -or
+      $Value.competitorReferences -ne 0 -or $Value.sources -ne 0 -or $Value.profiles -ne 0 -or
+      $Value.aliases -ne 0 -or $Value.settings -ne 0 -or
+      @($Value.catalogueItemIds).Count -ne 0 -or @($Value.approvalIds).Count -ne 0 -or
+      @($Value.approvalItemIds).Count -ne 0 -or @($Value.priceHistoryIds).Count -ne 0 -or
+      @($Value.priceHistoryItemIds).Count -ne 0 -or @($Value.priceHistoryApprovalIds).Count -ne 0 -or
+      @($Value.verifiedMigrationBackups).Count -ne 0) {
+    throw 'The genuine former application database is not the exact empty version-one schema.'
   }
 }
 
@@ -159,6 +212,57 @@ function Assert-ExactMigratedEvidence {
   }
 }
 
+function Test-RegularDatabaseReady {
+  param([string]$Path)
+  if (!(Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+  $attributes = (Get-Item -LiteralPath $Path).Attributes
+  if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    throw 'The stable database path is a reparse point.'
+  }
+  return $true
+}
+
+function Wait-ForAcceptanceEvidence {
+  param(
+    [int]$RootProcessId,
+    [string]$DatabasePath,
+    [string]$Binary,
+    [scriptblock]$Assertion,
+    [switch]$DisposableMarker
+  )
+  $deadline = (Get-Date).AddSeconds(30)
+  $lastFailure = 'The scoped readiness probe did not return evidence.'
+  do {
+    if (!(Get-Process -Id $RootProcessId -ErrorAction SilentlyContinue)) {
+      throw 'The installed upgrade-test application exited before its database became ready.'
+    }
+    if (Test-RegularDatabaseReady -Path $DatabasePath) {
+      $remainingMilliseconds = [int][Math]::Floor(($deadline - (Get-Date)).TotalMilliseconds)
+      if ($remainingMilliseconds -le 0) { break }
+      try {
+        $candidate = Invoke-JsonAcceptanceBinary -Binary $Binary -DisposableMarker:$DisposableMarker -TimeoutMilliseconds $remainingMilliseconds
+        & $Assertion $candidate
+        return $candidate
+      }
+      catch {
+        # A configured Tauri window is created before the application setup hook.
+        # Keep the genuine application alive while its transactional setup finishes.
+        $message = $_.Exception.Message
+        $lastFailure = if ($message -match '^The (?:scoped .+ acceptance helper|genuine former application database|migrated live database|clean upgrade profile|verified pre-migration backup)') {
+          $message
+        }
+        else {
+          'The scoped readiness probe returned an unexpected error.'
+        }
+      }
+    }
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $deadline)
+  throw "The installed upgrade-test application database did not become ready in time. Last readiness failure: $lastFailure"
+}
+
+$emptyFormerAssertion = (Get-Command Assert-EmptyFormerDatabaseEvidence -CommandType Function).ScriptBlock
+$migratedAssertion = (Get-Command Assert-ExactMigratedEvidence -CommandType Function).ScriptBlock
 $dataRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $applicationIdentifier))
 $expectedParent = [IO.Path]::GetFullPath($env:LOCALAPPDATA).TrimEnd([IO.Path]::DirectorySeparatorChar)
 if ([IO.Path]::GetDirectoryName($dataRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) -ine $expectedParent) {
@@ -176,10 +280,21 @@ if ($legacyApplication.VersionInfo.ProductVersion -notmatch '^1\.0\.0(?:\.0)?$')
   throw 'The installed former application does not identify as version 1.0.0.'
 }
 $legacyApplicationSha256 = (Get-FileHash -LiteralPath $legacyApplication.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-$legacyWindowTitle = Start-And-CloseApplication -Application $legacyApplication
 $databasePath = Join-Path $dataRoot 'swl-pricing.sqlite3'
-if (!(Test-Path -LiteralPath $databasePath -PathType Leaf) -or
-    ((Get-Item -LiteralPath $databasePath).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+$legacyLaunch = Start-ApplicationAndWaitForWindow -Application $legacyApplication
+$legacyWindowTitle = $legacyLaunch.WindowTitle
+try {
+  [void](Wait-ForAcceptanceEvidence `
+    -RootProcessId $legacyLaunch.ProcessId `
+    -DatabasePath $databasePath `
+    -Binary 'swl-db-acceptance' `
+    -Assertion $emptyFormerAssertion)
+}
+finally {
+  Stop-ExactProcessTree -RootProcessId $legacyLaunch.ProcessId
+  Start-Sleep -Seconds 1
+}
+if (!(Test-RegularDatabaseReady -Path $databasePath)) {
   throw 'The genuine former application did not create its regular stable database.'
 }
 $legacySeed = Invoke-JsonAcceptanceBinary -Binary 'swl-legacy-seed' -DisposableMarker
@@ -197,8 +312,19 @@ $currentApplication = Get-ApplicationExecutable -InstallRoot $installRoot
 if ($currentApplication.VersionInfo.ProductVersion -notmatch '^1\.1\.0(?:\.0)?$') {
   throw 'The upgraded application does not identify as version 1.1.0.'
 }
-$currentWindowTitle = Start-And-CloseApplication -Application $currentApplication
-$migrated = Invoke-JsonAcceptanceBinary -Binary 'swl-db-acceptance'
+$currentLaunch = Start-ApplicationAndWaitForWindow -Application $currentApplication
+$currentWindowTitle = $currentLaunch.WindowTitle
+try {
+  $migrated = Wait-ForAcceptanceEvidence `
+    -RootProcessId $currentLaunch.ProcessId `
+    -DatabasePath $databasePath `
+    -Binary 'swl-db-acceptance' `
+    -Assertion $migratedAssertion
+}
+finally {
+  Stop-ExactProcessTree -RootProcessId $currentLaunch.ProcessId
+  Start-Sleep -Seconds 1
+}
 Assert-ExactMigratedEvidence -Value $migrated
 $afterMigrationManifest = @(Get-DataManifest -Root $dataRoot)
 if ($afterMigrationManifest.Count -le $beforeUpgradeManifest.Count) {
