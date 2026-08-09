@@ -76,28 +76,126 @@ function Stop-ExactProcessTree {
   throw 'The installed application process tree did not stop.'
 }
 
+function Remove-StartupCaptureFiles {
+  param([string[]]$Paths)
+  $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([IO.Path]::DirectorySeparatorChar)
+  foreach ($path in $Paths) {
+    if ([string]::IsNullOrWhiteSpace($path)) { continue }
+    $fullPath = [IO.Path]::GetFullPath($path)
+    $validName = [IO.Path]::GetFileName($fullPath) -match '^swl-upgrade-(?:legacy|current)-[0-9a-f]{32}\.(?:stdout|stderr)$'
+    if ([IO.Path]::GetDirectoryName($fullPath).TrimEnd([IO.Path]::DirectorySeparatorChar) -ine $runnerTemp -or !$validName) {
+      throw 'A task-created startup capture path failed validation.'
+    }
+    Remove-Item -LiteralPath $fullPath -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $fullPath) {
+      throw 'A task-created startup capture could not be removed.'
+    }
+  }
+}
+
+function Get-SanitisedStartupStage {
+  param([string[]]$Paths)
+  $maxStartupCaptureBytes = 32 * 1024
+  $captured = [Collections.Generic.List[string]]::new()
+  try {
+    foreach ($path in $Paths) {
+      if (!(Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+      $metadata = Get-Item -LiteralPath $path
+      if (($metadata.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+          $metadata.Length -gt $maxStartupCaptureBytes) {
+        return 'capture-rejected'
+      }
+      $captured.Add([IO.File]::ReadAllText($metadata.FullName))
+    }
+  }
+  catch {
+    return 'capture-unreadable'
+  }
+  if ($captured.Count -eq 0) { return 'no-diagnostic-output' }
+  $diagnostic = [string]::Join("`n", $captured)
+  $stageMarkers = [ordered]@{
+    'restore-recovery' = @('restore recovery', 'interrupted restore', 'restore rollback')
+    'temporary-export-cleanup' = @('selected output folder', 'temporary output')
+    'database-migration' = @('database', 'migration', 'backup')
+    'main-window' = @('main application window')
+    'ready-title' = @('window title')
+  }
+  foreach ($stage in $stageMarkers.Keys) {
+    foreach ($marker in $stageMarkers[$stage]) {
+      if ($diagnostic.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        return $stage
+      }
+    }
+  }
+  return 'unknown'
+}
+
 function Start-ApplicationAndWaitForWindow {
-  param([IO.FileInfo]$Application, [string]$ExpectedWindowTitle)
-  $process = Start-Process -FilePath $Application.FullName -PassThru
+  param(
+    [IO.FileInfo]$Application,
+    [string]$ExpectedWindowTitle,
+    [ValidateSet('legacy', 'current')][string]$LaunchPhase
+  )
+  $captureId = [Guid]::NewGuid().ToString('N')
+  $standardOutput = Join-Path $env:RUNNER_TEMP "swl-upgrade-$LaunchPhase-$captureId.stdout"
+  $standardError = Join-Path $env:RUNNER_TEMP "swl-upgrade-$LaunchPhase-$captureId.stderr"
+  try {
+    $process = Start-Process `
+      -FilePath $Application.FullName `
+      -RedirectStandardOutput $standardOutput `
+      -RedirectStandardError $standardError `
+      -PassThru
+  }
+  catch {
+    Remove-StartupCaptureFiles -Paths @($standardOutput, $standardError)
+    throw "The installed $LaunchPhase upgrade-test application could not be started."
+  }
   $deadline = (Get-Date).AddSeconds(30)
   $windowTitle = $null
   do {
     Start-Sleep -Milliseconds 250
     $nativeProcess = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
     if (!$nativeProcess) {
-      throw 'The installed upgrade-test application exited before becoming ready.'
+      $exitCode = -1
+      try {
+        # The root may exit while WebView descendants still inherit its redirected
+        # handles. Stop and verify that exact tree before reading or deleting any
+        # bounded diagnostic capture.
+        Stop-ExactProcessTree -RootProcessId $process.Id
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+        $startupStage = Get-SanitisedStartupStage -Paths @($standardOutput, $standardError)
+      }
+      finally {
+        Remove-StartupCaptureFiles -Paths @($standardOutput, $standardError)
+      }
+      $failure = [InvalidOperationException]::new(
+        "The installed $LaunchPhase upgrade-test application exited before becoming ready (exit code $exitCode; startup stage $startupStage)."
+      )
+      $failure.Data['swlLaunchPhase'] = $LaunchPhase
+      $failure.Data['swlProcessExited'] = $true
+      $failure.Data['swlExitCode'] = $exitCode
+      $failure.Data['swlStartupStage'] = $startupStage
+      throw $failure
     }
     if ($nativeProcess -and $nativeProcess.MainWindowHandle -ne 0) {
       $windowTitle = $nativeProcess.MainWindowTitle
     }
   } while ($windowTitle -cne $ExpectedWindowTitle -and (Get-Date) -lt $deadline)
   if ($windowTitle -cne $ExpectedWindowTitle) {
-    Stop-ExactProcessTree -RootProcessId $process.Id
-    throw 'The installed upgrade-test application did not expose the expected native window.'
+    try {
+      Stop-ExactProcessTree -RootProcessId $process.Id
+    }
+    finally {
+      Remove-StartupCaptureFiles -Paths @($standardOutput, $standardError)
+    }
+    throw "The installed $LaunchPhase upgrade-test application did not expose the expected native window."
   }
   return [pscustomobject]@{
     ProcessId = $process.Id
     WindowTitle = $windowTitle
+    StandardOutputPath = $standardOutput
+    StandardErrorPath = $standardError
   }
 }
 
@@ -262,6 +360,79 @@ function Wait-ForAcceptanceEvidence {
   throw "The installed upgrade-test application database did not become ready in time. Last readiness failure: $lastFailure"
 }
 
+function Write-PostExitDatabaseClassification {
+  param(
+    [string]$DatabasePath,
+    [string]$Path,
+    [int]$ProcessExitCode,
+    [string]$StartupStage
+  )
+  $classification = 'unreadable'
+  $schemaVersion = $null
+  $recordCounts = $null
+  $migrationBackupCount = $null
+  try {
+    if (Test-RegularDatabaseReady -Path $DatabasePath) {
+      $databaseEvidence = Invoke-JsonAcceptanceBinary `
+        -Binary 'swl-db-acceptance' `
+        -TimeoutMilliseconds 30000
+      [long]$verifiedSchemaVersion = 0
+      $counts = [ordered]@{}
+      $countProperties = [ordered]@{
+        catalogueItems = 'catalogueItems'
+        approvals = 'approvals'
+        priceHistory = 'priceHistory'
+        competitorReferences = 'competitorReferences'
+        sources = 'sources'
+        profiles = 'profiles'
+        aliases = 'aliases'
+        settings = 'settings'
+      }
+      $validCounts = $true
+      foreach ($entry in $countProperties.GetEnumerator()) {
+        [long]$count = 0
+        if (![long]::TryParse([string]$databaseEvidence.($entry.Value), [ref]$count) -or
+            $count -lt 0 -or $count -gt 1000000) {
+          $validCounts = $false
+          break
+        }
+        $counts[$entry.Key] = $count
+      }
+      $verifiedBackupCount = @($databaseEvidence.verifiedMigrationBackups).Count
+      if ($databaseEvidence.integrity -eq 'ok' -and
+          [long]::TryParse([string]$databaseEvidence.schemaVersion, [ref]$verifiedSchemaVersion) -and
+          $verifiedSchemaVersion -in @(1, 3) -and
+          $validCounts -and
+          $verifiedBackupCount -ge 0 -and $verifiedBackupCount -le 100) {
+        $classification = if ($verifiedSchemaVersion -eq 1) { 'v1-present' } else { 'v3-migrated' }
+        $schemaVersion = $verifiedSchemaVersion
+        $recordCounts = $counts
+        $migrationBackupCount = $verifiedBackupCount
+      }
+    }
+  }
+  catch {
+    $classification = 'unreadable'
+    $schemaVersion = $null
+    $recordCounts = $null
+    $migrationBackupCount = $null
+  }
+  $payload = [ordered]@{
+    phase = 'current'
+    processExitCode = $ProcessExitCode
+    startupStage = $StartupStage
+    databaseClassification = $classification
+    schemaVersion = $schemaVersion
+    recordCounts = $recordCounts
+    verifiedMigrationBackupCount = $migrationBackupCount
+  }
+  $json = $payload | ConvertTo-Json -Depth 4 -Compress
+  if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 8192) {
+    throw 'The sanitised post-exit database classification exceeded its size limit.'
+  }
+  Set-Content -LiteralPath $Path -Value $json -Encoding utf8
+}
+
 $emptyFormerAssertion = (Get-Command Assert-EmptyFormerDatabaseEvidence -CommandType Function).ScriptBlock
 $migratedAssertion = (Get-Command Assert-ExactMigratedEvidence -CommandType Function).ScriptBlock
 $dataRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $applicationIdentifier))
@@ -282,7 +453,10 @@ if ($legacyApplication.VersionInfo.ProductVersion -notmatch '^1\.0\.0(?:\.0)?$')
 }
 $legacyApplicationSha256 = (Get-FileHash -LiteralPath $legacyApplication.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 $databasePath = Join-Path $dataRoot 'swl-pricing.sqlite3'
-$legacyLaunch = Start-ApplicationAndWaitForWindow -Application $legacyApplication -ExpectedWindowTitle $productName
+$legacyLaunch = Start-ApplicationAndWaitForWindow `
+  -Application $legacyApplication `
+  -ExpectedWindowTitle $productName `
+  -LaunchPhase 'legacy'
 $legacyWindowTitle = $legacyLaunch.WindowTitle
 try {
   [void](Wait-ForAcceptanceEvidence `
@@ -292,8 +466,13 @@ try {
     -Assertion $emptyFormerAssertion)
 }
 finally {
-  Stop-ExactProcessTree -RootProcessId $legacyLaunch.ProcessId
-  Start-Sleep -Seconds 1
+  try {
+    Stop-ExactProcessTree -RootProcessId $legacyLaunch.ProcessId
+    Start-Sleep -Seconds 1
+  }
+  finally {
+    Remove-StartupCaptureFiles -Paths @($legacyLaunch.StandardOutputPath, $legacyLaunch.StandardErrorPath)
+  }
 }
 if (!(Test-RegularDatabaseReady -Path $databasePath)) {
   throw 'The genuine former application did not create its regular stable database.'
@@ -313,7 +492,26 @@ $currentApplication = Get-ApplicationExecutable -InstallRoot $installRoot
 if ($currentApplication.VersionInfo.ProductVersion -notmatch '^1\.1\.0(?:\.0)?$') {
   throw 'The upgraded application does not identify as version 1.1.0.'
 }
-$currentLaunch = Start-ApplicationAndWaitForWindow -Application $currentApplication -ExpectedWindowTitle $productName
+$startupFailureEvidence = Join-Path `
+  ([IO.Path]::GetDirectoryName($evidence)) `
+  (([IO.Path]::GetFileNameWithoutExtension($evidence)) + '-Startup-Failure.json')
+try {
+  $currentLaunch = Start-ApplicationAndWaitForWindow `
+    -Application $currentApplication `
+    -ExpectedWindowTitle $productName `
+    -LaunchPhase 'current'
+}
+catch {
+  if ($_.Exception.Data['swlLaunchPhase'] -eq 'current' -and
+      $_.Exception.Data['swlProcessExited'] -eq $true) {
+    Write-PostExitDatabaseClassification `
+      -DatabasePath $databasePath `
+      -Path $startupFailureEvidence `
+      -ProcessExitCode ([int]$_.Exception.Data['swlExitCode']) `
+      -StartupStage ([string]$_.Exception.Data['swlStartupStage'])
+  }
+  throw
+}
 $currentWindowTitle = $currentLaunch.WindowTitle
 try {
   $migrated = Wait-ForAcceptanceEvidence `
@@ -323,8 +521,13 @@ try {
     -Assertion $migratedAssertion
 }
 finally {
-  Stop-ExactProcessTree -RootProcessId $currentLaunch.ProcessId
-  Start-Sleep -Seconds 1
+  try {
+    Stop-ExactProcessTree -RootProcessId $currentLaunch.ProcessId
+    Start-Sleep -Seconds 1
+  }
+  finally {
+    Remove-StartupCaptureFiles -Paths @($currentLaunch.StandardOutputPath, $currentLaunch.StandardErrorPath)
+  }
 }
 Assert-ExactMigratedEvidence -Value $migrated
 $afterMigrationManifest = @(Get-DataManifest -Root $dataRoot)

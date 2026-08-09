@@ -7275,6 +7275,210 @@ mod tests {
             .unwrap();
     }
 
+    fn create_exact_legacy_wal_lifecycle(path: &Path) {
+        let mut former_application = Connection::open(path).unwrap();
+        former_application
+            .execute_batch(
+                "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",
+            )
+            .unwrap();
+        assert_eq!(
+            former_application
+                .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+                .unwrap(),
+            "wal"
+        );
+        assert_eq!(
+            former_application
+                .query_row("PRAGMA synchronous", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        let transaction = former_application.transaction().unwrap();
+        transaction
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS schema_metadata(version INTEGER NOT NULL);
+                 INSERT INTO schema_metadata(version) SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_metadata);
+                 CREATE TABLE IF NOT EXISTS catalogue_items(
+                   id TEXT PRIMARY KEY, item_number TEXT NOT NULL UNIQUE, description TEXT NOT NULL,
+                   cost_cents INTEGER NOT NULL CHECK(cost_cents >= 0), sell_price_cents INTEGER NOT NULL CHECK(sell_price_cents >= 0),
+                   gst_basis TEXT NOT NULL CHECK(gst_basis IN ('inc-gst','ex-gst','unknown')), updated_at TEXT NOT NULL);
+                 CREATE TABLE IF NOT EXISTS approvals(
+                   id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+                   approved_by TEXT NOT NULL, proposed_sell_cents INTEGER NOT NULL CHECK(proposed_sell_cents >= 0),
+                   reason TEXT NOT NULL, approved_at TEXT NOT NULL);
+                 CREATE TABLE IF NOT EXISTS price_history(
+                   id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+                   cost_cents INTEGER NOT NULL CHECK(cost_cents >= 0), sell_price_cents INTEGER NOT NULL CHECK(sell_price_cents >= 0),
+                   approval_id TEXT NOT NULL REFERENCES approvals(id) ON DELETE RESTRICT, recorded_at TEXT NOT NULL);
+                 CREATE TRIGGER IF NOT EXISTS price_history_no_update BEFORE UPDATE ON price_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+                 CREATE TRIGGER IF NOT EXISTS price_history_no_delete BEFORE DELETE ON price_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+                 CREATE TABLE IF NOT EXISTS competitor_references(
+                   id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+                   observation_json TEXT NOT NULL, attached_at TEXT NOT NULL);
+                 CREATE TABLE IF NOT EXISTS source_registry(id TEXT PRIMARY KEY, state_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+                 CREATE TABLE IF NOT EXISTS mapping_profiles(id TEXT PRIMARY KEY, profile_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+                 CREATE TABLE IF NOT EXISTS approved_aliases(supplier_code TEXT PRIMARY KEY, item_number TEXT NOT NULL, approved_at TEXT NOT NULL);
+                 CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY CHECK(id='settings'), settings_json TEXT NOT NULL, updated_at TEXT NOT NULL);",
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+        drop(former_application);
+
+        let mut acceptance_seed = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_FULL_MUTEX,
+        )
+        .unwrap();
+        acceptance_seed
+            .execute_batch(
+                "PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA wal_autocheckpoint=0;",
+            )
+            .unwrap();
+        acceptance_seed
+            .set_db_config(
+                rusqlite::config::DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE,
+                true,
+            )
+            .unwrap();
+        let transaction = acceptance_seed.transaction().unwrap();
+        transaction
+            .execute(
+                "INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                params![
+                    "item-legacy",
+                    "000042",
+                    "Synthetic legacy acceptance item",
+                    10_000_i64,
+                    13_000_i64,
+                    "unknown",
+                    "2026-08-09T00:00:00Z"
+                ],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO approvals(id,item_id,approved_by,proposed_sell_cents,reason,approved_at)
+                 VALUES(?1,?2,?3,?4,?5,?6)",
+                params![
+                    "approval-legacy",
+                    "item-legacy",
+                    "synthetic-operator",
+                    13_000_i64,
+                    "Synthetic legacy acceptance approval",
+                    "2026-08-09T00:00:00Z"
+                ],
+            )
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT INTO price_history(id,item_id,cost_cents,sell_price_cents,approval_id,recorded_at)
+                 VALUES(?1,?2,?3,?4,?5,?6)",
+                params![
+                    "history-legacy",
+                    "item-legacy",
+                    10_000_i64,
+                    13_000_i64,
+                    "approval-legacy",
+                    "2026-08-09T00:00:00Z"
+                ],
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+        assert_exact_legacy_rows(&acceptance_seed);
+        drop(acceptance_seed);
+    }
+
+    fn assert_exact_legacy_rows(connection: &Connection) {
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at
+                     FROM catalogue_items WHERE id='item-legacy'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, String>(5)?,
+                        ))
+                    },
+                )
+                .unwrap(),
+            (
+                "000042".to_string(),
+                "Synthetic legacy acceptance item".to_string(),
+                10_000,
+                13_000,
+                "unknown".to_string(),
+                "2026-08-09T00:00:00Z".to_string(),
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT item_id,approved_by,proposed_sell_cents,reason,approved_at
+                     FROM approvals WHERE id='approval-legacy'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                        ))
+                    },
+                )
+                .unwrap(),
+            (
+                "item-legacy".to_string(),
+                "synthetic-operator".to_string(),
+                13_000,
+                "Synthetic legacy acceptance approval".to_string(),
+                "2026-08-09T00:00:00Z".to_string(),
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT item_id,cost_cents,sell_price_cents,approval_id,recorded_at
+                     FROM price_history WHERE id='history-legacy'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                        ))
+                    },
+                )
+                .unwrap(),
+            (
+                "item-legacy".to_string(),
+                10_000,
+                13_000,
+                "approval-legacy".to_string(),
+                "2026-08-09T00:00:00Z".to_string(),
+            )
+        );
+        let counts = record_counts(connection).unwrap();
+        assert_eq!(counts.catalogue_items, 1);
+        assert_eq!(counts.approvals, 1);
+        assert_eq!(counts.price_history, 1);
+        assert_eq!(counts.competitor_references, 0);
+        assert_eq!(counts.sources, 0);
+        assert_eq!(counts.profiles, 0);
+        assert_eq!(counts.aliases, 0);
+        assert_eq!(counts.settings, 0);
+    }
+
     #[test]
     fn migrations_are_ordered_idempotent_and_integral() {
         let directory = migrated_database();
@@ -7388,6 +7592,54 @@ mod tests {
             )
             .is_err());
         assert_integrity(&connection).unwrap();
+    }
+
+    #[test]
+    fn exact_legacy_wal_lifecycle_is_backed_up_and_migrated_without_losing_seeded_rows() {
+        let directory = TestDirectory::new();
+        let database = directory.database();
+        create_exact_legacy_wal_lifecycle(&database);
+
+        let wal = PathBuf::from(format!("{}-wal", database.to_string_lossy()));
+        assert!(
+            wal.metadata().is_ok_and(|metadata| metadata.len() > 32),
+            "the committed legacy rows must remain in a retained WAL"
+        );
+        let main_only = directory.0.join("main-only.sqlite3");
+        fs::copy(&database, &main_only).unwrap();
+        let main_only_connection = open_readonly_connection(&main_only).unwrap();
+        assert_eq!(
+            table_count(&main_only_connection, "catalogue_items").unwrap(),
+            0,
+            "the main file alone must not contain the seeded WAL rows"
+        );
+        drop(main_only_connection);
+
+        apply_migrations(&database, &directory.0).unwrap();
+        let migrated = open_connection(&database).unwrap();
+        assert_eq!(schema_version(&migrated).unwrap(), CURRENT_SCHEMA_VERSION);
+        assert_exact_legacy_rows(&migrated);
+        assert_integrity(&migrated).unwrap();
+        drop(migrated);
+
+        let manifests = fs::read_dir(directory.0.join(BACKUP_DIRECTORY))
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+            .filter(|name| name.ends_with(".manifest.json"))
+            .collect::<Vec<_>>();
+        assert_eq!(manifests.len(), 1);
+        let backup_id = manifests[0].strip_suffix(".manifest.json").unwrap();
+        let backup = verify_backup(&directory.0, backup_id).unwrap();
+        assert_eq!(backup.reason, "migration");
+        assert_eq!(backup.summary.schema_version, 1);
+        assert_eq!(backup.summary.record_counts.catalogue_items, 1);
+        assert_eq!(backup.summary.record_counts.approvals, 1);
+        assert_eq!(backup.summary.record_counts.price_history, 1);
+        let (backup_database, _) = backup_paths(&directory.0, backup_id).unwrap();
+        let backed_up = open_readonly_connection(&backup_database).unwrap();
+        assert_exact_legacy_rows(&backed_up);
+        assert_integrity(&backed_up).unwrap();
     }
 
     #[test]
