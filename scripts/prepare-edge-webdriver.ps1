@@ -322,7 +322,82 @@ try {
   }
   $driverMatch = [regex]::Match(
     $driverStandardOutput.Trim(),
-    '^MSEdgeDriver (?<version>\d+(?:\.\d+){3})(?: .*)?$'
+    '^(?:MSEdgeDriver|Microsoft Edge WebDriver) (?<version>\d+(?:\.\d+){3})(?: .*)?
+  )
+  if (!$driverMatch.Success) {
+    throw 'The exact EdgeDriver did not return a supported Microsoft EdgeDriver version format.'
+  }
+  $driverVersion = $driverMatch.Groups['version'].Value
+  if ($driverVersion -cne $runtimeVersion) {
+    throw 'The exact EdgeDriver command version does not match the installed WebView2 runtime.'
+  }
+
+  $runtimeHash = (Get-FileHash -LiteralPath $runtimeExecutable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  $driverHash = (Get-FileHash -LiteralPath $driverInfo.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  [ordered]@{
+    verification = 'exact-installed-webview2-driver'
+    verifiedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    sourceUrl = $sourceUrl.AbsoluteUri
+    resolvedSourceUrl = $current.GetLeftPart([UriPartial]::Path)
+    redirectChain = @($redirects)
+    selection = 'official exact-version x64 download derived from the installed signed WebView2 runtime'
+    archiveBytes = $archiveBytes
+    archiveSha256 = $archiveHash
+    downloadCompletedBeforeOfflineBoundary = $true
+    automaticDownloadDisabled = $true
+    runtime = [ordered]@{
+      fileName = $runtimeExecutable.Name
+      version = $runtimeVersion
+      bytes = $runtimeExecutable.Length
+      sha256 = $runtimeHash
+      signatureStatus = $runtimeSignature.Status.ToString()
+      signerSubject = $runtimeSignature.SignerCertificate.Subject
+      signerIssuer = $runtimeSignature.SignerCertificate.Issuer
+      signerThumbprint = $runtimeSignature.SignerCertificate.Thumbprint
+    }
+    driver = [ordered]@{
+      fileName = $driverInfo.Name
+      architecture = 'x64'
+      peMachine = ('0x{0:x4}' -f $driverMachine)
+      bytes = $driverInfo.Length
+      sha256 = $driverHash
+      fileVersion = $driverInfo.VersionInfo.FileVersion
+      productVersion = $driverInfo.VersionInfo.ProductVersion
+      commandVersion = $driverVersion
+      signatureStatus = $driverSignature.Status.ToString()
+      signerSubject = $driverSignature.SignerCertificate.Subject
+      signerIssuer = $driverSignature.SignerCertificate.Issuer
+      signerThumbprint = $driverSignature.SignerCertificate.Thumbprint
+      signerValidFromUtc = $driverSignature.SignerCertificate.NotBefore.ToUniversalTime().ToString('o')
+      signerValidToUtc = $driverSignature.SignerCertificate.NotAfter.ToUniversalTime().ToString('o')
+      timestampSubject = $(if ($driverSignature.TimeStamperCertificate) {
+        $driverSignature.TimeStamperCertificate.Subject
+      } else { $null })
+    }
+  } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $evidencePath -Encoding utf8
+}
+catch {
+  $preparationFailure = $_
+  $cleanupFailed = $false
+  if ($driverDirectoryCreated) {
+    try {
+      if (Test-Path -LiteralPath $driverDirectory) {
+        Remove-Item -LiteralPath $driverDirectory -Recurse -Force -ErrorAction Stop
+      }
+      if (Test-Path -LiteralPath $driverDirectory) {
+        $cleanupFailed = $true
+      }
+    }
+    catch {
+      $cleanupFailed = $true
+    }
+  }
+  if ($cleanupFailed) {
+    throw 'Exact EdgeDriver preparation failed and its task-created directory could not be removed.'
+  }
+  throw $preparationFailure
+}
+
   )
   if (!$driverMatch.Success) {
     throw 'The exact EdgeDriver did not return the supported MSEdgeDriver version format.'
