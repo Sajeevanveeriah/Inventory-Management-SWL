@@ -82,14 +82,33 @@ test("complete synthetic workflow: load, map, validate, review, export, verify, 
     page.getByRole("button", { name: "Approve", exact: true }),
   ).toHaveCount(0);
 
-  // --- approve all price changes (bulk, with confirmation) ----------------
+  // --- exclude one price change before the immutable approval boundary -----
   await page.getByRole("button", { name: /^Price changed \(5\)$/ }).click();
+  await page.getByRole("checkbox", { name: "Select FIC-012" }).check();
+  await page.getByRole("button", { name: /Exclude selected \(1\)/ }).click();
+  await page
+    .getByLabel("Reason for exclusion")
+    .fill("Superseded fictional line");
+  await page.getByRole("button", { name: "Exclude", exact: true }).click();
+  await expect(
+    page.locator(".badge-excluded", { hasText: "Excluded" }),
+  ).toHaveCount(1);
+
+  // Undo/redo round-trip keeps the exclusion before any durable publication.
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.locator(".badge-excluded")).toHaveCount(0);
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(
+    page.locator(".badge-excluded", { hasText: "Excluded" }),
+  ).toHaveCount(1);
+
+  // --- approve the four remaining price changes ---------------------------
   await page.getByRole("checkbox", { name: "Select all visible rows" }).check();
-  await page.getByRole("button", { name: /Approve selected \(5\)/ }).click();
-  await page.getByRole("button", { name: "Approve 5 record(s)" }).click();
+  await page.getByRole("button", { name: /Approve selected \(4\)/ }).click();
+  await page.getByRole("button", { name: "Approve 4 record(s)" }).click();
   await expect(
     page.locator(".badge-approved", { hasText: "Approved" }),
-  ).toHaveCount(5);
+  ).toHaveCount(4);
 
   // Detail panel shows the markup formula for a price change.
   await page.getByRole("cell", { name: "FIC-002", exact: true }).click();
@@ -105,26 +124,6 @@ test("complete synthetic workflow: load, map, validate, review, export, verify, 
   await page.getByRole("checkbox", { name: "Select all visible rows" }).check();
   await page.getByRole("button", { name: /Approve selected \(2\)/ }).click();
   await page.getByRole("button", { name: "Approve 2 record(s)" }).click();
-
-  // --- exclude FIC-012 with a reason --------------------------------------
-  await page.getByRole("button", { name: /^Price changed \(5\)$/ }).click();
-  await page.getByRole("checkbox", { name: "Select FIC-012" }).check();
-  await page.getByRole("button", { name: /Exclude selected \(1\)/ }).click();
-  await page
-    .getByLabel("Reason for exclusion")
-    .fill("Superseded fictional line");
-  await page.getByRole("button", { name: "Exclude", exact: true }).click();
-  await expect(
-    page.locator(".badge-excluded", { hasText: "Excluded" }),
-  ).toHaveCount(1);
-
-  // Undo/redo round-trip keeps the exclusion.
-  await page.getByRole("button", { name: "Undo", exact: true }).click();
-  await expect(page.locator(".badge-excluded")).toHaveCount(0);
-  await page.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(
-    page.locator(".badge-excluded", { hasText: "Excluded" }),
-  ).toHaveCount(1);
 
   // --- checklist ----------------------------------------------------------
   await page
