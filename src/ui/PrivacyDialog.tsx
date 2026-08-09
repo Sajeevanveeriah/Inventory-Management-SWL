@@ -70,11 +70,13 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
       >
         <h3>Processing</h3>
         <p className="small">
-          Business files are processed locally in memory. The Windows
-          application stores authorised operational records in its local
-          database and performs optional search through its native, allowlisted
-          provider integration. The web demonstration uses this application's
-          own server. There is no analytics or telemetry.
+          Business files are processed locally in memory.{" "}
+          {platform.kind === "desktop"
+            ? "The Windows application stores authorised operational records in its local database and performs optional search through its native, allowlisted provider integration."
+            : platform.capabilities.liveSearch
+              ? "The server-backed web demonstration stores authorised demonstration records through this application's Node service."
+              : "Static Pages has no Node server or provider integration and keeps authorised fictional demonstration records only for this browser session."}{" "}
+          There is no analytics or telemetry.
         </p>
         <h3>Memory-only business inputs</h3>
         <ul className="small">
@@ -91,9 +93,12 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
         <h3>Optional network search</h3>
         <p className="small">
           Only the product text you type may leave the computer after an
-          explicit search. The desktop application sends it through the native
-          Rust service to its exact allowlisted HTTPS provider. The web
-          demonstration sends it through this application's Node service.
+          explicit search.{" "}
+          {platform.kind === "desktop"
+            ? "The desktop application sends it through the native Rust service to its exact allowlisted HTTPS provider."
+            : platform.capabilities.liveSearch
+              ? "The server-backed web demonstration sends it through this application's Node service."
+              : "Static Pages cannot make a provider request; manual evidence remains available."}{" "}
           Supplier cost, sell price, private notes, customer data and full
           imported rows are never included.
         </p>
@@ -164,6 +169,14 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
                 ? " The Windows-protected provider credential is included in this exact reset scope but is never copied into the backup."
                 : " The web demonstration does not store provider credentials in the browser."}
             </p>
+            {platform.kind === "desktop" && (
+              <p className="small">
+                Legacy configuration in the same WebView IndexedDB profile is
+                preserved outside this reset scope as a migration source. It is
+                never treated as the native operational store and remains
+                available for a later previewed reimport.
+              </p>
+            )}
             <label>
               Type <strong>{resetPreview.confirmationPhrase}</strong> to confirm
               <input

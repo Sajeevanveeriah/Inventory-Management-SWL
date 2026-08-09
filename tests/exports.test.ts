@@ -205,6 +205,10 @@ describe("buildAllOutputs", () => {
     expect(auditText).toContain(supplierTable.sha256);
     expect(auditText).toContain("Excluded records (1)");
     expect(auditText).toContain("Fictional exclusion for testing");
+    expect(auditText).toContain(
+      "This report was generated locally by SWL Pricing and Inventory Control.",
+    );
+    expect(auditText).not.toContain("generated locally in the browser");
   });
 
   it("neutralises formula-like template headers and rollback metadata", async () => {

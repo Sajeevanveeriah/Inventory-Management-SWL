@@ -231,13 +231,15 @@ export function SuppliersPage() {
                       >
                         Apply
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => exportProfile(profile)}
-                      >
-                        Export JSON
-                      </button>
+                      {platform.kind === "web" && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => exportProfile(profile)}
+                        >
+                          Export JSON
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn btn-sm btn-danger"
@@ -252,6 +254,13 @@ export function SuppliersPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {platform.kind === "desktop" && state.profiles.length > 0 && (
+        <p className="hint">
+          To transfer saved profiles, use Settings, then Configuration transfer.
+          Desktop exports use the native folder picker.
+        </p>
       )}
 
       <ConfirmDialog

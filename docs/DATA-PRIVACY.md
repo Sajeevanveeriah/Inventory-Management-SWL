@@ -54,16 +54,20 @@ configured ceiling could be exceeded.
 Raw imported rows remain memory-only by default. Desktop backups contain schema and application
 versions, creation time, record counts and a verified checksum, but exclude credentials and raw
 imports. Uninstall preserves desktop business data; erasure is a separate double-confirmed
-operation with an exact scope summary. Generated diagnostic information must avoid raw business
-values.
+operation with an exact scope summary. Desktop erasure clears the native SQLite/configuration store
+and protected credential in that scope, while preserving same-WebView legacy IndexedDB
+configuration as a non-authoritative migration source for later previewed reimport. Generated
+diagnostic information must avoid raw business values.
 
 The desktop data directory is resolved at runtime through Tauri's per-user application-local-data
 API for identifier `au.com.stanwoottonlocksmiths.swl-pricing`; it is not the installation folder,
 current working directory or WebView profile. The Recovery UI previews backups and restores.
 Restore validates checksum, metadata, counts and SQLite integrity in a temporary database before
 replacement. If migration or restore validation fails, the prior database remains the live store.
-Keep an operator-selected backup outside the computer before a production upgrade; uninstall does
-not substitute for backup and does not erase this directory.
+The current Recovery UI manages verified backups inside application data and does not import an
+arbitrary external backup file. Before a production upgrade, close the application and copy the
+entire runtime-resolved data directory to approved protected storage for supervised recovery.
+Uninstall does not substitute for backup and does not erase this directory.
 
 Configuration loading is fail-closed: malformed or unavailable persisted settings, mappings,
 aliases, source state or legacy-migration evidence blocks the operational workflow. Browser

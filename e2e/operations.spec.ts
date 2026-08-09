@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "./fixture";
 import { navigateFromCompactMenu } from "./support/navigation";
 
@@ -142,6 +143,32 @@ test("supplier profiles: save, export and delete with confirmation", async ({
   await expect(
     page.getByRole("cell", { name: /E2E Fictionville/ }),
   ).toHaveCount(0);
+});
+
+test("run metadata uses a canonical date prefix and real file hashes", async ({
+  page,
+}) => {
+  await loadDemoAndCompare(page);
+  await page.getByRole("button", { name: "Runs" }).click();
+  const pending = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download run metadata (JSON)" })
+    .click();
+  const download = await pending;
+  expect(download.suggestedFilename()).toMatch(
+    /^\d{8}-local-\d{8}T\d{6}-run-metadata\.json$/,
+  );
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const metadata = JSON.parse(readFileSync(path!, "utf8")) as {
+    inputFilenames: string[];
+    fileHashes: string[];
+  };
+  expect(metadata.inputFilenames).toHaveLength(2);
+  expect(metadata.fileHashes).toHaveLength(2);
+  expect(metadata.fileHashes.every((hash) => /^[a-f0-9]{64}$/.test(hash))).toBe(
+    true,
+  );
 });
 
 test("integrations page states the locked external boundaries", async ({

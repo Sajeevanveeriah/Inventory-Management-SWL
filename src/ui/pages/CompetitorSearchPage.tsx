@@ -484,7 +484,16 @@ type SearchStateCopy = {
 function stateCopy(
   state: LiveSearchState,
   platformKind: "desktop" | "web",
+  liveSearchSupported: boolean,
 ): SearchStateCopy | undefined {
+  if (!liveSearchSupported) {
+    return {
+      title: "Live provider search is unavailable in Static Pages",
+      tone: "info",
+      detail:
+        "Static Pages has no Node service and makes no provider request. Manual evidence and the core comparison workflow remain available.",
+    };
+  }
   const copy: Partial<Record<LiveSearchState, SearchStateCopy>> = {
     not_configured: {
       title: "Live search is not configured",
@@ -522,7 +531,9 @@ function stateCopy(
       title: "Local rate limit reached",
       tone: "warn",
       detail:
-        "This application limits its own outbound searches. Wait about a minute and retry; cached results continue to work.",
+        platformKind === "desktop"
+          ? "The native application limits its own outbound searches. Wait about a minute and retry; manual evidence remains available."
+          : "The web service limits its own outbound searches. Wait about a minute and retry; cached results continue to work.",
     },
     server_unreachable: {
       title:
@@ -838,7 +849,7 @@ export function CompetitorsPage() {
     if (!result.ok) actions.announce(result.error.message);
   };
 
-  // Stored local evidence (manual entries and imports) still searches inline.
+  // Stored non-live local evidence still searches inline.
   const manualSources = state.competitorSources.filter(
     (s) => s.enabled && s.accessMethod !== "live-api",
   );
@@ -935,56 +946,73 @@ export function CompetitorsPage() {
     });
   };
 
-  const failureCopy = outcome && stateCopy(outcome.state, platform.kind);
+  const failureCopy =
+    outcome &&
+    stateCopy(outcome.state, platform.kind, platform.capabilities.liveSearch);
 
   return (
     <Page
       title="Competitor search"
       primary={
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={query.trim() === "" || loading}
-          onClick={() => void runSearch()}
-        >
-          Search live prices
-        </button>
+        platform.capabilities.liveSearch ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={query.trim() === "" || loading}
+            onClick={() => void runSearch()}
+          >
+            Search live prices
+          </button>
+        ) : undefined
       }
     >
       {state.demoMode && health !== "checking" && health?.fixtureMode && (
         <IntelligenceWorkspace />
       )}
       <section className="card">
-        <form
-          className="searchbar"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void runSearch();
-          }}
-        >
-          <label className="grow">
-            Product name, part number, SKU, brand, description or barcode
-            <input
-              type="search"
-              value={query}
-              maxLength={512}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="e.g. Lockwood 4570, LW4570 or 9312345678907"
-            />
-          </label>
-        </form>
+        {platform.capabilities.liveSearch ? (
+          <form
+            className="searchbar"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runSearch();
+            }}
+          >
+            <label className="grow">
+              Product name, part number, SKU, brand, description or barcode
+              <input
+                type="search"
+                value={query}
+                maxLength={512}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="e.g. Lockwood 4570, LW4570 or 9312345678907"
+              />
+            </label>
+          </form>
+        ) : (
+          <p>
+            Static Pages does not expose a live-provider query. Use the manual
+            evidence form below with an operator-verified HTTPS source.
+          </p>
+        )}
         <p className="hint" role="status">
-          {health === "checking"
-            ? "Checking live search availability…"
-            : health === null
-              ? platform.kind === "desktop"
-                ? "Native search is unavailable or offline. Manual entry works now."
-                : "The optional web demonstration service is unavailable. Manual entry works now."
-              : health.fixtureMode
-                ? "Fixture provider active: deterministic offline results for testing and demos."
-                : health.liveSearchConfigured
-                  ? "Live search ready: native or same-origin provider, Australian region, AUD, rate limited and cached."
-                  : "Live search is not configured. Manual entry works now."}
+          {!platform.capabilities.liveSearch
+            ? "Static Pages has no live provider service and makes no provider request."
+            : health === "checking"
+              ? "Checking live search availability…"
+              : health === null
+                ? platform.kind === "desktop"
+                  ? "Native search is unavailable or offline. Manual entry works now."
+                  : platform.capabilities.liveSearch
+                    ? "The optional web demonstration service is unavailable. Manual entry works now."
+                    : "Static Pages has no live provider service. Manual entry works now."
+                : health.fixtureMode
+                  ? "Fixture provider active: deterministic offline results for testing and demos."
+                  : health.liveSearchConfigured
+                    ? platform.kind === "desktop"
+                      ? "Live search ready: native provider, Australian region, AUD and rate limited."
+                      : "Live search ready: same-origin provider, Australian region, AUD, rate limited and cached."
+                    : "Live search is not configured. Manual entry works now."}
         </p>
       </section>
 
@@ -1058,7 +1086,7 @@ export function CompetitorsPage() {
         </section>
       )}
 
-      {loading && (
+      {loading && platform.capabilities.liveSearch && (
         <section
           className="card state-loading"
           role="status"
@@ -1082,8 +1110,16 @@ export function CompetitorsPage() {
 
       {!loading && outcome === null && (
         <EmptyState
-          title="Type a product and search the live market"
-          detail="One box, no search-type selector: the application works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
+          title={
+            platform.capabilities.liveSearch
+              ? "Type a product and search the live market"
+              : "Manual competitor evidence remains available"
+          }
+          detail={
+            platform.capabilities.liveSearch
+              ? "One box, no search-type selector: the application works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
+              : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
+          }
         />
       )}
 
@@ -1320,7 +1356,7 @@ export function CompetitorsPage() {
 const ACCESS_LABELS: Record<string, string> = {
   "live-api": "Licensed provider API",
   "manual-entry": "Manual entry",
-  "file-import": "File import",
+  "file-import": "Legacy file-import record (not available)",
 };
 
 /** Source registry: every source, how it is accessed, and an enable toggle. */
@@ -1394,17 +1430,18 @@ export function SourcesPage() {
           <dt>Live retrieval</dt>
           <dd>
             {platform.kind === "desktop"
-              ? "Performed by the native Rust service through an exact allowlisted licensed shopping-search API."
-              : "Performed by the web demonstration's Node service through a licensed shopping-search API."}{" "}
-            Requests are rate limited and cached and identify the client
-            honestly. Retailer websites are never scraped directly; robots.txt,
-            site terms, rate limits and bot protections are never circumvented.
+              ? "Performed by the native Rust service through an exact allowlisted licensed shopping-search API. Native requests are rate limited and do not claim a response cache."
+              : platform.capabilities.liveSearch
+                ? "Performed by the web demonstration's Node service through a licensed shopping-search API. Requests are rate limited, cached and identify the client honestly."
+                : "Static Pages has no Node service and performs no live provider retrieval."}{" "}
+            Retailer websites are never scraped directly; robots.txt, site
+            terms, rate limits and bot protections are never circumvented.
           </dd>
           <dt>Fallback paths</dt>
           <dd>
-            Manual entry and operator-provided file import. A source that cannot
-            be supported lawfully or reliably is disabled here and says why,
-            instead of failing silently.
+            Manual entry. A source that cannot be supported lawfully or reliably
+            is disabled here and says why, instead of failing silently. Bulk
+            evidence-file import is not available in this release.
           </dd>
         </dl>
       </section>

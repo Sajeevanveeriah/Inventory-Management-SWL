@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { changeImpact, SETTING_REGISTRY } from "../../core/configRegistry";
+import { datePrefix } from "../../core/run";
 import { triggerDownload } from "../../io/download";
 import { usePlatform } from "../../platform/context";
 import type {
@@ -221,12 +222,6 @@ export function RecoveryPanel({
       )}
     </section>
   );
-}
-
-function datePrefix(date = new Date()): string {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(
-    date.getDate(),
-  ).padStart(2, "0")}`;
 }
 
 /** Versioned configuration transfer and recovery entry point. */

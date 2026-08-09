@@ -131,7 +131,7 @@ export function buildAuditText(input: AuditInput): string {
   for (const f of input.outputFilenames) push(`  ${f}`);
   push();
   push(
-    "This report was generated locally in the browser. No data was transmitted.",
+    "This report was generated locally by SWL Pricing and Inventory Control. Raw imported rows and provider credentials are not included.",
   );
   return lines.join("\n");
 }

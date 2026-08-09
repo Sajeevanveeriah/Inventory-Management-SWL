@@ -441,7 +441,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         outputs: action.outputs,
-        announcement: `${action.outputs.length} output files generated and ready to download.`,
+        announcement: `${action.outputs.length} output file${action.outputs.length === 1 ? "" : "s"} generated and ready to save.`,
       };
     case "announce":
       return { ...state, announcement: action.message };

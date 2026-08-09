@@ -12,6 +12,7 @@ import {
   buildRunMetadata,
   deriveExceptions,
 } from "../../core/operations";
+import { datePrefix } from "../../core/run";
 import { isExcludable, STATUS_LABELS } from "../../core/statuses";
 import { triggerDownload } from "../../io/download";
 import { useAppDispatch, useAppState } from "../../state/store";
@@ -144,7 +145,9 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
         ? "append-only history"
         : platform.kind === "desktop"
           ? "no approved versions yet"
-          : "web service not seeded",
+          : platform.capabilities.liveSearch
+            ? "web service not seeded"
+            : "session-only demo is empty",
     },
     {
       label: "Saved supplier profiles",
@@ -224,7 +227,9 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
           detail={
             platform.kind === "desktop"
               ? "The dashboard charts draw from append-only price history in the local SQLite database. Explicitly publish an approved price change through a run to create the first version."
-              : "The dashboard charts draw from the web demonstration server's append-only price history. Seed fictional sample data with `npm run seed` (then refresh), or publish approved price versions through a run."
+              : platform.capabilities.liveSearch
+                ? "The dashboard charts draw from the web demonstration server's append-only price history. Seed fictional sample data with `npm run seed` (then refresh), or publish approved price versions through a run."
+                : "Static Pages keeps approved fictional demonstration records only for this browser session. Publish an approved price version through a run; refreshing the page clears that session-only history."
           }
         />
       )}
@@ -568,15 +573,20 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
 export function RunsPage() {
   const state = useAppState();
   const actions = useActions();
+  const platform = usePlatform();
   const metadata = useMemo(
     () =>
       buildRunMetadata({
         comparison: state.comparison,
         decisions: state.review.decisions,
-        inputFilenames: [
+        inputFiles: [
           state.supplier.table?.fileName,
           state.servicem8.table?.fileName,
-        ].filter((n): n is string => Boolean(n)),
+        ].flatMap((filename, index) => {
+          const table =
+            index === 0 ? state.supplier.table : state.servicem8.table;
+          return filename && table ? [{ filename, sha256: table.sha256 }] : [];
+        }),
         outputFilenames: state.outputs?.map((o) => o.filename) ?? [],
         profileName: state.activeProfileName,
         profileVersion: state.activeProfileVersion,
@@ -607,22 +617,32 @@ export function RunsPage() {
           <dt>Outputs generated</dt>
           <dd>{metadata.outputFilenames.join(", ") || "none yet"}</dd>
         </dl>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn"
-            disabled={state.comparison === null}
-            onClick={() => {
-              const blob = new Blob([JSON.stringify(metadata, null, 2)], {
-                type: "application/json",
-              });
-              triggerDownload(blob, `${metadata.id}-run-metadata.json`);
-              actions.announce("Run metadata downloaded as JSON.");
-            }}
-          >
-            Download run metadata (JSON)
-          </button>
-        </div>
+        {platform.kind === "web" ? (
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn"
+              disabled={state.comparison === null}
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(metadata, null, 2)], {
+                  type: "application/json",
+                });
+                triggerDownload(
+                  blob,
+                  `${datePrefix()}-${metadata.id}-run-metadata.json`,
+                );
+                actions.announce("Run metadata downloaded as JSON.");
+              }}
+            >
+              Download run metadata (JSON)
+            </button>
+          </div>
+        ) : (
+          <p className="hint">
+            Desktop run evidence is included in the audit summary saved with the
+            five workflow outputs.
+          </p>
+        )}
         <p className="hint">
           Run history is intentionally not persisted: business rows never leave
           the session. The exported audit summary is the durable record of each

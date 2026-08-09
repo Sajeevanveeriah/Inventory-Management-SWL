@@ -44,6 +44,9 @@ describe("workflow invalidation guards", () => {
       expectedRevision: 8,
     });
     expect(currentCompletion.outputs).toEqual([syntheticOutput]);
+    expect(currentCompletion.announcement).toBe(
+      "1 output file generated and ready to save.",
+    );
   });
 
   it("invalidates generated output on input replacement, alias changes and configuration reload", () => {

@@ -175,6 +175,132 @@ describe("application workflow (jsdom integration)", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("does not expose browser-download controls on desktop routes", async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    const profile = {
+      id: "desktop-profile",
+      name: "Synthetic desktop profile",
+      version: 1,
+      supplierMapping: {},
+      supplierHeaders: ["Code"],
+      servicem8Mapping: {},
+      servicem8Headers: ["Item Number"],
+      createdAt: "2026-08-09T00:00:00.000Z",
+      updatedAt: "2026-08-09T00:00:00.000Z",
+    };
+    const service: PlatformService = {
+      ...base,
+      kind: "desktop",
+      profiles: {
+        ...base.profiles,
+        async list() {
+          return platformOk([profile]);
+        },
+      },
+      recovery: {
+        ...base.recovery,
+        async previewReset() {
+          return platformOk({
+            resetToken: "synthetic-reset-preview",
+            confirmationPhrase: "ERASE SWL LOCAL DATA",
+            scope: ["Native SQLite operational and configuration records"],
+            recordCounts: {
+              catalogueItems: 0,
+              approvals: 0,
+              priceHistory: 0,
+              competitorReferences: 0,
+              sources: 0,
+              profiles: 1,
+              aliases: 0,
+              settings: 1,
+            },
+          });
+        },
+      },
+    };
+    window.location.hash = "#/suppliers";
+    await renderApp(service);
+
+    await screen.findByRole("cell", { name: /synthetic desktop profile/i });
+    expect(
+      screen.queryByRole("button", { name: /export json/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/configuration transfer/i)).toBeInTheDocument();
+
+    window.location.hash = "#/runs";
+    window.dispatchEvent(new Event("hashchange"));
+    await screen.findByRole("heading", { name: "Runs", level: 1 });
+    expect(
+      screen.queryByRole("button", { name: /download run metadata/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/desktop run evidence/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Privacy & data$/i }));
+    await user.click(
+      screen.getByRole("button", {
+        name: /preview application data erasure/i,
+      }),
+    );
+    expect(
+      await screen.findByText(/legacy configuration in the same WebView/i),
+    ).toHaveTextContent(/preserved outside this reset scope/i);
+  });
+
+  it("describes Static Pages as session-only and provider-free", async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    const session = createWebPlatformService(undefined, { sessionOnly: true });
+    const service: PlatformService = {
+      ...base,
+      capabilities: session.capabilities,
+      health: session.health,
+      search: session.search,
+    };
+    window.location.hash = "#/dashboard";
+    await renderApp(service);
+
+    expect(screen.getByText(/session-only demo is empty/i)).toBeInTheDocument();
+    expect(screen.getByText(/refreshing the page clears/i)).toBeInTheDocument();
+
+    window.location.hash = "#/competitors";
+    window.dispatchEvent(new Event("hashchange"));
+    await screen.findByRole("heading", {
+      name: "Competitor search",
+      level: 1,
+    });
+    expect(
+      screen.queryByRole("button", { name: /search live prices/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("searchbox", { name: /product name/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/does not expose a live-provider query/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/manual competitor evidence remains available/i),
+    ).toBeInTheDocument();
+
+    window.location.hash = "#/sources";
+    window.dispatchEvent(new Event("hashchange"));
+    await screen.findByRole("heading", { name: "Source registry", level: 1 });
+    expect(
+      screen.getByText(/performs no live provider retrieval/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/bulk evidence-file import is not available/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Privacy & data$/i }));
+    expect(
+      screen.getByText(/Static Pages has no Node server/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot make a provider request/i),
+    ).toBeInTheDocument();
+  });
+
   it("does not expose an unpersisted business rule while a delayed settings save fails", async () => {
     const user = userEvent.setup();
     let finishSave!: (result: PlatformResult<Settings>) => void;

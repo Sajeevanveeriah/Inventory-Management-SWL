@@ -17,6 +17,10 @@ In prose: only minimum product identifiers and variant terms enter a provider qu
 
 ## Canonical offer schema v1
 
+This is a future interoperability contract, not an implemented current-release import surface.
+The current application supports manual evidence and explicit single-result reference attachment;
+it does not expose a CSV, XLSX or JSON competitor-offer importer.
+
 | Field                                                   |              Required | Meaning                                                          |
 | ------------------------------------------------------- | --------------------: | ---------------------------------------------------------------- |
 | `schemaVersion`                                         |                   yes | `1`                                                              |
@@ -29,7 +33,11 @@ In prose: only minimum product identifiers and variant terms enter a provider qu
 | `shippingCents`, `gstStatus`                            | yes, nullable/unknown | Unknown is never silently replaced with zero or inferred GST     |
 | `packQuantity`, `condition`, `availability`, `saleType` |                   yes | Comparison basis                                                 |
 
-CSV and XLSX use the same column names. JSON uses an array of these objects. Existing browser import validation enforces file and row limits before commit and previews mapping; imports should be dry-run first. The stable idempotency key is `sourceId + externalOfferId`, or the SHA-256 content fingerprint when the external ID is absent. Spreadsheet exports must prefix cells beginning with `=`, `+`, `-` or `@` with an apostrophe.
+A future CSV or XLSX importer would use the same column names, while JSON would use an array of
+these objects. It must enforce file and row limits, preview mapping and validate the stable
+idempotency key `sourceId + externalOfferId`, or a SHA-256 content fingerprint when the external ID
+is absent. Any future spreadsheet export must neutralise formula-like cells. None of those bulk
+offer-import behaviours are claimed for this release.
 
 ## Pricing policy
 
@@ -45,7 +53,7 @@ The aggressive benchmark is the lowest non-outlier eligible delivered comparable
 | Provider              | Default                                      | Authentication                      | Use and boundary                                     |
 | --------------------- | -------------------------------------------- | ----------------------------------- | ---------------------------------------------------- |
 | Deterministic fixture | enabled with `SWL_SEARCH_PROVIDER=fixture`   | none                                | Offline CI and adversarial UI states                 |
-| Local CSV/XLSX/JSON   | operator import                              | local file authority                | Effectively unmetered high-volume path               |
+| Local CSV/XLSX/JSON   | not implemented in this release              | future local file authority         | Future reviewed high-volume import path              |
 | SerpAPI Shopping AU   | disabled until key and explicit local budget | key plus three paid-call controls   | Licensed intermediary, finite plan quota             |
 | Serper Shopping AU    | disabled adapter                             | API key                             | Finite starting credits, never unlimited             |
 | eBay Browse AU        | disabled adapter                             | OAuth application credentials       | Official API, `EBAY_AU` marketplace                  |

@@ -14,7 +14,8 @@ Development requires Node 22.22.2, npm, Rust 1.89.0 and the Windows MSVC build p
 
 > Competitor intelligence architecture, pricing evidence policy, provider setup and operations: [docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md](docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md).
 
-A local-first browser application for **Stan Wootton Locksmiths** that compares an untouched
+A local-first application with Windows desktop and browser surfaces for **Stan Wootton
+Locksmiths** that compares an untouched
 supplier price export against the current ServiceM8 Materials & Services export, applies the
 confirmed **30% markup on cost**, and produces a controlled, operator-reviewed candidate import
 file — together with change, exception, rollback and audit reports.
@@ -102,9 +103,11 @@ bundled resources plus the local IPC bridge. The web build uses its own CSP with
    artefact and its checksum matches.
 2. Run the NSIS installer as the current user, then launch **SWL Pricing and Inventory Control**
    from the Start Menu. Do not install Node.js or start the browser-demonstration server.
-3. Before an upgrade, open **Settings > Backup and recovery**, create a verified backup and retain
-   an operator-selected copy outside the computer. Installing the newer current-user package over
-   the existing package preserves the runtime-resolved data directory beneath
+3. Before an upgrade, open **Settings > Backup and recovery** and create a verified local backup.
+   The current UI retains verified backups inside application data; it does not import an arbitrary
+   external backup file. For additional off-computer protection, close the application and copy the
+   entire runtime-resolved data directory to an approved protected medium. Installing the newer
+   current-user package over the existing package preserves that directory beneath
    `%LOCALAPPDATA%\au.com.stanwoottonlocksmiths.swl-pricing` and creates a verified automatic
    pre-migration backup before changing its schema.
 4. If an upgrade launches but must be rolled back, preview and restore the verified pre-upgrade
@@ -112,12 +115,17 @@ bundled resources plus the local IPC bridge. The web build uses its own CSP with
    reinstall the last accepted internal installer. Uninstall never doubles as data erasure.
 5. If the upgraded application cannot reach its recovery screen, stop. Preserve the entire data
    directory and installer evidence unchanged for supervised recovery; do not open the newer
-   database with an older executable or manually replace SQLite/WAL files.
+   database with an older executable or manually replace SQLite/WAL files. Reintroducing a whole
+   off-computer directory copy is a supervised recovery action, not an in-app import in this
+   release.
 
 Application-data erasure is a separate in-app preview plus exact confirmation phrase. It creates a
-verified backup first and is never performed by the uninstaller.
+verified backup first and is never performed by the uninstaller. On desktop it erases the native
+SQLite/configuration store and protected provider credential in the displayed scope; it preserves
+same-WebView legacy IndexedDB configuration as a non-authoritative migration source for later
+previewed reimport.
 
-Competitor evidence supports local manual/imported records and the optional explicit provider path
+Competitor evidence supports local manual records and the optional explicit provider path
 described above. The nested Python prototype remains preserved as legacy reference material until
 documented feature-parity criteria are met.
 
@@ -142,7 +150,9 @@ Configuration is represented by a versioned typed registry in `src/core/configRe
   stable per-user local-data directory. Raw imported rows remain memory-only on both platforms.
 - "Clear session data" wipes in-memory work. "Preview application data erasure…" shows an exact
   scope, creates a verified backup and requires the displayed confirmation phrase before deleting
-  authorised local records; uninstall remains separate and preserves application data.
+  authorised local records; uninstall remains separate and preserves application data. Desktop
+  reset preserves legacy WebView IndexedDB configuration outside the native-store erasure scope so
+  it can be previewed for reimport.
 - Raw records and sensitive values are never written to the browser console.
 
 See [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md).

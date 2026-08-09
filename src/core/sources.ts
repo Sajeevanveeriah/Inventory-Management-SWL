@@ -9,9 +9,10 @@ import {
  *
  * Every source records honestly how it is accessed. Live competitor search is
  * performed through the active platform's licensed shopping-search adapter
- * (rate limited, cached, honest user agent) — never by scraping retailer
- * websites directly.
- * Manual entry and operator-provided file import remain supported paths.
+ * (rate limited, honest user agent; the server-backed web adapter may cache)
+ * — never by scraping retailer websites directly.
+ * Manual entry remains available on every platform. Bulk evidence-file import
+ * is not exposed in this release.
  * Sources that cannot be supported lawfully are disabled in this registry
  * rather than failing silently. See docs/COMPETITOR-EVIDENCE.md.
  */
@@ -36,7 +37,7 @@ export function defaultSources(): CompetitorSource[] {
       name: "Licensed shopping search API (live)",
       accessMethod: "live-api",
       automatedAccessNote:
-        "Performed through the application's licensed provider adapter (Australian region, AUD), rate limited and cached. Retailer websites are never scraped directly.",
+        "Performed through the application's licensed provider adapter (Australian region, AUD) and rate limited. The server-backed web adapter may cache; native search does not claim a cache. Retailer websites are never scraped directly.",
       enabled: true,
     },
     {
@@ -50,9 +51,9 @@ export function defaultSources(): CompetitorSource[] {
     {
       id: "fictionville-security",
       name: "Fictionville Security Supplies (example)",
-      accessMethod: "file-import",
+      accessMethod: "manual-entry",
       automatedAccessNote:
-        "Automated access not permitted: no published product API; site terms disallow scraping.",
+        "Entered manually: no published product API; site terms disallow scraping.",
       enabled: true,
     },
     {
