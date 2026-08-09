@@ -43,6 +43,9 @@ url = "=2.5.8"
 quick-xml = "=0.41.0"
 zip = { version = "=8.2.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+[lints.clippy]
+large_stack_arrays = "deny"
+
 [profile.release]
 codegen-units = 1
 lto = true

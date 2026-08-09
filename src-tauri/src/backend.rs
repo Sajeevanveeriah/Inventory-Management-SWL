@@ -1132,7 +1132,10 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     let file = File::open(path).map_err(|_| "The backup could not be verified.".to_string())?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    // Tauri initialises the database on the Windows GUI thread, whose default
+    // stack reserve is 1 MiB. Keep the bounded streaming buffer on the heap so
+    // creating the first migration backup cannot exhaust that stack.
+    let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
         let read = reader
             .read(&mut buffer)
@@ -5643,7 +5646,7 @@ fn validate_xlsx_container<R: Read + Seek>(reader: R) -> Result<(), String> {
             return Err("The workbook expanded size is outside the supported range.".to_string());
         }
         let mut actual = 0_u64;
-        let mut buffer = [0_u8; 64 * 1024];
+        let mut buffer = vec![0_u8; 64 * 1024];
         loop {
             let read = entry
                 .read(&mut buffer)
@@ -6954,6 +6957,24 @@ mod tests {
         let directory = TestDirectory::new();
         apply_migrations(&directory.database(), &directory.0).expect("apply migrations");
         directory
+    }
+
+    #[test]
+    fn backup_hashing_fits_a_small_windows_startup_stack() {
+        let directory = TestDirectory::new();
+        let path = directory.0.join("synthetic-hash-input.bin");
+        let bytes = b"synthetic bounded backup hash input";
+        fs::write(&path, bytes).expect("write hash input");
+        let expected = sha256_bytes(bytes);
+        let actual = std::thread::Builder::new()
+            .name("swl-small-stack-hash".to_string())
+            .stack_size(256 * 1024)
+            .spawn(move || sha256_file(&path))
+            .expect("spawn small-stack hash thread")
+            .join()
+            .expect("small-stack hash thread")
+            .expect("hash file");
+        assert_eq!(actual, expected);
     }
 
     fn take_reset_preview(state: &AppState) -> PendingReset {

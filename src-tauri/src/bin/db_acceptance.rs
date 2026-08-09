@@ -124,7 +124,9 @@ fn stable_database_path() -> Result<PathBuf, &'static str> {
 fn sha256_file(path: &Path) -> Result<String, &'static str> {
     let mut reader = BufReader::new(File::open(path).map_err(|_| "backup could not be read")?);
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; 1024 * 1024];
+    // This helper is a standalone Windows process and therefore has the same
+    // 1 MiB default main-thread stack constraint as the installed application.
+    let mut buffer = vec![0_u8; 1024 * 1024];
     loop {
         let read = reader
             .read(&mut buffer)
@@ -322,4 +324,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     println!("{}", serde_json::to_string(&evidence)?);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migration_backup_hashing_fits_a_small_process_stack() {
+        let path =
+            std::env::temp_dir().join(format!("swl-acceptance-hash-{}.bin", uuid::Uuid::new_v4()));
+        let bytes = b"synthetic migration backup hash input";
+        fs::write(&path, bytes).expect("write hash input");
+        let expected = format!("{:x}", Sha256::digest(bytes));
+        let thread_path = path.clone();
+        let actual = std::thread::Builder::new()
+            .name("swl-small-stack-acceptance-hash".to_string())
+            .stack_size(256 * 1024)
+            .spawn(move || sha256_file(&thread_path))
+            .expect("spawn small-stack hash thread")
+            .join()
+            .expect("small-stack hash thread")
+            .expect("hash backup");
+        let _ = fs::remove_file(path);
+        assert_eq!(actual, expected);
+    }
 }
