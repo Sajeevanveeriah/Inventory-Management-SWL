@@ -34,6 +34,7 @@ secrets*.json
 /data/
 server/data/
 .e2e-data/
+.e2e-seed-data/
 /exports/
 /imports/
 /output/

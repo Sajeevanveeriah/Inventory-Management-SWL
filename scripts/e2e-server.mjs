@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 /** Start the deterministic production-shape E2E server on every supported OS. */
 import { spawn, spawnSync } from "node:child_process";
+import { cpSync, rmSync } from "node:fs";
 
 const dataDir = ".e2e-data";
+const seedDataDir = ".e2e-seed-data";
+for (const directory of [dataDir, seedDataDir]) {
+  rmSync(directory, { recursive: true, force: true });
+}
 const seed = spawnSync(
   process.execPath,
-  ["server/seed.mjs", "--data-dir", dataDir],
+  ["server/seed.mjs", "--data-dir", seedDataDir],
   {
     stdio: "inherit",
   },
 );
 if (seed.status !== 0) process.exit(seed.status ?? 1);
+cpSync(seedDataDir, dataDir, { recursive: true, errorOnExist: true });
 
 const server = spawn(
   process.execPath,

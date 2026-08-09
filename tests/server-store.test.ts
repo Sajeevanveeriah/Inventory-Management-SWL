@@ -238,6 +238,16 @@ describe("publication guards", () => {
     ]);
 
     expect(published).toHaveLength(2);
+    expect(Object.keys(published[0].item).sort()).toEqual([
+      "costCents",
+      "description",
+      "gstBasis",
+      "id",
+      "itemNumber",
+      "sellPriceCents",
+      "updatedAt",
+    ]);
+    expect(published[0].item).not.toHaveProperty("sku");
     expect(store.listItems().map((item: { id: string }) => item.id)).toEqual([
       "000123",
       "000124",

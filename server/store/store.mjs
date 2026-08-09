@@ -135,7 +135,6 @@ function validateCatalogueItem(item) {
   return {
     id: item.id,
     itemNumber,
-    sku: itemNumber,
     description: item.description,
     costCents: item.costCents,
     sellPriceCents: item.sellPriceCents,
@@ -928,7 +927,7 @@ export function createStore(dataDir) {
           recordedAt: now,
         };
         published.push({
-          item: { ...item, sku: item.itemNumber, updatedAt: now },
+          item: { ...item, updatedAt: now },
           approval,
           priceHistory,
         });

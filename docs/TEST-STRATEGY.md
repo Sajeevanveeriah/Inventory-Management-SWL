@@ -23,7 +23,7 @@ Commands:
 - `npm run e2e:desktop` (Windows, after installing external `tauri-driver` 2.0.6)
 - `npm run check:desktop-boundaries`
 
-Vitest covers money, parsing, mapping, comparison, review, output eligibility, workbook generation, sanitisation, configuration, competitor logic and operational metadata. Playwright covers the production build, accessibility scans and screenshot capture when a real Chromium executable is available.
+Vitest covers money, parsing, mapping, comparison, review, output eligibility, workbook generation, sanitisation, configuration, competitor logic and operational metadata. Playwright covers the production build, accessibility scans and screenshot capture when a real Chromium executable is available. Each browser case restores the same fixed fictional Node-store snapshot before it starts, and the suite uses one worker so append-only approval and history records cannot leak between cases.
 Platform tests separately prove that the static Pages adapter completes synthetic approval/history
 operations without a network call and that a refresh starts a new empty operational session. Node
 origin tests prove the exact Vite proxy origins work while foreign, forged and cross-site requests

@@ -29,11 +29,13 @@
   --shadow: 0 1px 3px rgb(28 35 43 / 0.09), 0 1px 2px rgb(28 35 43 / 0.06);
   --radius: 8px;
   --radius-lg: 10px;
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+  --font:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
 }
 
-[data-theme='dark'] {
+[data-theme="dark"] {
   --canvas: #111820;
   --surface: #18212b;
   --surface-raised: #202b36;
@@ -231,9 +233,9 @@ label {
   font-size: 0.88rem;
 }
 select,
-input[type='text'],
-input[type='search'],
-input[type='number'],
+input[type="text"],
+input[type="search"],
+input[type="number"],
 textarea {
   font: inherit;
   color: var(--ink);
@@ -288,7 +290,7 @@ legend {
   color: var(--primary);
   border-color: var(--primary);
 }
-[data-theme='dark'] .badge-price-changed {
+[data-theme="dark"] .badge-price-changed {
   /* --primary on --info-bg is 4.13:1 in dark; badges need >= 4.5:1. */
   color: #9cc6e9;
   border-color: #9cc6e9;
@@ -435,7 +437,7 @@ th .sort-btn {
 tbody tr:hover {
   background: var(--info-bg);
 }
-tbody tr[aria-selected='true'] {
+tbody tr[aria-selected="true"] {
   background: var(--info-bg);
 }
 td.num,
@@ -463,7 +465,7 @@ th.num {
   align-items: center;
   margin-bottom: 0.75rem;
 }
-.review-toolbar input[type='search'] {
+.review-toolbar input[type="search"] {
   flex: 1;
   min-width: 180px;
 }
@@ -484,7 +486,7 @@ th.num {
   cursor: pointer;
   min-height: 34px;
 }
-.status-tabs button[aria-pressed='true'] {
+.status-tabs button[aria-pressed="true"] {
   background: var(--nav-bg);
   border-color: var(--nav-bg);
   color: var(--nav-ink);
@@ -742,7 +744,7 @@ dialog::backdrop {
   height: 8px;
   border-radius: 50%;
   background: #6fc78f;
-  content: '';
+  content: "";
 }
 .side-nav nav {
   display: grid;
@@ -761,7 +763,7 @@ dialog::backdrop {
   cursor: pointer;
 }
 .side-nav button:hover,
-.side-nav button[aria-current='page'] {
+.side-nav button[aria-current="page"] {
   background: rgb(255 255 255 / 0.12);
   border-color: rgb(255 255 255 / 0.18);
 }
@@ -868,7 +870,7 @@ dialog::backdrop {
   font-size: 0.75rem;
   font-weight: 650;
 }
-.run-stepper button[aria-current='step'] {
+.run-stepper button[aria-current="step"] {
   color: var(--ink);
   border-bottom: 3px solid var(--primary);
   font-weight: 700;
@@ -944,10 +946,12 @@ dialog::backdrop {
     height: 100dvh;
     z-index: 40;
     transform: translateX(-105%);
+    visibility: hidden;
     box-shadow: 8px 0 24px rgb(0 0 0 / 0.22);
   }
   .side-nav.nav-open {
     transform: translateX(0);
+    visibility: visible;
   }
   .nav-scrim {
     position: fixed;
@@ -957,7 +961,7 @@ dialog::backdrop {
     background: rgb(8 15 22 / 0.62);
     cursor: pointer;
   }
-  .nav-close {
+  .side-nav .nav-close {
     display: inline-flex;
   }
   .setting-row {
@@ -1102,7 +1106,9 @@ dialog::backdrop {
   font-size: 0.85rem;
 }
 .hint {
-  color: var(--ink-faint);
+  /* Small hints also appear on tinted status and canvas surfaces. The
+     secondary token keeps those combinations above WCAG AA's 4.5:1 floor. */
+  color: var(--ink-secondary);
   font-size: 0.85rem;
   margin: 0.5rem 0 0;
 }
@@ -1175,7 +1181,7 @@ tbody tr:hover {
   flex: none;
   opacity: 0.85;
 }
-.side-nav button {
+.side-nav button:not(.nav-close) {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -1260,7 +1266,7 @@ tbody tr:hover {
   --chart-series-1: #2a78d6;
   --chart-series-2: #eb6834;
 }
-[data-theme='dark'] {
+[data-theme="dark"] {
   --chart-series-1: #3987e5;
   --chart-series-2: #d95926;
 }

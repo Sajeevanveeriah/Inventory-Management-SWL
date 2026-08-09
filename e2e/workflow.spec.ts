@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixture";
 import ExcelJS from "exceljs";
 import fs from "node:fs";
 import os from "node:os";

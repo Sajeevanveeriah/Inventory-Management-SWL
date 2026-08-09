@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixture";
+import { navigateFromCompactMenu } from "./support/navigation";
 
 /**
  * End-to-end coverage of the operations shell added around the run workflow:
@@ -159,7 +160,7 @@ test("integrations page states the locked external boundaries", async ({
 test("mobile 390px: search page remains usable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loadDemoAndCompare(page);
-  await page.getByRole("button", { name: "Inventory search" }).click();
+  await navigateFromCompactMenu(page, "Inventory search");
   const search = page.getByLabel(
     "Search products by code, item number or description",
   );
