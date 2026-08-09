@@ -121,7 +121,6 @@ jobs:
             throw "Microsoft Edge major $edgeMajor does not match Edge WebDriver major $driverMajor."
           }
           "EDGEWEBDRIVER=$driverPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          [IO.Path]::GetDirectoryName($driverPath) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           [ordered]@{
             browser = [ordered]@{
               fileName = [IO.Path]::GetFileName($edgePath)
@@ -285,6 +284,12 @@ jobs:
       - name: Prove genuine 1.0.0 to 1.1.0 migration, backup and preservation
         shell: pwsh
         run: ./scripts/windows-upgrade-smoke.ps1 -LegacyInstallerPath "$env:SWL_LEGACY_INSTALLER" -CurrentInstallerPath "$env:SWL_INSTALLER" -DatabaseAcceptanceBinaryPath "$env:SWL_DB_ACCEPTANCE_BINARY" -LegacySeedBinaryPath "$env:SWL_LEGACY_SEED_BINARY" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Upgrade-Smoke.json"
+      - name: Prepare exact EdgeDriver for the installed WebView2 runtime
+        shell: pwsh
+        run: |
+          $edgeDriverPath = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'swl-edgedriver/msedgedriver.exe'))
+          ./scripts/prepare-edge-webdriver.ps1 -DriverPath "$edgeDriverPath" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Microsoft-EdgeDriver-Evidence.json"
+          "EDGEWEBDRIVER=$edgeDriverPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Install exact external Tauri WebDriver
         shell: pwsh
         run: |
@@ -394,7 +399,7 @@ jobs:
               $resolvedDrivers[0].Source -ine $env:SWL_TAURI_DRIVER_BINARY) {
             throw 'The desktop test does not resolve exactly the validated project-local tauri-driver executable.'
           }
-          ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR
+          ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR -EdgeDriverPath $env:EDGEWEBDRIVER
       - name: Prove representative nonzero synthetic data before installer lifecycle checks
         shell: pwsh
         run: |

@@ -13,6 +13,10 @@ const workflow = readFileSync(
   join(repositoryRoot, ".github", "workflows", "windows-desktop.yml"),
   "utf8",
 ).replace(/\r\n?/g, "\n");
+const desktopE2eSource = readFileSync(
+  join(repositoryRoot, "scripts", "run-windows-desktop-e2e.ps1"),
+  "utf8",
+).replace(/\r\n?/g, "\n");
 
 describe("Windows upgrade startup diagnostics", () => {
   it("keeps exact readiness while reporting only bounded phase-aware startup evidence", () => {
@@ -220,6 +224,71 @@ describe("Windows upgrade startup diagnostics", () => {
     expect(driveStep).toContain("$resolvedDrivers.Count -ne 1");
     expect(driveStep).toContain(
       "$resolvedDrivers[0].Source -ine $env:SWL_TAURI_DRIVER_BINARY",
+    );
+  });
+});
+
+describe("Windows desktop offline cleanup", () => {
+  it("restores and verifies every task-created firewall resource before reporting fixed cleanup labels", () => {
+    const cleanupStart = desktopE2eSource.lastIndexOf("\nfinally {");
+    const cleanupEnd = desktopE2eSource.indexOf(
+      "\n\nif (!(Test-Path -LiteralPath $monitorEvidencePath",
+      cleanupStart,
+    );
+    expect(cleanupStart).toBeGreaterThan(-1);
+    expect(cleanupEnd).toBeGreaterThan(cleanupStart);
+    const cleanup = desktopE2eSource.slice(cleanupStart, cleanupEnd);
+
+    expect(cleanup).toContain(
+      "Remove-NetFirewallRule -Name $ruleName -ErrorAction Stop",
+    );
+    expect(cleanup).toContain("Get-NetFirewallRule -ErrorAction Stop");
+    expect(cleanup).toContain('$_.Name -like "$rulePrefix*"');
+    expect(cleanup).toContain(
+      "Set-NetFirewallProfile -Name $profile.Name -Enabled $profile.Enabled -ErrorAction Stop",
+    );
+    expect(cleanup).not.toContain("[bool]$profile.Enabled");
+    expect(cleanup).toContain(
+      "@(Get-NetFirewallProfile -Name $profile.Name -ErrorAction Stop)",
+    );
+    expect(cleanup).toContain(
+      "$restoredProfiles[0].Enabled.ToString() -cne $profile.Enabled.ToString()",
+    );
+    expect(cleanup).toContain(
+      "Remove-Item -LiteralPath $stopSentinel -Force -ErrorAction Stop",
+    );
+    expect(cleanup).toContain(
+      "Test-Path -LiteralPath $stopSentinel -ErrorAction Stop",
+    );
+
+    for (const label of [
+      "network-monitor-stop-signal",
+      "network-monitor-cleanup",
+      "firewall-rule-remove",
+      "firewall-rule-verify",
+      "firewall-profile-restore",
+      "firewall-profile-verify",
+      "network-monitor-sentinel-remove",
+      "network-monitor-sentinel-verify",
+    ]) {
+      expect(cleanup).toContain(`$cleanupFailures.Add('${label}')`);
+    }
+    expect(cleanup).toContain(
+      "$cleanupFailureLabels = @($cleanupFailures | Sort-Object -Unique)",
+    );
+    expect(cleanup.match(/\bthrow\b/g)).toHaveLength(1);
+    const cleanupThrow = cleanup.indexOf(
+      "throw \"Offline desktop cleanup failed: $($cleanupFailureLabels -join ', ').\"",
+    );
+    expect(cleanupThrow).toBeGreaterThan(
+      cleanup.lastIndexOf(
+        "Test-Path -LiteralPath $stopSentinel -ErrorAction Stop",
+      ),
+    );
+
+    expect(desktopE2eSource).toContain("$testExitCode = $LASTEXITCODE");
+    expect(desktopE2eSource).toContain(
+      "if ($testExitCode -ne 0) { exit $testExitCode }",
     );
   });
 });
