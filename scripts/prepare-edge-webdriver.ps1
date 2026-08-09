@@ -322,10 +322,10 @@ try {
   }
   $driverMatch = [regex]::Match(
     $driverStandardOutput.Trim(),
-    '^(?:MSEdgeDriver|Microsoft Edge WebDriver) (?<version>\d+(?:\.\d+){3})(?: .*)?$'
+    '^Microsoft Edge WebDriver (?<version>\d+(?:\.\d+){3}) \([0-9a-f]{40}\)$'
   )
   if (!$driverMatch.Success) {
-    throw 'The exact EdgeDriver did not return a supported Microsoft EdgeDriver version format.'
+    throw 'The exact EdgeDriver did not return the supported Microsoft Edge WebDriver version format.'
   }
   $driverVersion = $driverMatch.Groups['version'].Value
   if ($driverVersion -cne $runtimeVersion) {

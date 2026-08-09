@@ -17,6 +17,10 @@ const preparation = readSource("scripts", "prepare-edge-webdriver.ps1");
 const workflow = readSource(".github", "workflows", "windows-desktop.yml");
 const desktopRunner = readSource("scripts", "run-windows-desktop-e2e.ps1");
 const wdio = readSource("wdio.conf.ts");
+const supportedDriverBanner =
+  /^Microsoft Edge WebDriver (?<version>\d+(?:\.\d+){3}) \([0-9a-f]{40}\)$/;
+const supportedDriverBannerSource =
+  "'^Microsoft Edge WebDriver (?<version>\\d+(?:\\.\\d+){3}) \\([0-9a-f]{40}\\)$'";
 
 describe("exact WebView2 EdgeDriver preparation", () => {
   it("downloads only the exact installed signed WebView2 version through a bounded Microsoft route", () => {
@@ -74,12 +78,8 @@ describe("exact WebView2 EdgeDriver preparation", () => {
     expect(preparation).toContain("$driverVersion -cne $runtimeVersion");
     expect(preparation).toContain("$driverProcess.WaitForExit(10000)");
     expect(preparation).toContain("$driverOutputBytes -gt 8192");
-    expect(preparation).toContain(
-      "'^(?:MSEdgeDriver|Microsoft Edge WebDriver) (?<version>\\d+(?:\\.\\d+){3})(?: .*)?$'",
-    );
-    expect(preparation).not.toContain(
-      "'^MSEdgeDriver (?<version>\\d+(?:\\.\\d+){3})(?: .*)?$'",
-    );
+    expect(preparation).toContain(supportedDriverBannerSource);
+    expect(desktopRunner).toContain(supportedDriverBannerSource);
     expect(preparation).toContain(
       "verification = 'exact-installed-webview2-driver'",
     );
@@ -102,6 +102,29 @@ describe("exact WebView2 EdgeDriver preparation", () => {
     expect(preparation).toContain(
       "Exact EdgeDriver preparation failed and its task-created directory could not be removed.",
     );
+  });
+
+  it("accepts only the exact Microsoft product and revision banner", () => {
+    expect(
+      "Microsoft Edge WebDriver 150.0.4078.105 (a88426f15a576daa13d1ba28f3c8b24228186d7f)".match(
+        supportedDriverBanner,
+      )?.groups?.version,
+    ).toBe("150.0.4078.105");
+
+    for (const rejected of [
+      "MSEdgeDriver 150.0.4078.105 (a88426f15a576daa13d1ba28f3c8b24228186d7f)",
+      "ChromeDriver 150.0.4078.105",
+      "microsoft edge webdriver 150.0.4078.105",
+      "Microsoft Edge WebDriver 150.0.4078",
+      "Microsoft Edge WebDriver 150.0.4078.105",
+      "Microsoft Edge WebDriver 150.0.4078.105 (A88426F15A576DAA13D1BA28F3C8B24228186D7F)",
+      "Microsoft Edge WebDriver 150.0.4078.105 (a88426f15a576daa13d1ba28f3c8b24228186d7)",
+      "Microsoft Edge WebDriver 150.0.4078.105 (not-a-revision)",
+      "Microsoft Edge WebDriver 150.0.4078.105 (a88426f15a576daa13d1ba28f3c8b24228186d7f)\nextra",
+      "prefix Microsoft Edge WebDriver 150.0.4078.105",
+    ]) {
+      expect(supportedDriverBanner.test(rejected)).toBe(false);
+    }
   });
 });
 
