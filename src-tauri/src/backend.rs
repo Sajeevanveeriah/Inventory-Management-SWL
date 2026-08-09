@@ -607,7 +607,7 @@ struct OutputGrant {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DirectoryIdentity {
     #[cfg(windows)]
-    Windows { volume: u32, file_index: u64 },
+    Windows { volume: u64, file_id: [u8; 16] },
     #[cfg(unix)]
     Unix { device: u64, inode: u64 },
 }
@@ -5239,22 +5239,63 @@ fn validate_output_directory(path: &Path) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
+#[cfg(windows)]
+fn directory_identity_from_lease(lease: &DirectoryLease) -> Result<DirectoryIdentity, String> {
+    #[repr(C)]
+    struct FileIdInfo {
+        volume_serial_number: u64,
+        file_id: [u8; 16],
+    }
+
+    #[link(name = "Kernel32")]
+    extern "system" {
+        #[link_name = "GetFileInformationByHandleEx"]
+        fn get_file_information_by_handle_ex(
+            handle: *mut std::ffi::c_void,
+            information_class: i32,
+            information: *mut std::ffi::c_void,
+            information_size: u32,
+        ) -> i32;
+    }
+
+    // FILE_INFO_BY_HANDLE_CLASS::FileIdInfo. This class is supported by the
+    // Windows 10/11 target and returns the full 128-bit identifier required
+    // for NTFS and ReFS-safe handle identity comparisons.
+    const FILE_ID_INFO_CLASS: i32 = 18;
+    let mut information = std::mem::MaybeUninit::<FileIdInfo>::zeroed();
+    // SAFETY: the lease owns a valid directory handle for this call and the
+    // output points to correctly sized, writable FILE_ID_INFO storage. The
+    // result is checked before the structure is read.
+    let succeeded = unsafe {
+        get_file_information_by_handle_ex(
+            lease.handle as *mut std::ffi::c_void,
+            FILE_ID_INFO_CLASS,
+            information.as_mut_ptr().cast(),
+            std::mem::size_of::<FileIdInfo>() as u32,
+        )
+    };
+    if succeeded == 0 {
+        return Err("The selected output folder identity could not be read.".to_string());
+    }
+    // SAFETY: GetFileInformationByHandleEx returned success and initialised the
+    // complete fixed-size output structure.
+    let information = unsafe { information.assume_init() };
+    Ok(DirectoryIdentity::Windows {
+        volume: information.volume_serial_number,
+        file_id: information.file_id,
+    })
+}
+
 fn directory_identity(path: &Path) -> Result<DirectoryIdentity, String> {
-    let metadata = fs::metadata(path)
-        .map_err(|_| "The selected output folder identity could not be read.".to_string())?;
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
-        let volume = metadata
-            .volume_serial_number()
-            .ok_or_else(|| "The selected output volume identity is unavailable.".to_string())?;
-        let file_index = metadata
-            .file_index()
-            .ok_or_else(|| "The selected output folder identity is unavailable.".to_string())?;
-        Ok(DirectoryIdentity::Windows { volume, file_index })
+        let lease = open_directory_lease(path)?;
+        directory_identity_from_lease(&lease)
     }
     #[cfg(unix)]
     {
+        let metadata = fs::metadata(path)
+            .map_err(|_| "The selected output folder identity could not be read.".to_string())?;
         use std::os::unix::fs::MetadataExt;
         Ok(DirectoryIdentity::Unix {
             device: metadata.dev(),
@@ -5319,8 +5360,11 @@ fn open_directory_lease(_path: &Path) -> Result<DirectoryLease, String> {
 impl OutputGrant {
     fn new(directory: PathBuf) -> Result<Self, String> {
         let directory = validate_output_directory(&directory)?;
-        let identity = directory_identity(&directory)?;
         let lease = Arc::new(open_directory_lease(&directory)?);
+        #[cfg(windows)]
+        let identity = directory_identity_from_lease(lease.as_ref())?;
+        #[cfg(not(windows))]
+        let identity = directory_identity(&directory)?;
         if directory_identity(&directory)? != identity {
             return Err("The selected output folder changed while it was bound.".to_string());
         }
