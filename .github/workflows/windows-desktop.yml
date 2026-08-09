@@ -175,13 +175,13 @@ jobs:
         run: |
           $legacy = Join-Path $env:GITHUB_WORKSPACE '.ci-upgrade/legacy-1.0.0'
           $package = Get-Content -LiteralPath (Join-Path $legacy 'package.json') -Raw | ConvertFrom-Json
-          $lock = Get-Content -LiteralPath (Join-Path $legacy 'package-lock.json') -Raw | ConvertFrom-Json
+          $lock = Get-Content -LiteralPath (Join-Path $legacy 'package-lock.json') -Raw | ConvertFrom-Json -AsHashtable
           $cargo = Get-Content -LiteralPath (Join-Path $legacy 'src-tauri/Cargo.toml') -Raw
           $tauri = Get-Content -LiteralPath (Join-Path $legacy 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
           $audit = Get-Content -LiteralPath (Join-Path $legacy 'src/core/audit.ts') -Raw
           $cargoVersion = [regex]::Match($cargo, '(?ms)^\[package\].*?^version\s*=\s*"([^"]+)"').Groups[1].Value
           $auditVersion = [regex]::Match($audit, 'APP_VERSION\s*=\s*[''\"]([^''\"]+)[''\"]').Groups[1].Value
-          $lockVersion = $lock.packages.PSObject.Properties[''].Value.version
+          $lockVersion = $lock['packages']['']['version']
           $legacyVersions = @($package.version, $lockVersion, $cargoVersion, $tauri.version, $auditVersion)
           if ($legacyVersions.Count -ne 5 -or @($legacyVersions | Where-Object { $_ -ne '1.0.0' }).Count -ne 0) {
             throw 'The immutable former source does not have coherent version 1.0.0 metadata.'
