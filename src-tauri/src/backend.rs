@@ -19,6 +19,7 @@ use uuid::Uuid;
 use zip::{CompressionMethod, ZipArchive};
 
 const APPLICATION_ID: &str = "swl-pricing-inventory-control";
+const APPLICATION_READY_TITLE: &str = "SWL Pricing and Inventory Control";
 const DATABASE_FILENAME: &str = "swl-pricing.sqlite3";
 const BACKUP_DIRECTORY: &str = "backups";
 const CURRENT_SCHEMA_VERSION: i64 = 3;
@@ -6824,6 +6825,15 @@ pub fn run() {
             cleanup_stale_export_temps(&data_dir).map_err(io::Error::other)?;
             apply_migrations(&database_path, &data_dir).map_err(io::Error::other)?;
             app.manage(AppState::new(data_dir, platform_credential_store()));
+            // The configured title deliberately remains non-final until the
+            // database and command state are ready. Native acceptance can then
+            // observe readiness without opening SQLite during a migration.
+            let main_window = app
+                .get_webview_window("main")
+                .ok_or_else(|| io::Error::other("The main application window is unavailable."))?;
+            main_window
+                .set_title(APPLICATION_READY_TITLE)
+                .map_err(io::Error::other)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -9358,6 +9368,19 @@ mod tests {
         assert!(!backend.contains(concat!("Command", "::new")));
         assert!(config.contains("default-src 'none'"));
         assert!(config.contains("connect-src ipc: http://ipc.localhost"));
+        assert!(config.contains("\"title\": \"SWL Pricing Initialising\""));
+        let title_signal = concat!(".set_", "title(APPLICATION_READY_TITLE)");
+        assert!(backend.contains(title_signal));
+        let migration_ready = backend
+            .find("apply_migrations(&database_path, &data_dir)")
+            .expect("native migration setup");
+        let state_ready = backend
+            .find("app.manage(AppState::new(data_dir, platform_credential_store()))")
+            .expect("native state setup");
+        let title_ready = backend
+            .find(title_signal)
+            .expect("native title readiness signal");
+        assert!(migration_ready < state_ready && state_ready < title_ready);
         assert!(!config.contains("unsafe-eval"));
         assert!(!config.contains("connect-src *"));
         for command in [

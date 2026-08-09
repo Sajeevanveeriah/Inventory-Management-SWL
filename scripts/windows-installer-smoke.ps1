@@ -282,13 +282,16 @@ for ($sample = 0; $sample -lt $sampleCount; $sample += 1) {
   }
 
   $nativeProcess = Get-Process -Id $rootProcessId -ErrorAction SilentlyContinue
-  if ($nativeProcess -and $nativeProcess.MainWindowHandle -ne 0) {
+  if (!$nativeProcess) {
+    throw 'The installed application exited during launch sampling.'
+  }
+  if ($nativeProcess.MainWindowHandle -ne 0) {
     $windowTitle = $nativeProcess.MainWindowTitle
   }
   Start-Sleep -Milliseconds $sampleIntervalMilliseconds
 }
 
-if (!$windowTitle -or $windowTitle -notmatch 'SWL Pricing and Inventory Control') {
+if ($windowTitle -cne $productName) {
   throw 'The installed process did not expose the expected native application window.'
 }
 if ($forbiddenProcesses.Count -ne 0) {
@@ -496,12 +499,15 @@ for ($sample = 0; $sample -lt $sampleCount; $sample += 1) {
     }
   }
   $nativeProcess = Get-Process -Id $reopenedRootId -ErrorAction SilentlyContinue
-  if ($nativeProcess -and $nativeProcess.MainWindowHandle -ne 0) {
+  if (!$nativeProcess) {
+    throw 'The reinstalled application exited during launch sampling.'
+  }
+  if ($nativeProcess.MainWindowHandle -ne 0) {
     $reopenedWindowTitle = $nativeProcess.MainWindowTitle
   }
   Start-Sleep -Milliseconds $sampleIntervalMilliseconds
 }
-if (!$reopenedWindowTitle -or $reopenedWindowTitle -notmatch 'SWL Pricing and Inventory Control') {
+if ($reopenedWindowTitle -cne $productName) {
   throw 'The reinstalled process did not expose the expected native application window.'
 }
 if ($reopenedForbiddenProcesses.Count -ne 0 -or $reopenedExternalBrowsers.Count -ne 0 -or

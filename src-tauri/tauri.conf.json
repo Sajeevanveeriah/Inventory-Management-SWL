@@ -13,7 +13,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
-        "title": "SWL Pricing and Inventory Control",
+        "title": "SWL Pricing Initialising",
         "width": 1280,
         "height": 800,
         "minWidth": 390,

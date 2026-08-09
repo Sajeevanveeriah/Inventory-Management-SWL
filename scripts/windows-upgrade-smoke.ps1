@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $applicationIdentifier = 'au.com.stanwoottonlocksmiths.swl-pricing'
+$productName = 'SWL Pricing and Inventory Control'
 $legacyVersion = '1.0.0'
 $currentVersion = '1.1.0'
 $legacyInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $LegacyInstallerPath).Path
@@ -76,7 +77,7 @@ function Stop-ExactProcessTree {
 }
 
 function Start-ApplicationAndWaitForWindow {
-  param([IO.FileInfo]$Application)
+  param([IO.FileInfo]$Application, [string]$ExpectedWindowTitle)
   $process = Start-Process -FilePath $Application.FullName -PassThru
   $deadline = (Get-Date).AddSeconds(30)
   $windowTitle = $null
@@ -89,8 +90,8 @@ function Start-ApplicationAndWaitForWindow {
     if ($nativeProcess -and $nativeProcess.MainWindowHandle -ne 0) {
       $windowTitle = $nativeProcess.MainWindowTitle
     }
-  } while (!$windowTitle -and (Get-Date) -lt $deadline)
-  if (!$windowTitle -or $windowTitle -notmatch 'SWL Pricing and Inventory Control') {
+  } while ($windowTitle -cne $ExpectedWindowTitle -and (Get-Date) -lt $deadline)
+  if ($windowTitle -cne $ExpectedWindowTitle) {
     Stop-ExactProcessTree -RootProcessId $process.Id
     throw 'The installed upgrade-test application did not expose the expected native window.'
   }
@@ -281,7 +282,7 @@ if ($legacyApplication.VersionInfo.ProductVersion -notmatch '^1\.0\.0(?:\.0)?$')
 }
 $legacyApplicationSha256 = (Get-FileHash -LiteralPath $legacyApplication.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 $databasePath = Join-Path $dataRoot 'swl-pricing.sqlite3'
-$legacyLaunch = Start-ApplicationAndWaitForWindow -Application $legacyApplication
+$legacyLaunch = Start-ApplicationAndWaitForWindow -Application $legacyApplication -ExpectedWindowTitle $productName
 $legacyWindowTitle = $legacyLaunch.WindowTitle
 try {
   [void](Wait-ForAcceptanceEvidence `
@@ -312,7 +313,7 @@ $currentApplication = Get-ApplicationExecutable -InstallRoot $installRoot
 if ($currentApplication.VersionInfo.ProductVersion -notmatch '^1\.1\.0(?:\.0)?$') {
   throw 'The upgraded application does not identify as version 1.1.0.'
 }
-$currentLaunch = Start-ApplicationAndWaitForWindow -Application $currentApplication
+$currentLaunch = Start-ApplicationAndWaitForWindow -Application $currentApplication -ExpectedWindowTitle $productName
 $currentWindowTitle = $currentLaunch.WindowTitle
 try {
   $migrated = Wait-ForAcceptanceEvidence `
