@@ -5,7 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { createFixtureProvider } from './search/fixtureProvider.mjs';
 import { createSerpApiProvider } from './search/serpapiProvider.mjs';
 import { createSearchService } from './search/service.mjs';
-import { createStore, FloorViolationError, MissingApprovalError } from './store/store.mjs';
+import { optionalProviderRegistry, publicProviderStatus } from './search/providerRegistry.mjs';
+import {
+  createStore,
+  FloorViolationError,
+  MissingApprovalError,
+  MissingCatalogueItemError,
+} from './store/store.mjs';
 
 /**
  * The small server component. The browser calls this origin only; this server
@@ -71,6 +77,9 @@ async function handleApi(req, res, url) {
       fixtureMode: useFixture,
     });
   }
+  if (route === 'GET /api/providers') {
+    return sendJson(res, 200, [provider, ...optionalProviderRegistry()].map(publicProviderStatus));
+  }
   if (route === 'GET /api/competitor-search') {
     const outcome = await searchService.search(url.searchParams.get('q') ?? '');
     return sendJson(res, 200, outcome);
@@ -111,7 +120,14 @@ async function handleApi(req, res, url) {
     if (!body.itemId || !body.observation) {
       return sendJson(res, 422, { error: 'itemId and observation are required' });
     }
-    return sendJson(res, 201, store.appendReference(body));
+    try {
+      return sendJson(res, 201, store.appendReference(body));
+    } catch (error) {
+      if (error instanceof MissingCatalogueItemError) {
+        return sendJson(res, 422, { error: error.message });
+      }
+      throw error;
+    }
   }
   if (route === 'GET /api/sources') return sendJson(res, 200, store.getSources());
   if (req.method === 'PUT' && url.pathname === '/api/sources') {

@@ -50,6 +50,22 @@ export function createSerpApiProvider(env = process.env, fetchImpl = fetch) {
   return {
     name: 'serpapi-google-shopping-au',
     configured: apiKey !== '',
+    capabilities: {
+      id: 'serpapi-google-shopping-au',
+      displayName: 'SerpAPI Google Shopping AU',
+      mode: 'structured-offers',
+      authentication: 'API key',
+      configured: apiKey !== '',
+      quota: { kind: 'provider-plan' },
+      limits: { concurrency: 1, requestsPerMinute: 10 },
+      cache: { ttlSeconds: 900, persistent: false },
+      health: apiKey === '' ? 'not-configured' : 'unknown',
+      lastSuccess: null,
+      lastErrorCategory: null,
+      dataRights:
+        'Licensed intermediary terms and source-site rights remain the operator responsibility.',
+      supportedIdentityFields: ['gtin', 'mpn', 'brand', 'model', 'title'],
+    },
     async search(providerQuery, { signal } = {}) {
       if (apiKey === '') throw new ProviderRequestError('SERPAPI_KEY is not configured');
       const params = new URLSearchParams({

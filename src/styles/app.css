@@ -1489,3 +1489,172 @@ tbody tr:hover {
     transform: none;
   }
 }
+/* Competitor intelligence workspace: dense evidence, quiet hierarchy. */
+.ci-workspace {
+  display: grid;
+  gap: 1rem;
+}
+.ci-heading,
+.ci-panel-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ci-heading h2,
+.ci-panel-title h3 {
+  margin: 0.2rem 0 0;
+}
+.eyebrow {
+  color: var(--text-muted, #52606d);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ci-actions,
+.ci-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.ci-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.ci-status-grid > div,
+.ci-panel {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d9e0e7);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+.ci-status-grid strong,
+.ci-status-grid span {
+  display: block;
+}
+.ci-status-grid strong {
+  font-size: 1.35rem;
+}
+.ci-status-grid span {
+  color: var(--text-muted, #52606d);
+  margin-top: 0.15rem;
+}
+.ci-plan {
+  background: #eef6ff;
+  border-left: 4px solid #2169a8;
+  color: #17324d;
+  padding: 0.75rem 1rem;
+}
+.ci-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) minmax(16rem, 1fr);
+  gap: 1rem;
+}
+.price-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.price-strip div {
+  border-left: 3px solid #7697b5;
+  padding-left: 0.65rem;
+}
+.price-strip span,
+.price-strip strong {
+  display: block;
+}
+.price-strip span {
+  color: var(--text-muted, #52606d);
+  font-size: 0.78rem;
+}
+.price-strip strong {
+  font-size: 1.1rem;
+  margin-top: 0.15rem;
+}
+.price-position {
+  margin: 0.75rem 0 1rem;
+}
+.price-position svg {
+  background: var(--surface-subtle, #f7f9fb);
+  border-radius: 0.5rem;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.price-position text {
+  fill: currentColor;
+  font-size: 12px;
+}
+.price-position figcaption {
+  color: var(--text-muted, #52606d);
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+}
+.axis,
+.tick {
+  stroke: #7b8794;
+  stroke-width: 2;
+}
+.marker {
+  stroke-width: 3;
+}
+.floor {
+  stroke: #b54708;
+}
+.suggested {
+  stroke: #087443;
+}
+.current {
+  stroke: #255ea8;
+}
+.offer-dot {
+  fill: #673ab7;
+  stroke: white;
+  stroke-width: 2;
+}
+.ci-review label {
+  display: grid;
+  gap: 0.35rem;
+  margin: 1rem 0;
+}
+.ci-review-actions {
+  margin-bottom: 0.75rem;
+}
+.data-table.compact td,
+.data-table.compact th {
+  padding: 0.55rem;
+}
+@media (max-width: 800px) {
+  .ci-heading,
+  .ci-panel-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .ci-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ci-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .price-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .price-position {
+    overflow-x: auto;
+  }
+  .price-position svg {
+    min-width: 620px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ci-workspace *,
+  .ci-workspace *::before,
+  .ci-workspace *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

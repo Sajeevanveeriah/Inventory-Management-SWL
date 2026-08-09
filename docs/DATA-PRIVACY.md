@@ -1,5 +1,9 @@
 # Data privacy
 
+## Catalogue-wide competitor queries
+
+Only the minimum product identifiers (preferably GTIN or manufacturer MPN), brand, exact model and necessary variant terms may leave the machine through a configured provider. Supplier cost, current sell price, private notes, customer data and complete imported rows must not be included in provider queries. Provider retrieval is finite and authorised evidence collection, not exhaustive web coverage. The server remains loopback-only by default; its unauthenticated mutation routes must not be exposed remotely.
+
 > **Invariant change (authorised by the repository owner, August 2026).** The previous
 > "no network, local-first" invariant is retired. The application now includes a small bundled
 > Node server (`server/`) that performs live competitor searches through a licensed search

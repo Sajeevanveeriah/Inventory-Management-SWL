@@ -146,6 +146,21 @@ export function createFixtureProvider(options = {}) {
   return {
     name: 'fixture',
     configured: true,
+    capabilities: {
+      id: 'fixture',
+      displayName: 'Deterministic fixture',
+      mode: 'structured-offers',
+      authentication: 'none',
+      configured: true,
+      quota: { kind: 'unmetered-local' },
+      limits: { concurrency: 3, requestsPerMinute: 600 },
+      cache: { ttlSeconds: 900, persistent: false },
+      health: 'healthy',
+      lastSuccess: null,
+      lastErrorCategory: null,
+      dataRights: 'Synthetic offline evidence only.',
+      supportedIdentityFields: ['gtin', 'mpn', 'brand', 'model', 'title'],
+    },
     async search(providerQuery, { signal } = {}) {
       const q = providerQuery.toLowerCase();
       if (q.includes('fixture-timeout')) throw new ProviderTimeoutError();
