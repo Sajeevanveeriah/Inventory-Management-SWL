@@ -5223,6 +5223,39 @@ fn reject_link_components(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(windows)]
+fn has_trusted_windows_disk_prefix(path: &Path) -> bool {
+    use std::path::Prefix;
+    matches!(
+        path.components().next(),
+        Some(Component::Prefix(prefix))
+            if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+    )
+}
+
+fn revalidate_trusted_output_directory(path: &Path) -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    if !has_trusted_windows_disk_prefix(path) {
+        return Err("UNC, device and verbatim output paths are not permitted.".to_string());
+    }
+    #[cfg(not(windows))]
+    reject_windows_device_path(path)?;
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("The selected output folder is invalid.".to_string());
+    }
+    reject_link_components(path)?;
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| "The selected output folder could not be verified.".to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() || is_reparse_point(&metadata) {
+        return Err("The selected output path is not a safe folder.".to_string());
+    }
+    Ok(path.to_path_buf())
+}
+
 fn validate_output_directory(path: &Path) -> Result<PathBuf, String> {
     reject_windows_device_path(path)?;
     if !path.is_absolute()
@@ -5235,12 +5268,10 @@ fn validate_output_directory(path: &Path) -> Result<PathBuf, String> {
     reject_link_components(path)?;
     let canonical = fs::canonicalize(path)
         .map_err(|_| "The selected output folder could not be resolved.".to_string())?;
-    let metadata = fs::symlink_metadata(&canonical)
-        .map_err(|_| "The selected output folder could not be verified.".to_string())?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() || is_reparse_point(&metadata) {
-        return Err("The selected output path is not a safe folder.".to_string());
-    }
-    Ok(canonical)
+    // Rust canonicalises an ordinary Windows drive path to a trusted
+    // VerbatimDisk representation. Keep the untrusted boundary above strict,
+    // then revalidate only that private canonical result for later grants.
+    revalidate_trusted_output_directory(&canonical)
 }
 
 #[cfg(windows)]
@@ -5385,7 +5416,7 @@ fn validate_output_grant(grant: &OutputGrant) -> Result<PathBuf, String> {
     if grant.created_at.elapsed() > TOKEN_TTL {
         return Err("The destination grant has expired.".to_string());
     }
-    let directory = validate_output_directory(&grant.directory)?;
+    let directory = revalidate_trusted_output_directory(&grant.directory)?;
     if directory_identity(&directory)? != grant.identity {
         return Err("The selected output folder changed after approval.".to_string());
     }
@@ -5404,7 +5435,7 @@ fn is_task_export_temporary_name(name: &str) -> bool {
 }
 
 fn cleanup_stale_export_temps(directory: &Path) -> Result<usize, String> {
-    let directory = validate_output_directory(directory)?;
+    let directory = revalidate_trusted_output_directory(directory)?;
     let mut removed = 0;
     let mut inspected = 0;
     let entries = fs::read_dir(&directory)
@@ -5990,7 +6021,8 @@ async fn choose_output_destination(
     let path = folder
         .into_path()
         .map_err(|_| "The selected output folder could not be resolved.".to_string())?;
-    let canonical = validate_output_directory(&path)?;
+    let grant = OutputGrant::new(path)?;
+    let canonical = grant.directory.clone();
     cleanup_stale_export_temps(&canonical)?;
     let display_name = canonical
         .file_name()
@@ -6005,7 +6037,7 @@ async fn choose_output_destination(
         |grant| grant.created_at,
         "native output grants",
     )?;
-    output_grants.insert(grant_id.clone(), OutputGrant::new(canonical)?);
+    output_grants.insert(grant_id.clone(), grant);
     Ok(Some(DestinationGrant {
         grant_id,
         display_name,
@@ -8881,7 +8913,20 @@ mod tests {
     #[test]
     fn destination_validation_rejects_symlinks() {
         let directory = TestDirectory::new();
-        assert!(validate_output_directory(&directory.0).is_ok());
+        let canonical = validate_output_directory(&directory.0).unwrap();
+        assert!(revalidate_trusted_output_directory(&canonical).is_ok());
+        #[cfg(windows)]
+        {
+            use std::path::Prefix;
+            assert!(matches!(
+                canonical.components().next(),
+                Some(Component::Prefix(prefix))
+                    if matches!(prefix.kind(), Prefix::VerbatimDisk(_))
+            ));
+            assert!(validate_output_directory(&canonical).is_err());
+            let grant = OutputGrant::new(directory.0.clone()).unwrap();
+            assert_eq!(validate_output_grant(&grant).unwrap(), canonical);
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::symlink;
@@ -8907,7 +8952,7 @@ mod tests {
             Err(_) => {
                 // On Windows the directory handle intentionally omits
                 // FILE_SHARE_DELETE, so rename/substitution is prevented.
-                assert_eq!(validate_output_grant(&grant).unwrap(), selected);
+                assert_eq!(validate_output_grant(&grant).unwrap(), grant.directory);
             }
         }
     }
@@ -9039,6 +9084,20 @@ mod tests {
                 reject_windows_device_path(Path::new(path)).is_err(),
                 "{path}"
             );
+        }
+        #[cfg(windows)]
+        {
+            assert!(has_trusted_windows_disk_prefix(Path::new(r"C:\exports")));
+            assert!(has_trusted_windows_disk_prefix(Path::new(
+                r"\\?\C:\exports"
+            )));
+            for path in [
+                r"\\server\share\exports",
+                r"\\?\UNC\server\share\exports",
+                r"\\.\GLOBALROOT\Device\HarddiskVolumeShadowCopy1",
+            ] {
+                assert!(!has_trusted_windows_disk_prefix(Path::new(path)), "{path}");
+            }
         }
     }
 
