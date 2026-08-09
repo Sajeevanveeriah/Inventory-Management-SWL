@@ -54,7 +54,7 @@ const PATTERNS = [
   },
 ];
 const PLACEHOLDER =
-  /(?:example|fixture|placeholder|redacted|dummy|change[_ -]?me|not[_ -]?a[_ -]?real)/i;
+  /(?:example|fixture|placeholder|redacted|dummy|change[_ -]?me|not[_ -]?a[_ -]?real|replace[_ -]?with)/i;
 const scopeArgument = process.argv.find((argument) =>
   argument.startsWith("--scope="),
 );
