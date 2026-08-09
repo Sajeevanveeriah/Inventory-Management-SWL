@@ -8,7 +8,7 @@ const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const source = readFileSync(
   join(repositoryRoot, "scripts", "windows-upgrade-smoke.ps1"),
   "utf8",
-);
+).replace(/\r\n?/g, "\n");
 
 describe("Windows upgrade startup diagnostics", () => {
   it("keeps exact readiness while reporting only bounded phase-aware startup evidence", () => {
