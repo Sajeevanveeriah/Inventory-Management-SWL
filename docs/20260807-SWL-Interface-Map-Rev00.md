@@ -39,13 +39,23 @@ flowchart LR
   Approvals --> Checks
   Checks --> Exports
 
-  Competitors -->|same-origin /api| Node[Node ESM server]
+  Competitors --> Adapter{Platform adapter}
+  Adapter -->|Web demo| Node[Node ESM server]
+  Adapter -->|Desktop| Rust[Scoped Tauri commands]
   Node -->|licensed provider| Provider[Shopping search provider]
+  Rust -->|allowlisted HTTPS| Provider
   Competitors --> Manual[Manual reference fallback]
   Competitors --> Sources
 ```
 
-Text equivalent: the persistent desktop rail or mobile menu exposes five route groups containing all 16 surfaces. The global product search opens Inventory search. New run contains the seven ordered stages Start, Add files, Map columns, Validate and compare, Review, Pre-export checks and Export. Review feeds the Exceptions and Approvals workspaces; approved eligible rows proceed through pre-export checks to the five candidate outputs. Competitor search calls only the same-origin Node ESM server, which accesses the licensed provider server-side, and also provides manual reference fallback and source-registry access.
+Text equivalent: the persistent desktop rail or mobile menu exposes five route groups containing
+all 16 surfaces. The global product search opens Inventory search. New run contains the seven
+ordered stages Start, Add files, Map columns, Validate and compare, Review, Pre-export checks and
+Export. Review feeds the Exceptions and Approvals workspaces; approved eligible rows proceed
+through pre-export checks to the five candidate outputs. Competitor search uses the typed platform
+adapter: the web demonstration calls its same-origin Node service, while the desktop calls scoped
+Rust commands and only the Rust backend may reach the allowlisted provider. Manual reference
+fallback and source-registry access remain available.
 
 ## Validation matrix
 
@@ -55,6 +65,6 @@ Text equivalent: the persistent desktop rail or mobile menu exposes five route g
 | Routes              |                                                                 16 | Hash route table and grouped navigation in `src/App.tsx` |
 | Run workflow        |                                                           7 stages | `STEP_ORDER`, `STEP_TITLES` and `src/ui/steps/`          |
 | Operational review  |                          Review, exceptions, approvals and exports | Route pages and run steps under `src/ui/`                |
-| Competitor boundary |                  Browser to own-origin server to licensed provider | `src/core/liveSearch.ts` and `server/`                   |
+| Competitor boundary |        Web to own-origin Node; desktop to scoped Rust provider IPC | `src/platform/`, `server/`, `src-tauri/src/backend.rs`   |
 
 The map was reconciled with the live route table and workflow step order. It deliberately shows competitor evidence as an input to review rather than to pricing calculation or export mutation.

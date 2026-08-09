@@ -1,0 +1,76 @@
+[[permission]]
+identifier = "allow-swl-read"
+description = "Read the local SWL operational store and non-secret provider state."
+commands.allow = [
+  "desktop_health",
+  "list_catalogue_items",
+  "list_approvals",
+  "list_price_history",
+  "list_competitor_references",
+  "list_sources",
+  "list_mapping_profiles",
+  "list_aliases",
+  "load_settings",
+  "configuration_migration_status",
+  "export_configuration",
+  "list_backups",
+  "provider_status",
+]
+
+[[permission]]
+identifier = "allow-swl-write"
+description = "Write validated SWL operational records without arbitrary SQL or filesystem access."
+commands.allow = [
+  "publish_approved_changes",
+  "attach_competitor_reference",
+  "replace_sources",
+  "save_mapping_profile",
+  "delete_mapping_profile",
+  "save_alias",
+  "delete_alias",
+  "save_settings",
+]
+
+[[permission]]
+identifier = "allow-swl-recovery"
+description = "Preview and apply verified configuration migration, backup, restore and reset operations."
+commands.allow = [
+  "preview_configuration_import",
+  "apply_configuration_import",
+  "create_backup",
+  "preview_restore",
+  "restore_backup",
+  "preview_reset",
+  "reset_application_data",
+]
+
+[[permission]]
+identifier = "allow-swl-search"
+description = "Use explicit provider search, protected credential lifecycle and verified source links."
+commands.allow = [
+  "set_provider_paid_calls",
+  "search_competitors",
+  "configure_provider_credential",
+  "validate_provider_credential",
+  "replace_provider_credential",
+  "remove_provider_credential",
+  "open_verified_source",
+]
+
+[[permission]]
+identifier = "allow-swl-files"
+description = "Create exports only through native destination grants and bounded write sessions."
+commands.allow = [
+  "choose_input_file",
+  "read_input_chunk",
+  "release_input_grant",
+  "choose_output_destination",
+  "export_configuration_to_folder",
+  "reserve_export_batch",
+  "begin_export_file",
+  "append_export_chunk",
+  "commit_export_file",
+  "abort_export_file",
+  "commit_export_batch",
+  "abort_export_batch",
+]

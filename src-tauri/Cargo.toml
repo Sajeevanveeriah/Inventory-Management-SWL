@@ -1,14 +1,29 @@
 [package]
 name = "swl-pricing-desktop"
-version = "1.0.0"
+version = "1.1.0"
 description = "SWL Pricing and Inventory Control - Windows desktop shell"
 authors = ["Stan Wootton Locksmiths"]
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.89"
+default-run = "swl-pricing-desktop"
 
 [lib]
 name = "swl_pricing_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = []
+acceptance-tools = []
+
+[[bin]]
+name = "swl-db-acceptance"
+path = "src/bin/db_acceptance.rs"
+required-features = ["acceptance-tools"]
+
+[[bin]]
+name = "swl-legacy-seed"
+path = "src/bin/legacy_seed.rs"
+required-features = ["acceptance-tools"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
@@ -16,10 +31,17 @@ tauri-build = { version = "=2.6.3", features = [] }
 [dependencies]
 tauri = { version = "=2.11.5", features = [] }
 tauri-plugin-dialog = "=2.7.2"
+tauri-plugin-single-instance = "=2.3.7"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
-rusqlite = { version = "=0.37.0", features = ["bundled"] }
-uuid = { version = "=1.18.1", features = ["v4", "serde"] }
+rusqlite = { version = "=0.37.0", features = ["backup", "bundled"] }
+uuid = { version = "=1.24.0", features = ["v4", "serde"] }
+base64 = "=0.22.1"
+reqwest = { version = "=0.13.4", default-features = false, features = ["json", "query", "rustls", "stream"] }
+sha2 = "=0.10.9"
+url = "=2.5.8"
+quick-xml = "=0.41.0"
+zip = { version = "=8.2.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [profile.release]
 codegen-units = 1

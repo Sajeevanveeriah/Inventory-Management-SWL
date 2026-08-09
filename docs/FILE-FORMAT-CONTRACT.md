@@ -79,8 +79,9 @@ All outputs are XLSX (audit summary is plain text), generated locally, named
    methods, before/after values, cost movement, the pricing formula, source row references,
    exclusion reasons and validation messages.
 3. **`exceptions`** — sheets `Ambiguous`, `Invalid`, `Missing from supplier` with explanations.
-4. **`rollback`** — the ServiceM8 export exactly as loaded (plus an `About` sheet with the
-   original filename and SHA-256) so ServiceM8 can be restored to its prior state.
+4. **`rollback`** — the ServiceM8 values and layout as loaded, with mandatory formula-like text
+   neutralisation (plus an `About` sheet with the original filename and SHA-256), so the prior
+   state can be reviewed and restored safely.
 5. **`audit-summary`** — human-readable text (see `docs/DATA-PRIVACY.md`).
 
 ### "Import-ready" vs "candidate"

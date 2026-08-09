@@ -1,33 +1,124 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CompetitorObservation } from '../../core/competitors';
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CompetitorObservation } from "../../core/competitors";
 import {
   centsToAud,
-  fetchLiveHealth,
-  fetchLiveSearch,
-  postReference,
   type LiveHealth,
   type LiveSearchOutcome,
   type LiveSearchResult,
-} from '../../core/liveSearch';
-import { formatAmount, parseMoney } from '../../core/money';
-import { priceBand, searchEvidence } from '../../core/sources';
-import { useAppDispatch, useAppState } from '../../state/store';
-import { useActions } from '../../state/useActions';
-import { EmptyState, Page } from './PageChrome';
+  type LiveSearchState,
+} from "../../core/liveSearch";
+import { formatAmount, parseMoney } from "../../core/money";
+import { priceBand, searchEvidence } from "../../core/sources";
+import { useAppDispatch, useAppState } from "../../state/store";
+import { useActions } from "../../state/useActions";
+import { usePlatform } from "../../platform/context";
+import type { CatalogueItem, ProviderStatus } from "../../platform/contracts";
+import { EmptyState, Page } from "./PageChrome";
 
-const MELBOURNE_TIME = new Intl.DateTimeFormat('en-AU', {
-  timeZone: 'Australia/Melbourne',
-  dateStyle: 'medium',
-  timeStyle: 'short',
+const MELBOURNE_TIME = new Intl.DateTimeFormat("en-AU", {
+  timeZone: "Australia/Melbourne",
+  dateStyle: "medium",
+  timeStyle: "short",
 });
+
+export function ProviderPaidCallsControl({
+  status,
+  onToggle,
+}: {
+  status: ProviderStatus | null;
+  onToggle: (
+    enabled: boolean,
+    costCeilingCents?: number,
+    costPerCallCents?: number,
+  ) => void;
+}) {
+  const enabled = status?.paidCallsEnabled === true;
+  const [ceilingInput, setCeilingInput] = useState("");
+  const [perCallInput, setPerCallInput] = useState("");
+  const ceiling = parsePositiveBudgetCents(ceilingInput);
+  const perCall = parsePositiveBudgetCents(perCallInput);
+  const validBudget =
+    ceiling !== null &&
+    perCall !== null &&
+    perCall <= ceiling &&
+    ceiling <= 1_000_000_000;
+  const canEnable =
+    status?.credentialConfigured === true &&
+    status.lastValidatedAt !== null &&
+    validBudget;
+
+  return (
+    <div>
+      <div className="form-grid">
+        <label>
+          Total provider budget (AUD)
+          <input
+            inputMode="decimal"
+            value={ceilingInput}
+            disabled={enabled}
+            placeholder="10.00"
+            onChange={(event) => setCeilingInput(event.target.value)}
+          />
+        </label>
+        <label>
+          Reserved cost per call (AUD)
+          <input
+            inputMode="decimal"
+            value={perCallInput}
+            disabled={enabled}
+            placeholder="0.05"
+            onChange={(event) => setPerCallInput(event.target.value)}
+          />
+        </label>
+      </div>
+      <div className="btn-row">
+        <button
+          type="button"
+          className={enabled ? "btn btn-danger" : "btn"}
+          aria-pressed={enabled}
+          disabled={!status || (!enabled && !canEnable)}
+          onClick={() =>
+            enabled
+              ? onToggle(false)
+              : onToggle(true, ceiling ?? undefined, perCall ?? undefined)
+          }
+        >
+          {enabled
+            ? "Disable paid provider calls"
+            : "Enable paid provider calls within budget"}
+        </button>
+        <span className="hint" role="status">
+          {enabled && status
+            ? `AUD ${centsToAud(status.spentCents)} reserved of AUD ${status.costCeilingAud}; AUD ${centsToAud(status.costPerCallCents)} is reserved before each attempt.`
+            : status?.credentialConfigured && status.lastValidatedAt === null
+              ? "Validate the protected credential before enabling paid calls."
+              : "Paid calls are disabled by default. Enter a positive ceiling and per-call reservation; calls stop before the ceiling can be exceeded."}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function parsePositiveBudgetCents(raw: string): number | null {
+  const parsed = parseMoney(raw);
+  if (!parsed.ok || parsed.amount === "0.00") return null;
+  const [whole = "0", fraction = "00"] = parsed.amount.split(".");
+  const cents = Number(whole) * 100 + Number(fraction);
+  return Number.isSafeInteger(cents) && cents > 0 && cents <= 1_000_000_000
+    ? cents
+    : null;
+}
 
 function retrievedLabel(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return iso;
-  const ageHours = Math.max(0, Math.floor((Date.now() - at.getTime()) / 3600000));
+  const ageHours = Math.max(
+    0,
+    Math.floor((Date.now() - at.getTime()) / 3600000),
+  );
   const age =
     ageHours < 1
-      ? 'under 1 h ago'
+      ? "under 1 h ago"
       : ageHours < 48
         ? `${ageHours} h ago`
         : `${Math.floor(ageHours / 24)} d ago`;
@@ -36,46 +127,49 @@ function retrievedLabel(iso: string): string {
 
 const INTELLIGENCE_OFFERS = [
   {
-    seller: 'Fictionville Security',
+    seller: "Fictionville Security",
     price: 14350,
-    provider: 'Fixture feed',
-    state: 'Eligible',
-    note: 'Exact MPN, new, each, GST and shipping known',
+    provider: "Fixture feed",
+    state: "Eligible",
+    note: "Exact MPN, new, each, GST and shipping known",
   },
   {
-    seller: 'Example Trade Locks',
+    seller: "Example Trade Locks",
     price: 14600,
-    provider: 'Fixture feed',
-    state: 'Eligible',
-    note: 'Exact GTIN, new, each, GST and shipping known',
+    provider: "Fixture feed",
+    state: "Eligible",
+    note: "Exact GTIN, new, each, GST and shipping known",
   },
   {
-    seller: 'Fictionville Hardware',
+    seller: "Fictionville Hardware",
     price: 14900,
-    provider: 'Fixture search',
-    state: 'Eligible',
-    note: 'Brand and MPN agree; probable match',
+    provider: "Fixture search",
+    state: "Eligible",
+    note: "Brand and MPN agree; probable match",
   },
   {
-    seller: 'Demo Wholesale',
+    seller: "Demo Wholesale",
     price: 26500,
-    provider: 'Fixture feed',
-    state: 'Excluded',
-    note: 'Pack of 2 is incompatible',
+    provider: "Fixture feed",
+    state: "Excluded",
+    note: "Pack of 2 is incompatible",
   },
   {
-    seller: 'Provider error fixture',
+    seller: "Provider error fixture",
     price: null,
-    provider: 'Fixture error',
-    state: 'Provider failed',
-    note: 'Retryable upstream error retained in coverage',
+    provider: "Fixture error",
+    state: "Provider failed",
+    note: "Retryable upstream error retained in coverage",
   },
 ] as const;
 
-function IntelligenceWorkspace() {
-  const [batchState, setBatchState] = useState<'ready' | 'running' | 'paused' | 'cancelled'>(
-    'ready',
-  );
+export function IntelligenceWorkspace() {
+  const [batchState, setBatchState] = useState<
+    "ready" | "running" | "paused" | "cancelled"
+  >("ready");
+  const [reviewState, setReviewState] = useState<
+    "pending" | "accepted" | "rejected"
+  >("pending");
   return (
     <section className="ci-workspace" aria-labelledby="ci-title">
       <div className="ci-heading">
@@ -87,29 +181,39 @@ function IntelligenceWorkspace() {
           <button
             className="btn btn-primary"
             type="button"
-            onClick={() => setBatchState('running')}
+            onClick={() => setBatchState("running")}
           >
-            Analyse 6 eligible items
+            {batchState === "paused"
+              ? "Resume fixture preview"
+              : "Analyse 6 fixture items"}
           </button>
           <button
             className="btn"
             type="button"
-            disabled={batchState !== 'running'}
-            onClick={() => setBatchState('paused')}
+            disabled={batchState !== "running"}
+            onClick={() => setBatchState("paused")}
           >
             Pause
           </button>
           <button
             className="btn"
             type="button"
-            disabled={batchState === 'ready' || batchState === 'cancelled'}
-            onClick={() => setBatchState('cancelled')}
+            disabled={batchState === "ready" || batchState === "cancelled"}
+            onClick={() => setBatchState("cancelled")}
           >
             Cancel
           </button>
         </div>
       </div>
-      <div className="ci-status-grid" aria-label="Provider and coverage summary">
+      <div className="callout" role="note">
+        <strong>Synthetic illustrative fixture.</strong> These controls preview
+        deterministic UI states in this session only. They do not persist a
+        batch, change the catalogue or apply a price.
+      </div>
+      <div
+        className="ci-status-grid"
+        aria-label="Provider and coverage summary"
+      >
         <div>
           <strong>3</strong>
           <span>eligible sellers</span>
@@ -128,8 +232,9 @@ function IntelligenceWorkspace() {
         </div>
       </div>
       <div className="ci-plan" role="status">
-        <strong>Preflight:</strong> 6 eligible items, 3 identifier stages, 8 cache hits, at most 10
-        fixture calls, paid ceiling AUD 0.00. No price will be applied automatically.
+        <strong>Preflight:</strong> 6 eligible items, 3 identifier stages, 8
+        cache hits, at most 10 fixture calls, paid ceiling AUD 0.00. No price
+        will be applied automatically.
       </div>
       <div className="ci-detail-grid">
         <article className="ci-panel">
@@ -174,16 +279,32 @@ function IntelligenceWorkspace() {
                     y2="90"
                     className="tick"
                   />
-                  <text x={45 + (value - 125) * 15.5} y="111" textAnchor="middle">
+                  <text
+                    x={45 + (value - 125) * 15.5}
+                    y="111"
+                    textAnchor="middle"
+                  >
                     ${value}
                   </text>
                 </g>
               ))}
-              <line x1="122.5" y1="35" x2="122.5" y2="82" className="marker floor" />
+              <line
+                x1="122.5"
+                y1="35"
+                x2="122.5"
+                y2="82"
+                className="marker floor"
+              />
               <text x="122.5" y="25" textAnchor="middle">
                 Floor $130
               </text>
-              <line x1="316.25" y1="42" x2="316.25" y2="82" className="marker suggested" />
+              <line
+                x1="316.25"
+                y1="42"
+                x2="316.25"
+                y2="82"
+                className="marker suggested"
+              />
               <text x="316.25" y="32" textAnchor="middle">
                 Suggested $142.50
               </text>
@@ -198,14 +319,20 @@ function IntelligenceWorkspace() {
                   <title>Eligible offer ${value.toFixed(2)}</title>
                 </circle>
               ))}
-              <line x1="572" y1="48" x2="572" y2="82" className="marker current" />
+              <line
+                x1="572"
+                y1="48"
+                x2="572"
+                y2="82"
+                className="marker current"
+              />
               <text x="572" y="38" textAnchor="middle">
                 Current $159
               </text>
             </svg>
             <figcaption id="position-caption">
-              Price position in AUD per sellable unit, delivered and GST-inclusive. The table below
-              is the complete text equivalent.
+              Price position in AUD per sellable unit, delivered and
+              GST-inclusive. The table below is the complete text equivalent.
             </figcaption>
           </figure>
           <div
@@ -236,7 +363,10 @@ function IntelligenceWorkspace() {
                 <tr>
                   <td>Aggressive / recommended</td>
                   <td>$142.50</td>
-                  <td>$143.50 - min($1.00, 1%); strict undercut and floor rechecked</td>
+                  <td>
+                    $143.50 - min($1.00, 1%); strict undercut and floor
+                    rechecked
+                  </td>
                 </tr>
                 <tr>
                   <td>Market / defensive</td>
@@ -264,23 +394,34 @@ function IntelligenceWorkspace() {
             <dt>Query</dt>
             <dd>MPN "LW4570SC"</dd>
             <dt>Terminal state</dt>
-            <dd>Recommended</dd>
+            <dd>{reviewState === "pending" ? "Recommended" : reviewState}</dd>
           </dl>
           <label>
             Reviewed price (AUD)
             <input inputMode="decimal" defaultValue="142.50" />
           </label>
           <div className="ci-review-actions">
-            <button type="button" className="btn btn-primary">
-              Accept for confirmation
+            <button
+              type="button"
+              className="btn btn-primary"
+              aria-pressed={reviewState === "accepted"}
+              onClick={() => setReviewState("accepted")}
+            >
+              Preview accepted state
             </button>
-            <button type="button" className="btn">
-              Reject
+            <button
+              type="button"
+              className="btn"
+              aria-pressed={reviewState === "rejected"}
+              onClick={() => setReviewState("rejected")}
+            >
+              Preview rejected state
             </button>
           </div>
           <p className="hint">
-            Acceptance only stages the value. A separate old-versus-new confirmation and append-only
-            history are required before application.
+            This fixture changes only the visible preview state. Real
+            publication requires an explicit approval in the seven-stage
+            workflow and creates append-only history.
           </p>
         </aside>
       </div>
@@ -305,9 +446,15 @@ function IntelligenceWorkspace() {
               <tr key={offer.seller}>
                 <td>{offer.seller}</td>
                 <td>{offer.provider}</td>
-                <td>{offer.price == null ? 'Unknown' : formatAmount(centsToAud(offer.price))}</td>
                 <td>
-                  <span className={`pill ${offer.state === 'Eligible' ? 'pill-ok' : 'pill-warn'}`}>
+                  {offer.price == null
+                    ? "Unknown"
+                    : formatAmount(centsToAud(offer.price))}
+                </td>
+                <td>
+                  <span
+                    className={`pill ${offer.state === "Eligible" ? "pill-ok" : "pill-warn"}`}
+                  >
                     {offer.state}
                   </span>
                 </td>
@@ -321,74 +468,105 @@ function IntelligenceWorkspace() {
   );
 }
 
-const GST_LABELS: Record<CompetitorObservation['gstBasis'], string> = {
-  'inc-gst': 'inc GST',
-  'ex-gst': 'ex GST',
-  unknown: 'GST unknown',
+const GST_LABELS: Record<CompetitorObservation["gstBasis"], string> = {
+  "inc-gst": "inc GST",
+  "ex-gst": "ex GST",
+  unknown: "GST unknown",
 };
 
 /** Distinct, visible copy for every non-result search state. Never one blank screen. */
-const STATE_COPY: Record<
-  string,
-  { title: string; tone: 'info' | 'warn' | 'error'; detail: string }
-> = {
-  not_configured: {
-    title: 'Live search is not configured',
-    tone: 'warn',
-    detail:
-      'No provider API key is set. Copy .env.example to .env, set SERPAPI_KEY, and restart the server (npm run server). Manual entry below works now.',
-  },
-  timeout: {
-    title: 'The search provider timed out',
-    tone: 'error',
-    detail:
-      'The provider did not answer in time. This is a provider-side delay, not an empty result. Try again shortly, or record the price manually below.',
-  },
-  provider_error: {
-    title: 'The search provider returned an error',
-    tone: 'error',
-    detail: 'The provider rejected or failed the request. This is a failure, not an empty result.',
-  },
-  quota_exhausted: {
-    title: 'Provider quota is exhausted',
-    tone: 'warn',
-    detail:
-      'The provider account has no searches left. No result could be retrieved. Top up the plan or wait for the quota window to reset.',
-  },
-  rate_limited: {
-    title: 'Local rate limit reached',
-    tone: 'warn',
-    detail:
-      'This application limits its own outbound searches. Wait about a minute and retry; cached results continue to work.',
-  },
-  server_unreachable: {
-    title: 'The application server is not reachable',
-    tone: 'error',
-    detail:
-      'Live search runs through this application’s own server, which did not respond. A static host such as GitHub Pages cannot run it. On the machine that should run the app: npm run seed, npm run build, then npm run server, and open the address it prints (http://127.0.0.1:8787). Manual entry below still works.',
-  },
+type SearchStateCopy = {
+  title: string;
+  tone: "info" | "warn" | "error";
+  detail: string;
 };
 
-type SortKey = 'price' | 'seller' | 'title';
+function stateCopy(
+  state: LiveSearchState,
+  platformKind: "desktop" | "web",
+): SearchStateCopy | undefined {
+  const copy: Partial<Record<LiveSearchState, SearchStateCopy>> = {
+    not_configured: {
+      title: "Live search is not configured",
+      tone: "warn",
+      detail:
+        platformKind === "desktop"
+          ? "No provider credential is configured. Use the protected provider controls below. Manual entry works now."
+          : "No provider is configured for the web demonstration service. Manual entry works now.",
+    },
+    offline: {
+      title: "The computer is offline",
+      tone: "warn",
+      detail:
+        "No network search was attempted successfully. Manual evidence and the full core workflow remain available.",
+    },
+    timeout: {
+      title: "The search provider timed out",
+      tone: "error",
+      detail:
+        "The provider did not answer in time. This is a provider-side delay, not an empty result. Try again shortly, or record the price manually below.",
+    },
+    provider_error: {
+      title: "The search provider returned an error",
+      tone: "error",
+      detail:
+        "The provider rejected or failed the request. This is a failure, not an empty result.",
+    },
+    quota_exhausted: {
+      title: "Provider quota is exhausted",
+      tone: "warn",
+      detail:
+        "The provider account has no searches left. No result could be retrieved. Top up the plan or wait for the quota window to reset.",
+    },
+    rate_limited: {
+      title: "Local rate limit reached",
+      tone: "warn",
+      detail:
+        "This application limits its own outbound searches. Wait about a minute and retry; cached results continue to work.",
+    },
+    server_unreachable: {
+      title:
+        platformKind === "desktop"
+          ? "The native search service is not reachable"
+          : "The web demonstration service is not reachable",
+      tone: "error",
+      detail:
+        platformKind === "desktop"
+          ? "The native search service did not respond. Manual entry and the core comparison workflow still work without it."
+          : "The web demonstration service did not respond. Manual entry and the core comparison workflow still work without it.",
+    },
+    invalid_query: {
+      title: "The search query is invalid",
+      tone: "warn",
+      detail:
+        "Enter a bounded product identifier or short product description and try again.",
+    },
+  };
+  return copy[state];
+}
+
+type SortKey = "price" | "seller" | "title";
 
 function ResultsTable({
   results,
   attachEnabled,
   onAttach,
+  onOpenSource,
 }: {
   results: LiveSearchResult[];
   attachEnabled: boolean;
   onAttach: (result: LiveSearchResult) => void;
+  onOpenSource: (url: string) => void;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>('price');
+  const [sortKey, setSortKey] = useState<SortKey>("price");
   const [ascending, setAscending] = useState(true);
   const sorted = useMemo(() => {
     const copy = [...results];
     copy.sort((a, b) => {
       const delta =
-        sortKey === 'price'
+        sortKey === "price"
           ? a.priceCents - b.priceCents
-          : sortKey === 'seller'
+          : sortKey === "seller"
             ? a.seller.localeCompare(b.seller)
             : a.title.localeCompare(b.title);
       return ascending ? delta : -delta;
@@ -397,10 +575,15 @@ function ResultsTable({
   }, [results, sortKey, ascending]);
 
   const header = (key: SortKey, label: string, numeric = false) => (
-    <th scope="col" aria-sort={sortKey === key ? (ascending ? 'ascending' : 'descending') : 'none'}>
+    <th
+      scope="col"
+      aria-sort={
+        sortKey === key ? (ascending ? "ascending" : "descending") : "none"
+      }
+    >
       <button
         type="button"
-        className={`th-sort${numeric ? ' th-num' : ''}`}
+        className={`th-sort${numeric ? " th-num" : ""}`}
         onClick={() => {
           if (sortKey === key) setAscending(!ascending);
           else {
@@ -411,22 +594,27 @@ function ResultsTable({
       >
         {label}
         <span aria-hidden="true" className="sort-arrow">
-          {sortKey === key ? (ascending ? '▴' : '▾') : ''}
+          {sortKey === key ? (ascending ? "▴" : "▾") : ""}
         </span>
       </button>
     </th>
   );
 
   return (
-    <div className="table-scroll" role="region" aria-label="Live search results" tabIndex={0}>
+    <div
+      className="table-scroll"
+      role="region"
+      aria-label="Live search results"
+      tabIndex={0}
+    >
       <table className="data-table">
         <thead>
           <tr>
-            {header('title', 'Product')}
-            {header('price', 'Price (AUD)', true)}
+            {header("title", "Product")}
+            {header("price", "Price (AUD)", true)}
             <th scope="col">GST</th>
             <th scope="col">Unit / pack</th>
-            {header('seller', 'Seller')}
+            {header("seller", "Seller")}
             <th scope="col">Retrieved (Melbourne time)</th>
             <th scope="col">Link</th>
             <th scope="col">Attach</th>
@@ -440,20 +628,30 @@ function ResultsTable({
                 {formatAmount(result.priceAud)}
               </td>
               <td data-label="GST">
-                <span className={`pill ${result.gstBasis === 'unknown' ? 'pill-warn' : 'pill-ok'}`}>
+                <span
+                  className={`pill ${result.gstBasis === "unknown" ? "pill-warn" : "pill-ok"}`}
+                >
                   {GST_LABELS[result.gstBasis]}
                 </span>
               </td>
-              <td data-label="Unit / pack">{result.packSize ?? 'not stated'}</td>
+              <td data-label="Unit / pack">
+                {result.packSize ?? "not stated"}
+              </td>
               <td data-label="Seller">
                 {result.seller}
                 <span className="hint-block">{result.sourceDomain}</span>
               </td>
-              <td data-label="Retrieved">{retrievedLabel(result.retrievedAt)}</td>
+              <td data-label="Retrieved">
+                {retrievedLabel(result.retrievedAt)}
+              </td>
               <td data-label="Link">
-                <a href={result.url} target="_blank" rel="noreferrer noopener">
-                  Source page
-                </a>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => onOpenSource(result.url)}
+                >
+                  Open source page
+                </button>
               </td>
               <td data-label="Attach">
                 <button
@@ -475,113 +673,269 @@ function ResultsTable({
 
 /**
  * Competitor product search: LIVE internet search for a typed-in product via
- * this application's own server and a licensed provider, plus stored local
+ * the active platform adapter and an optional provider, plus stored local
  * evidence and manual entry as the fallback. Five distinct visual states:
  * idle, loading, results, no results, provider unavailable.
  */
 export function CompetitorsPage() {
+  const platform = usePlatform();
   const state = useAppState();
   const dispatch = useAppDispatch();
   const actions = useActions();
-  const [query, setQuery] = useState('');
-  const [submitted, setSubmitted] = useState('');
+  const [query, setQuery] = useState("");
+  const [submitted, setSubmitted] = useState("");
   const [loading, setLoading] = useState(false);
   const [outcome, setOutcome] = useState<LiveSearchOutcome | null>(null);
-  // 'checking' -> probe in flight; null -> probe finished, server unreachable.
-  const [health, setHealth] = useState<LiveHealth | null | 'checking'>('checking');
-  const [attachTarget, setAttachTarget] = useState('');
+  // 'checking' means the platform probe is in flight; null means it was unavailable.
+  const [health, setHealth] = useState<LiveHealth | null | "checking">(
+    "checking",
+  );
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(
+    null,
+  );
+  const [catalogueItems, setCatalogueItems] = useState<CatalogueItem[] | null>(
+    null,
+  );
+  const credentialInput = useRef<HTMLInputElement>(null);
+  const [attachTarget, setAttachTarget] = useState("");
   const requestSeq = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchLiveHealth().then((h) => {
-      if (!cancelled) setHealth(h);
+    void Promise.all([
+      platform.health(),
+      platform.search.status(),
+      platform.catalogue.list(),
+    ]).then(([healthResult, status, catalogue]) => {
+      if (!cancelled) {
+        setHealth(healthResult.ok ? healthResult.value : null);
+        setProviderStatus(status.ok ? status.value : null);
+        setCatalogueItems(catalogue.ok ? catalogue.value : null);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [platform]);
 
   const runSearch = async () => {
     const q = query.trim();
-    if (q === '') return;
+    if (q === "") return;
     const seq = ++requestSeq.current;
     setSubmitted(q);
     setLoading(true);
-    const result = await fetchLiveSearch(q);
+    const result = await platform.search.query(q);
     if (seq !== requestSeq.current) return;
     setOutcome(result);
     setLoading(false);
     actions.announce(
-      result.state === 'ok'
+      result.state === "ok"
         ? `${result.results.length} live results for ${q}.`
-        : `Live search state: ${result.state.replace(/_/g, ' ')}.`,
+        : `Live search state: ${result.state.replace(/_/g, " ")}.`,
     );
   };
 
-  const attachRow = (state.comparison?.rows ?? []).find(
-    (r) => r.s8?.itemNumber === attachTarget.trim() || r.supplier?.code === attachTarget.trim(),
+  const attachItem = catalogueItems?.find(
+    (item) =>
+      item.id === attachTarget.trim() ||
+      item.itemNumber === attachTarget.trim(),
   );
-  const attachEnabled = Boolean(attachRow);
+  const attachRow = (state.comparison?.rows ?? []).find(
+    (row) =>
+      row.s8?.itemNumber === attachItem?.itemNumber ||
+      row.supplier?.code === attachItem?.itemNumber,
+  );
+  const attachEnabled = attachItem !== undefined;
 
   const attach = (result: LiveSearchResult) => {
-    const itemId = attachTarget.trim();
+    if (!attachItem) return;
+    const itemId = attachItem.id;
     const observation: CompetitorObservation = {
-      sku: itemId,
+      sku: attachItem.itemNumber,
       sourceName: result.seller,
       approvedSource: false,
       observedAt: result.retrievedAt,
       price: result.priceAud,
-      currency: 'AUD',
+      currency: "AUD",
       gstBasis: result.gstBasis,
-      shipping: '',
-      stockStatus: 'unknown',
-      condition: 'unknown',
+      shipping: "",
+      stockStatus: "unknown",
+      condition: "unknown",
       packCompatible: false,
       productOnly: false,
       matchConfidence: 0,
-      reviewState: 'quarantined',
+      reviewState: "quarantined",
       ambiguousMatch: true,
       url: result.url,
       ...(result.packSize ? { packSize: result.packSize } : {}),
     };
-    if (attachRow) {
-      dispatch({
-        type: 'reference-attached',
-        reference: { rowId: attachRow.id, observation, attachedAt: new Date().toISOString() },
-      });
-    }
-    void postReference(itemId, result).then((persisted) => {
-      actions.announce(
-        persisted
-          ? `Reference price stored for ${itemId} on the server. No cost or sell price changed.`
-          : `Reference attached for ${itemId} in this session. Server persistence unavailable.`,
-      );
+    void actions.attachReference(itemId, result, {
+      rowId: attachRow?.id ?? itemId,
+      observation,
+      attachedAt: new Date().toISOString(),
     });
+  };
+
+  const updateCredential = async (replace: boolean) => {
+    const input = credentialInput.current;
+    const secret = input?.value ?? "";
+    if (secret.length < 8 || secret.length > 1024) {
+      actions.announce(
+        "Enter a provider credential between 8 and 1024 characters.",
+      );
+      return;
+    }
+    if (input) input.value = "";
+    const result = replace
+      ? await platform.search.replaceCredential(secret)
+      : await platform.search.configureCredential(secret);
+    if (result.ok) setProviderStatus(result.value);
+    actions.announce(
+      result.ok
+        ? "Provider credential stored in Windows protected storage."
+        : result.error.message,
+    );
+  };
+
+  const validateCredential = async () => {
+    const result = await platform.search.validateCredential();
+    if (result.ok) setProviderStatus(result.value);
+    actions.announce(
+      result.ok
+        ? "Provider credential validation completed."
+        : result.error.message,
+    );
+  };
+
+  const removeCredential = async () => {
+    const result = await platform.search.removeCredential();
+    if (result.ok) setProviderStatus(result.value);
+    actions.announce(
+      result.ok ? "Provider credential removed." : result.error.message,
+    );
+  };
+
+  const setPaidCallsEnabled = async (
+    enabled: boolean,
+    costCeilingCents?: number,
+    costPerCallCents?: number,
+  ) => {
+    const result = await platform.search.setPaidCallsEnabled(
+      enabled,
+      costCeilingCents,
+      costPerCallCents,
+    );
+    if (result.ok) setProviderStatus(result.value);
+    actions.announce(
+      result.ok
+        ? `Paid provider calls ${result.value.paidCallsEnabled ? "enabled" : "disabled"}.`
+        : result.error.message,
+    );
+  };
+
+  const openSource = async (url: string) => {
+    const result = await platform.files.openVerifiedSource(url);
+    if (!result.ok) actions.announce(result.error.message);
   };
 
   // Stored local evidence (manual entries and imports) still searches inline.
   const manualSources = state.competitorSources.filter(
-    (s) => s.enabled && s.accessMethod !== 'live-api',
+    (s) => s.enabled && s.accessMethod !== "live-api",
   );
   const storedOutcome = useMemo(
-    () => searchEvidence(state.competitorEvidence, state.competitorSources, submitted),
+    () =>
+      searchEvidence(
+        state.competitorEvidence,
+        state.competitorSources,
+        submitted,
+      ),
     [state.competitorEvidence, state.competitorSources, submitted],
   );
   const storedBand = priceBand(storedOutcome.results);
 
   const [entry, setEntry] = useState({
-    sku: '',
-    price: '',
-    gstBasis: 'inc-gst' as CompetitorObservation['gstBasis'],
-    sourceId: 'manual',
-    url: '',
-    packSize: 'each',
+    sku: "",
+    price: "",
+    gstBasis: "inc-gst" as CompetitorObservation["gstBasis"],
+    sourceId: "manual",
+    url: "",
+    packSize: "each",
   });
   const entryPrice = parseMoney(entry.price);
-  const entryValid = entry.sku.trim() !== '' && entryPrice.ok;
+  const entryUrlValid = (() => {
+    if (entry.url.trim() === "") return true;
+    try {
+      const parsed = new URL(entry.url.trim());
+      return (
+        parsed.protocol === "https:" &&
+        parsed.username === "" &&
+        parsed.password === ""
+      );
+    } catch {
+      return false;
+    }
+  })();
+  const entryValid = entry.sku.trim() !== "" && entryPrice.ok && entryUrlValid;
 
-  const failureCopy = outcome && STATE_COPY[outcome.state];
+  const storeManualObservation = async () => {
+    if (!entryPrice.ok || !entryUrlValid) return;
+    const itemIdentifier = entry.sku.trim();
+    const source = manualSources.find(
+      (candidate) => candidate.id === entry.sourceId,
+    );
+    const observedAt = new Date().toISOString();
+    const observation: CompetitorObservation = {
+      sku: itemIdentifier,
+      sourceName: source?.name ?? "Manual operator entry",
+      approvedSource: true,
+      observedAt,
+      price: entryPrice.amount,
+      currency: "AUD",
+      gstBasis: entry.gstBasis,
+      shipping: "0",
+      stockStatus: "unknown",
+      condition: "new",
+      packCompatible: true,
+      productOnly: true,
+      matchConfidence: 1,
+      reviewState: "accepted",
+      ...(entry.url.trim() ? { url: entry.url.trim() } : {}),
+      ...(entry.packSize.trim() ? { packSize: entry.packSize.trim() } : {}),
+    };
+
+    dispatch({ type: "evidence-added", observations: [observation] });
+    setSubmitted(itemIdentifier);
+
+    if (catalogueItems === null) {
+      actions.announce(
+        `Added ${itemIdentifier} to this session. The catalogue was unavailable, so no persistent reference was written.`,
+      );
+      return;
+    }
+    const item = catalogueItems.find(
+      (candidate) =>
+        candidate.id === itemIdentifier ||
+        candidate.itemNumber === itemIdentifier,
+    );
+    if (!item) {
+      actions.announce(
+        `Added ${itemIdentifier} to this session only. Approve the exact catalogue item before persisting a reference.`,
+      );
+      return;
+    }
+    const comparisonRow = (state.comparison?.rows ?? []).find(
+      (row) =>
+        row.s8?.itemNumber === item.itemNumber ||
+        row.supplier?.code === item.itemNumber,
+    );
+    await actions.attachReference(item.id, observation, {
+      rowId: comparisonRow?.id ?? item.id,
+      observation,
+      attachedAt: observedAt,
+    });
+  };
+
+  const failureCopy = outcome && stateCopy(outcome.state, platform.kind);
 
   return (
     <Page
@@ -590,14 +944,16 @@ export function CompetitorsPage() {
         <button
           type="button"
           className="btn btn-primary"
-          disabled={query.trim() === '' || loading}
+          disabled={query.trim() === "" || loading}
           onClick={() => void runSearch()}
         >
           Search live prices
         </button>
       }
     >
-      <IntelligenceWorkspace />
+      {state.demoMode && health !== "checking" && health?.fixtureMode && (
+        <IntelligenceWorkspace />
+      )}
       <section className="card">
         <form
           className="searchbar"
@@ -611,32 +967,114 @@ export function CompetitorsPage() {
             <input
               type="search"
               value={query}
+              maxLength={512}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g. Lockwood 4570, LW4570 or 9312345678907"
             />
           </label>
         </form>
         <p className="hint" role="status">
-          {health === 'checking'
-            ? 'Checking live search availability…'
+          {health === "checking"
+            ? "Checking live search availability…"
             : health === null
-              ? 'Live search unavailable: this page is not being served by the application server. Static hosting (for example GitHub Pages) cannot run it; start it with npm run server and open the address it prints. Manual entry works now.'
+              ? platform.kind === "desktop"
+                ? "Native search is unavailable or offline. Manual entry works now."
+                : "The optional web demonstration service is unavailable. Manual entry works now."
               : health.fixtureMode
-                ? 'Fixture provider active: deterministic offline results for testing and demos.'
+                ? "Fixture provider active: deterministic offline results for testing and demos."
                 : health.liveSearchConfigured
-                  ? 'Live search ready: server-side provider, Australian region, AUD, rate limited and cached.'
-                  : 'Live search is NOT configured: set SERPAPI_KEY on the server (.env.example shows how). Manual entry works now.'}
+                  ? "Live search ready: native or same-origin provider, Australian region, AUD, rate limited and cached."
+                  : "Live search is not configured. Manual entry works now."}
         </p>
       </section>
 
+      {platform.capabilities.protectedCredentials && (
+        <section className="card" aria-labelledby="provider-credential-title">
+          <h2 id="provider-credential-title">Optional provider credential</h2>
+          <p className="hint">
+            State: {providerStatus?.state ?? "checking"}. Paid calls remain{" "}
+            {providerStatus?.paidCallsEnabled
+              ? "enabled within the configured ceiling"
+              : "disabled"}
+            .
+            {providerStatus?.credentialHint
+              ? ` Stored hint: ${providerStatus.credentialHint}.`
+              : ""}
+          </p>
+          <label>
+            New provider credential
+            <input
+              ref={credentialInput}
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              maxLength={1024}
+            />
+          </label>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                void updateCredential(
+                  providerStatus?.credentialConfigured === true,
+                )
+              }
+            >
+              {providerStatus?.credentialConfigured
+                ? "Replace credential"
+                : "Configure credential"}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void validateCredential()}
+            >
+              Validate stored credential
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={!providerStatus?.credentialConfigured}
+              onClick={() => void removeCredential()}
+            >
+              Remove credential
+            </button>
+          </div>
+          <ProviderPaidCallsControl
+            status={providerStatus}
+            onToggle={(enabled, costCeilingCents, costPerCallCents) =>
+              void setPaidCallsEnabled(
+                enabled,
+                costCeilingCents,
+                costPerCallCents,
+              )
+            }
+          />
+          <p className="hint">
+            The complete stored value is never displayed or retained in React
+            state, SQLite, exports or logs.
+          </p>
+        </section>
+      )}
+
       {loading && (
-        <section className="card state-loading" role="status" aria-live="polite">
+        <section
+          className="card state-loading"
+          role="status"
+          aria-live="polite"
+        >
           <span className="spinner" aria-hidden="true" />
           <div>
-            <h2>Searching live sources for &ldquo;{submitted}&rdquo;&hellip;</h2>
+            <h2>
+              Searching live sources for &ldquo;{submitted}&rdquo;&hellip;
+            </h2>
             <p className="hint">
-              The server is querying the provider now. Results include seller, GST treatment and a
-              retrieval timestamp.
+              {platform.kind === "desktop"
+                ? "The native service"
+                : "The web demonstration server"}{" "}
+              is querying the provider now. Results include seller, GST
+              treatment and a retrieval timestamp.
             </p>
           </div>
         </section>
@@ -645,56 +1083,86 @@ export function CompetitorsPage() {
       {!loading && outcome === null && (
         <EmptyState
           title="Type a product and search the live market"
-          detail="One box, no search-type selector: the server works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
+          detail="One box, no search-type selector: the application works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
         />
       )}
 
       {!loading && outcome !== null && failureCopy && (
-        <section className={`card state-banner state-${failureCopy.tone}`} role="alert">
+        <section
+          className={`card state-banner state-${failureCopy.tone}`}
+          role="alert"
+        >
           <h2>{failureCopy.title}</h2>
           <p>{failureCopy.detail}</p>
-          {outcome.detail && <p className="hint">Server detail: {outcome.detail}</p>}
+          {outcome.detail && (
+            <p className="hint">Search detail: {outcome.detail}</p>
+          )}
         </section>
       )}
 
-      {!loading && outcome?.state === 'empty' && (
+      {!loading && outcome?.state === "empty" && (
         <EmptyState
           title={`No live prices found for “${submitted}”`}
           detail="The provider answered but returned no priced listings. That is a genuine zero, not a failure. Try a broader term, or record a price you found yourself with manual entry below."
         />
       )}
 
-      {!loading && outcome?.state === 'ok' && outcome.band && (
+      {!loading && outcome?.state === "ok" && outcome.band && (
         <>
-          <div className="metric-row" role="group" aria-label="Price band across live sources">
+          <div
+            className="metric-row"
+            role="group"
+            aria-label="Price band across live sources"
+          >
             <div className="metric-card">
               <span className="metric-label">Lowest</span>
-              <strong className="metric-value">{formatAmount(outcome.band.lowest)}</strong>
-              <span className="metric-state pill pill-ok">across live sources</span>
+              <strong className="metric-value">
+                {formatAmount(outcome.band.lowest)}
+              </strong>
+              <span className="metric-state pill pill-ok">
+                across live sources
+              </span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Median</span>
-              <strong className="metric-value">{formatAmount(outcome.band.median)}</strong>
-              <span className="metric-state">of {outcome.band.pricedResults} priced results</span>
+              <strong className="metric-value">
+                {formatAmount(outcome.band.median)}
+              </strong>
+              <span className="metric-state">
+                of {outcome.band.pricedResults} priced results
+              </span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Highest</span>
-              <strong className="metric-value">{formatAmount(outcome.band.highest)}</strong>
+              <strong className="metric-value">
+                {formatAmount(outcome.band.highest)}
+              </strong>
               <span className="metric-state">
-                spread{' '}
-                {formatAmount(centsToAud(outcome.band.highestCents - outcome.band.lowestCents))}
+                spread{" "}
+                {formatAmount(
+                  centsToAud(
+                    outcome.band.highestCents - outcome.band.lowestCents,
+                  ),
+                )}
               </span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Sources responding</span>
-              <strong className="metric-value">{outcome.coverage?.sourcesWithPrice ?? 0}</strong>
+              <strong className="metric-value">
+                {outcome.coverage?.sourcesWithPrice ?? 0}
+              </strong>
               <span className="metric-state">
-                {outcome.cached ? 'served from cache' : 'fresh retrieval'}
+                {outcome.cached ? "served from cache" : "fresh retrieval"}
               </span>
             </div>
           </div>
 
-          <ResultsTable results={outcome.results} attachEnabled={attachEnabled} onAttach={attach} />
+          <ResultsTable
+            results={outcome.results}
+            attachEnabled={attachEnabled}
+            onAttach={attach}
+            onOpenSource={(url) => void openSource(url)}
+          />
 
           <section className="card">
             <h2>Coverage</h2>
@@ -702,22 +1170,27 @@ export function CompetitorsPage() {
               <dt>Provider queried</dt>
               <dd>
                 {outcome.provider} ({outcome.queryKind} query
-                {outcome.cached ? ', cached response' : ''})
+                {outcome.cached ? ", cached response" : ""})
               </dd>
               <dt>Source domains with a price</dt>
-              <dd>{outcome.coverage?.sourceDomains.join(', ') || 'none'}</dd>
+              <dd>{outcome.coverage?.sourceDomains.join(", ") || "none"}</dd>
               <dt>Sources returning nothing this search</dt>
               <dd>
                 {storedOutcome.sourcesWithoutResults.length > 0
-                  ? `${storedOutcome.sourcesWithoutResults.join(', ')} (stored evidence)`
-                  : 'none of the registered evidence sources'}
+                  ? `${storedOutcome.sourcesWithoutResults.join(", ")} (stored evidence)`
+                  : "none of the registered evidence sources"}
               </dd>
               <dt>Failed sources</dt>
               <dd>
-                none this search; provider failures are shown as their own state, never hidden
+                none this search; provider failures are shown as their own
+                state, never hidden
               </dd>
               <dt>Retrieved</dt>
-              <dd>{outcome.retrievedAt ? retrievedLabel(outcome.retrievedAt) : 'unknown'}</dd>
+              <dd>
+                {outcome.retrievedAt
+                  ? retrievedLabel(outcome.retrievedAt)
+                  : "unknown"}
+              </dd>
             </dl>
           </section>
         </>
@@ -736,22 +1209,24 @@ export function CompetitorsPage() {
           </label>
         </div>
         <p className="hint" role="status">
-          {attachTarget.trim() === ''
+          {attachTarget.trim() === ""
             ? `${state.references.length} reference(s) attached this session. Enter an item to enable Attach.`
-            : attachRow
-              ? `Reference attachment available for ${attachTarget.trim()}. Provider facts remain quarantined until explicit review; no cost or sell price changes.`
-              : `No catalogue item matches ${attachTarget.trim()}. Attachment is disabled to prevent an orphan reference.`}
+            : catalogueItems === null
+              ? "The approved catalogue is unavailable. Attachment is disabled and evidence remains session-only."
+              : attachItem
+                ? `Reference attachment available for ${attachTarget.trim()}. Provider facts remain quarantined until explicit review; no cost or sell price changes.`
+                : `No approved catalogue item matches ${attachTarget.trim()}. Attachment is disabled to prevent an orphan reference.`}
         </p>
       </section>
 
-      {submitted !== '' && storedOutcome.results.length > 0 && (
+      {submitted !== "" && storedOutcome.results.length > 0 && (
         <section className="card">
           <h2>Stored local evidence matching &ldquo;{submitted}&rdquo;</h2>
           <p className="hint">
             {storedOutcome.results.length} stored observation(s)
             {storedBand
               ? ` · band ${formatAmount(storedBand.lowest)} to ${formatAmount(storedBand.highest)} ex GST`
-              : ''}
+              : ""}
           </p>
         </section>
       )}
@@ -772,7 +1247,7 @@ export function CompetitorsPage() {
               value={entry.price}
               onChange={(e) => setEntry({ ...entry, price: e.target.value })}
               inputMode="decimal"
-              aria-invalid={entry.price !== '' && !entryPrice.ok}
+              aria-invalid={entry.price !== "" && !entryPrice.ok}
             />
           </label>
           <label>
@@ -782,7 +1257,7 @@ export function CompetitorsPage() {
               onChange={(e) =>
                 setEntry({
                   ...entry,
-                  gstBasis: e.target.value as CompetitorObservation['gstBasis'],
+                  gstBasis: e.target.value as CompetitorObservation["gstBasis"],
                 })
               }
             >
@@ -810,6 +1285,7 @@ export function CompetitorsPage() {
               type="url"
               value={entry.url}
               onChange={(e) => setEntry({ ...entry, url: e.target.value })}
+              aria-invalid={!entryUrlValid}
               placeholder="https://…"
             />
           </label>
@@ -826,38 +1302,15 @@ export function CompetitorsPage() {
             type="button"
             className="btn btn-primary"
             disabled={!entryValid}
-            onClick={() => {
-              if (!entryPrice.ok) return;
-              const source = manualSources.find((s) => s.id === entry.sourceId);
-              const observation: CompetitorObservation = {
-                sku: entry.sku.trim(),
-                sourceName: source?.name ?? 'Manual operator entry',
-                approvedSource: true,
-                observedAt: new Date().toISOString(),
-                price: entryPrice.amount,
-                currency: 'AUD',
-                gstBasis: entry.gstBasis,
-                shipping: '0',
-                stockStatus: 'unknown',
-                condition: 'new',
-                packCompatible: true,
-                productOnly: true,
-                matchConfidence: 1,
-                reviewState: 'accepted',
-                ...(entry.url.trim() ? { url: entry.url.trim() } : {}),
-                ...(entry.packSize.trim() ? { packSize: entry.packSize.trim() } : {}),
-              };
-              dispatch({ type: 'evidence-added', observations: [observation] });
-              setSubmitted(entry.sku.trim());
-              actions.announce(`Stored ${entry.sku.trim()} from ${observation.sourceName}.`);
-            }}
+            onClick={() => void storeManualObservation()}
           >
             Store observation
           </button>
         </div>
         <p className="hint">
-          Stored evidence is reference information: it never writes to a cost or a sell price,
-          directly or indirectly.
+          Evidence for an exact approved catalogue item is persisted as a
+          reference. Otherwise it remains in this session. Neither path writes
+          to a cost or sell price, directly or indirectly.
         </p>
       </section>
     </Page>
@@ -865,19 +1318,24 @@ export function CompetitorsPage() {
 }
 
 const ACCESS_LABELS: Record<string, string> = {
-  'live-api': 'Live API (server-side)',
-  'manual-entry': 'Manual entry',
-  'file-import': 'File import',
+  "live-api": "Licensed provider API",
+  "manual-entry": "Manual entry",
+  "file-import": "File import",
 };
 
 /** Source registry: every source, how it is accessed, and an enable toggle. */
 export function SourcesPage() {
   const state = useAppState();
-  const dispatch = useAppDispatch();
   const actions = useActions();
+  const platform = usePlatform();
   return (
     <Page title="Source registry">
-      <div className="table-scroll" role="region" aria-label="Registered sources" tabIndex={0}>
+      <div
+        className="table-scroll"
+        role="region"
+        aria-label="Registered sources"
+        tabIndex={0}
+      >
         <table className="data-table">
           <thead>
             <tr>
@@ -895,10 +1353,16 @@ export function SourcesPage() {
                 <td data-label="Access method">
                   {ACCESS_LABELS[source.accessMethod] ?? source.accessMethod}
                 </td>
-                <td data-label="How access works">{source.automatedAccessNote}</td>
+                <td data-label="How access works">
+                  {source.automatedAccessNote}
+                </td>
                 <td data-label="State">
-                  <span className={source.enabled ? 'pill pill-ok' : 'pill pill-error'}>
-                    {source.enabled ? 'enabled' : 'disabled'}
+                  <span
+                    className={
+                      source.enabled ? "pill pill-ok" : "pill pill-error"
+                    }
+                  >
+                    {source.enabled ? "enabled" : "disabled"}
                   </span>
                 </td>
                 <td data-label="Action">
@@ -906,13 +1370,17 @@ export function SourcesPage() {
                     type="button"
                     className="btn btn-sm"
                     onClick={() => {
-                      dispatch({ type: 'source-toggled', sourceId: source.id });
-                      actions.announce(
-                        `${source.name} ${source.enabled ? 'disabled' : 'enabled'}.`,
-                      );
+                      void actions
+                        .toggleCompetitorSource(source.id)
+                        .then((saved) => {
+                          if (saved)
+                            actions.announce(
+                              `${source.name} ${source.enabled ? "disabled" : "enabled"}.`,
+                            );
+                        });
                     }}
                   >
-                    {source.enabled ? 'Disable' : 'Enable'}
+                    {source.enabled ? "Disable" : "Enable"}
                   </button>
                 </td>
               </tr>
@@ -925,14 +1393,18 @@ export function SourcesPage() {
         <dl className="kv">
           <dt>Live retrieval</dt>
           <dd>
-            Performed server-side through a licensed shopping-search API only, rate limited and
-            cached, identifying the client honestly. Retailer websites are never scraped directly;
-            robots.txt, site terms, rate limits and bot protections are never circumvented.
+            {platform.kind === "desktop"
+              ? "Performed by the native Rust service through an exact allowlisted licensed shopping-search API."
+              : "Performed by the web demonstration's Node service through a licensed shopping-search API."}{" "}
+            Requests are rate limited and cached and identify the client
+            honestly. Retailer websites are never scraped directly; robots.txt,
+            site terms, rate limits and bot protections are never circumvented.
           </dd>
           <dt>Fallback paths</dt>
           <dd>
-            Manual entry and operator-provided file import. A source that cannot be supported
-            lawfully or reliably is disabled here and says why, instead of failing silently.
+            Manual entry and operator-provided file import. A source that cannot
+            be supported lawfully or reliably is disabled here and says why,
+            instead of failing silently.
           </dd>
         </dl>
       </section>

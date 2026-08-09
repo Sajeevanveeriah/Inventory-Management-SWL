@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core APIs plus the native dialog used by the Rust-side folder picker.",
+  "description": "Main window: bundled UI and narrowly scoped SWL commands only.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": [
+    "allow-swl-read",
+    "allow-swl-write",
+    "allow-swl-recovery",
+    "allow-swl-search",
+    "allow-swl-files"
+  ]
 }

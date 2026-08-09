@@ -33,26 +33,47 @@ CSV and XLSX use the same column names. JSON uses an array of these objects. Exi
 
 ## Pricing policy
 
-`aud-undercut-v1` stores money in integer cents. The floor is `ceil(cost cents x 1.30)`, preserving the existing 30% markup. At AUD 100.00 cost, the floor is AUD 130.00. This is a 30% markup on cost and a 23.08% gross margin on sell price, not a 30% gross margin.
+`aud-undercut-v1` stores money in integer cents. The floor applies 3,000 basis points with integer
+half-up rounding to the nearest cent, preserving the existing 30% markup rule without binary
+floating point. At AUD 100.00 cost, the floor is AUD 130.00. This is a 30% markup on cost and a
+23.08% gross margin on sell price, not a 30% gross margin.
 
 The aggressive benchmark is the lowest non-outlier eligible delivered comparable. The default undercut is the greater of AUD 0.01 and the lesser of AUD 1.00 or 1% of that benchmark. Three distinct sellers permit a recommendation; two permit manual review only; one is evidence only. After cent rounding the candidate must remain strictly below the benchmark and at or above the floor. Otherwise the result is `NO_SAFE_UNDERCUT` with no recommendation.
 
 ## Provider setup matrix
 
-| Provider              | Default                                    | Authentication                      | Use and boundary                                     |
-| --------------------- | ------------------------------------------ | ----------------------------------- | ---------------------------------------------------- |
-| Deterministic fixture | enabled with `SWL_SEARCH_PROVIDER=fixture` | none                                | Offline CI and adversarial UI states                 |
-| Local CSV/XLSX/JSON   | operator import                            | local file authority                | Effectively unmetered high-volume path               |
-| SerpAPI Shopping AU   | optional                                   | `SERPAPI_KEY`                       | Licensed intermediary, finite plan quota             |
-| Serper Shopping AU    | disabled adapter                           | API key                             | Finite starting credits, never unlimited             |
-| eBay Browse AU        | disabled adapter                           | OAuth application credentials       | Official API, `EBAY_AU` marketplace                  |
-| Merchant benchmark    | disabled adapter                           | eligible Merchant account and OAuth | Aggregate benchmark, separate from offers            |
-| Generic JSON feed     | disabled adapter                           | optional bearer token               | HTTPS host allowlist required; redirects revalidated |
-| SearXNG               | disabled adapter                           | deployment-specific                 | Discovery only, not a verified structured offer      |
+| Provider              | Default                                      | Authentication                      | Use and boundary                                     |
+| --------------------- | -------------------------------------------- | ----------------------------------- | ---------------------------------------------------- |
+| Deterministic fixture | enabled with `SWL_SEARCH_PROVIDER=fixture`   | none                                | Offline CI and adversarial UI states                 |
+| Local CSV/XLSX/JSON   | operator import                              | local file authority                | Effectively unmetered high-volume path               |
+| SerpAPI Shopping AU   | disabled until key and explicit local budget | key plus three paid-call controls   | Licensed intermediary, finite plan quota             |
+| Serper Shopping AU    | disabled adapter                             | API key                             | Finite starting credits, never unlimited             |
+| eBay Browse AU        | disabled adapter                             | OAuth application credentials       | Official API, `EBAY_AU` marketplace                  |
+| Merchant benchmark    | disabled adapter                             | eligible Merchant account and OAuth | Aggregate benchmark, separate from offers            |
+| Generic JSON feed     | disabled adapter                             | optional bearer token               | HTTPS host allowlist required; redirects revalidated |
+| SearXNG               | disabled adapter                             | deployment-specific                 | Discovery only, not a verified structured offer      |
 
-The paid-call ceiling defaults to AUD 0.00. No adapter may spend, recharge, bypass access controls, CAPTCHA, paywalls, robots controls, authentication, site terms or rate limits.
+The desktop adapter requires four deliberate actions before any paid request: store a credential
+in Windows-protected storage, validate it successfully, enter a positive total ceiling and
+positive per-call reservation in integer cents, then explicitly enable paid calls. Its native
+budget pessimistically reserves the per-call amount before dispatch. When the remaining ceiling
+cannot cover that reservation, it returns the quota-exhausted state without contacting the
+provider.
+
+The Node demonstration retains its environment policy. It requires all three controls:
+`SWL_PAID_CALLS_ENABLED=true`, a positive integer `SWL_PROVIDER_COST_CEILING_CENTS` and a positive
+integer `SWL_PROVIDER_COST_PER_CALL_CENTS`; partial, malformed or non-positive configuration fails
+closed. Its process-local budget likewise reserves the declared cost before a paid request. The
+offline fixture is exempt. No adapter may spend, recharge, bypass access controls, CAPTCHA,
+paywalls, robots controls, authentication, site terms or rate limits.
 
 ## Operations and recovery
+
+The current application supports explicit single-query search, deterministic fixture states and
+operator-reviewed reference attachment. Its fixture intelligence panel is clearly labelled as an
+illustrative, session-only preview: its batch and review controls do not persist a queue or apply a
+price. The following are requirements for a future unattended catalogue-wide queue, not claims
+about the current release:
 
 1. Preview eligible item count, query stages, cache hits, expected calls, quota use and worst-case paid cost.
 2. Start with fixture or authorised feeds. Pause preserves completed evidence. Resume from the persisted checkpoint. Cancel leaves successful item evidence intact.
@@ -63,9 +84,18 @@ The paid-call ceiling defaults to AUD 0.00. No adapter may spend, recharge, bypa
 
 ## Security and deployment boundary
 
-The Node server binds to loopback. Its mutation endpoints are intentionally unsuitable for internet exposure. Remote mode requires authentication, authorisation, CSRF protection, TLS and per-user audit identity first. Generic feed implementations must permit only configured HTTPS hosts, resolve DNS, block loopback, private and link-local addresses, revalidate every redirect, require JSON content type, enforce response limits and timeouts, and redact bearer credentials from logs.
+The Node server binds to loopback. It accepts only the exact configured loopback `Host`, requires
+same-origin Fetch Metadata on search and persisted evidence routes, requires the exact local
+`Origin` plus `application/json` on mutations, and rejects cross-site/no-cors calls before reading
+their body. This local boundary is not remote authentication: internet exposure would still require
+authentication, authorisation, TLS and per-user audit identity. Generic feed implementations must
+permit only configured HTTPS hosts, resolve DNS, block loopback, private and link-local addresses,
+revalidate every redirect, require JSON content type, enforce response limits and timeouts, and
+redact bearer credentials from logs.
 
-The formerly tracked root `.env` was removed from tracking without rewriting history. Rotate any credential that may ever have appeared there. `.env` remains ignored; `.env.example` contains names and placeholders only.
+The formerly tracked root `.env` was removed from tracking without rewriting history. Rotate any
+credential that may ever have appeared there. `.env` remains ignored. No credential template is
+required: configure the documented environment names only in the authorised process environment.
 
 ## Source and licence register
 

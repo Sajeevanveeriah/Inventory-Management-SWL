@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 /**
  * Content Security Policy for the production build only.
@@ -13,7 +13,7 @@ import react from '@vitejs/plugin-react';
  * The policy is not applied in dev because Vite's HMR client requires inline
  * scripts and a WebSocket connection.
  */
-const productionCsp = (desktop: boolean) =>
+const productionCsp = () =>
   [
     "default-src 'none'",
     "script-src 'self'",
@@ -22,43 +22,46 @@ const productionCsp = (desktop: boolean) =>
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
-    // Own origin only: the API lives on the same origin as the page. The
-    // desktop (Tauri) build additionally reaches the local IPC bridge.
-    desktop ? "connect-src 'self' ipc: http://ipc.localhost" : "connect-src 'self'",
+    // Own origin only: the browser demonstration API lives on the same origin.
+    // The desktop bundle receives its single effective policy from Tauri.
+    "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
     "frame-src 'none'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
-  ].join('; ');
+  ].join("; ");
 
 export default defineConfig(({ mode }) => ({
   // Local use serves from the root. Hosted deployments (e.g. GitHub Pages
   // project sites) set VITE_BASE, e.g. VITE_BASE=/Inventory-Management-SWL/.
-  base: process.env.VITE_BASE ?? '/',
+  base: process.env.VITE_BASE ?? "/",
   plugins: [
     react(),
     {
-      name: 'swl-production-csp',
-      apply: 'build',
+      name: "swl-production-csp",
+      apply: "build",
       transformIndexHtml(html) {
+        if (mode === "desktop") {
+          return html.replace("<!-- %PRODUCTION_CSP% -->", "");
+        }
         return html.replace(
-          '<!-- %PRODUCTION_CSP% -->',
-          `<meta http-equiv="Content-Security-Policy" content="${productionCsp(mode === 'desktop')}" />`,
+          "<!-- %PRODUCTION_CSP% -->",
+          `<meta http-equiv="Content-Security-Policy" content="${productionCsp()}" />`,
         );
       },
     },
   ],
   server: {
     // Dev: the SPA calls its own origin; Vite forwards /api to the Node server.
-    proxy: { '/api': 'http://127.0.0.1:8787' },
+    proxy: { "/api": "http://127.0.0.1:8787" },
   },
   preview: {
-    proxy: { '/api': 'http://127.0.0.1:8787' },
+    proxy: { "/api": "http://127.0.0.1:8787" },
   },
   build: {
-    target: 'es2022',
+    target: "es2022",
     chunkSizeWarningLimit: 1500,
   },
 }));

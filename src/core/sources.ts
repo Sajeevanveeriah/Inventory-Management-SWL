@@ -1,18 +1,22 @@
-import Big from 'big.js';
-import { normaliseObservationEx, type CompetitorObservation } from './competitors';
+import Big from "big.js";
+import {
+  normaliseObservationEx,
+  type CompetitorObservation,
+} from "./competitors";
 
 /**
  * Competitor / supplier source registry.
  *
  * Every source records honestly how it is accessed. Live competitor search is
- * performed SERVER-SIDE through a licensed shopping-search API (rate limited,
- * cached, honest user agent) — never by scraping retailer websites directly.
+ * performed through the active platform's licensed shopping-search adapter
+ * (rate limited, cached, honest user agent) — never by scraping retailer
+ * websites directly.
  * Manual entry and operator-provided file import remain supported paths.
  * Sources that cannot be supported lawfully are disabled in this registry
  * rather than failing silently. See docs/COMPETITOR-EVIDENCE.md.
  */
 
-export type SourceAccessMethod = 'live-api' | 'manual-entry' | 'file-import';
+export type SourceAccessMethod = "live-api" | "manual-entry" | "file-import";
 
 export interface CompetitorSource {
   id: string;
@@ -28,60 +32,64 @@ export interface CompetitorSource {
 export function defaultSources(): CompetitorSource[] {
   return [
     {
-      id: 'live-provider',
-      name: 'Licensed shopping search API (live)',
-      accessMethod: 'live-api',
+      id: "live-provider",
+      name: "Licensed shopping search API (live)",
+      accessMethod: "live-api",
       automatedAccessNote:
-        'Performed server-side through a licensed provider (Australian region, AUD), rate limited and cached. Retailer websites are never scraped directly.',
+        "Performed through the application's licensed provider adapter (Australian region, AUD), rate limited and cached. Retailer websites are never scraped directly.",
       enabled: true,
     },
     {
-      id: 'manual',
-      name: 'Manual operator entry',
-      accessMethod: 'manual-entry',
-      automatedAccessNote: 'Not applicable: prices are typed in by the operator with a source URL.',
+      id: "manual",
+      name: "Manual operator entry",
+      accessMethod: "manual-entry",
+      automatedAccessNote:
+        "Not applicable: prices are typed in by the operator with a source URL.",
       enabled: true,
     },
     {
-      id: 'fictionville-security',
-      name: 'Fictionville Security Supplies (example)',
-      accessMethod: 'file-import',
+      id: "fictionville-security",
+      name: "Fictionville Security Supplies (example)",
+      accessMethod: "file-import",
       automatedAccessNote:
-        'Automated access not permitted: no published product API; site terms disallow scraping.',
+        "Automated access not permitted: no published product API; site terms disallow scraping.",
       enabled: true,
     },
     {
-      id: 'fictionville-hardware',
-      name: 'Fictionville Hardware Direct (example)',
-      accessMethod: 'manual-entry',
+      id: "fictionville-hardware",
+      name: "Fictionville Hardware Direct (example)",
+      accessMethod: "manual-entry",
       automatedAccessNote:
-        'Automated access not permitted: robots.txt disallows automated product queries.',
+        "Automated access not permitted: robots.txt disallows automated product queries.",
       enabled: true,
     },
     {
-      id: 'fictionville-auctions',
-      name: 'Fictionville Auctions (example)',
-      accessMethod: 'manual-entry',
+      id: "fictionville-auctions",
+      name: "Fictionville Auctions (example)",
+      accessMethod: "manual-entry",
       automatedAccessNote:
-        'Disabled: listings mix used and bundled products; prices are not comparable evidence.',
+        "Disabled: listings mix used and bundled products; prices are not comparable evidence.",
       enabled: false,
     },
   ];
 }
 
-export function toggleSource(sources: CompetitorSource[], id: string): CompetitorSource[] {
+export function toggleSource(
+  sources: CompetitorSource[],
+  id: string,
+): CompetitorSource[] {
   return sources.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s));
 }
 
 /** Normalise a free-text query: trim, lower-case, collapse whitespace. */
 export function normaliseQuery(raw: string): string {
-  return raw.trim().toLowerCase().replace(/\s+/g, ' ');
+  return raw.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 /** Heuristic: part numbers / SKUs / barcodes are digit-bearing single tokens. */
 export function looksLikePartNumber(query: string): boolean {
   const q = normaliseQuery(query);
-  return q !== '' && !q.includes(' ') && /\d/.test(q);
+  return q !== "" && !q.includes(" ") && /\d/.test(q);
 }
 
 export interface EvidenceSearchResult {
@@ -97,7 +105,7 @@ export interface EvidenceSearchOutcome {
   sourcesWithoutResults: string[];
   /** Sources switched off in the registry, always disclosed. */
   disabledSources: string[];
-  queryKind: 'part-number' | 'free-text' | 'empty';
+  queryKind: "part-number" | "free-text" | "empty";
 }
 
 /**
@@ -113,18 +121,18 @@ export function searchEvidence(
   const query = normaliseQuery(rawQuery);
   const enabled = sources.filter((s) => s.enabled);
   const disabledSources = sources.filter((s) => !s.enabled).map((s) => s.name);
-  if (query === '') {
+  if (query === "") {
     return {
       results: [],
       sourcesWithoutResults: enabled.map((s) => s.name),
       disabledSources,
-      queryKind: 'empty',
+      queryKind: "empty",
     };
   }
   const enabledNames = new Set(enabled.map((s) => s.name));
   const matches = observations.filter((o) => {
     if (!enabledNames.has(o.sourceName)) return false;
-    const hay = `${o.sku} ${o.sourceName} ${o.url ?? ''}`.toLowerCase();
+    const hay = `${o.sku} ${o.sourceName} ${o.url ?? ""}`.toLowerCase();
     return o.sku.toLowerCase() === query || hay.includes(query);
   });
   const exactFirst = [...matches].sort((a, b) => {
@@ -140,9 +148,11 @@ export function searchEvidence(
   const matchedSources = new Set(results.map((r) => r.sourceName));
   return {
     results,
-    sourcesWithoutResults: enabled.map((s) => s.name).filter((n) => !matchedSources.has(n)),
+    sourcesWithoutResults: enabled
+      .map((s) => s.name)
+      .filter((n) => !matchedSources.has(n)),
     disabledSources,
-    queryKind: looksLikePartNumber(query) ? 'part-number' : 'free-text',
+    queryKind: looksLikePartNumber(query) ? "part-number" : "free-text",
   };
 }
 
@@ -160,7 +170,10 @@ export interface PriceBand {
 export function priceBand(results: EvidenceSearchResult[]): PriceBand | null {
   const priced = results
     .filter((r) => r.normalisedEx !== null)
-    .map((r) => ({ value: new Big(r.normalisedEx as string), source: r.sourceName }))
+    .map((r) => ({
+      value: new Big(r.normalisedEx as string),
+      source: r.sourceName,
+    }))
     .sort((a, b) => a.value.cmp(b.value));
   if (priced.length === 0) return null;
   const mid = Math.floor(priced.length / 2);

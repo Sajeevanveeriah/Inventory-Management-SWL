@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description">
+  <title id="title">SWL desktop architecture and pull-request evidence flow</title>
+  <desc id="description">Two implementation and acceptance flows. Local files enter the shared React interface, pure TypeScript rules and the platform adapter. Desktop calls go through scoped Tauri commands to SQLite, native import and export, and an allowlisted HTTPS provider. The server-backed web demonstration uses the existing Node adapter, while static Pages uses a no-network session-only store. Pull request 13 provisions pinned Rust tools, executes the configured gates, completes native recovery, runs installed Windows acceptance and records truthful evidence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .title { font: 700 30px system-ui, sans-serif; fill: #0f172a; }
+      .panel { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
+      .node { fill: #ffffff; stroke: #0f766e; stroke-width: 3; }
+      .decision { fill: #ecfeff; stroke: #0f766e; stroke-width: 3; }
+      .gate { fill: #fff7ed; stroke: #c2410c; stroke-width: 3; }
+      .text { font: 600 19px system-ui, sans-serif; fill: #0f172a; text-anchor: middle; dominant-baseline: middle; }
+      .label { font: 600 16px system-ui, sans-serif; fill: #475569; text-anchor: middle; }
+      .edge { fill: none; stroke: #334155; stroke-width: 3; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#ffffff" />
+  <text x="800" y="50" class="title" text-anchor="middle">Implemented SWL architecture</text>
+  <rect x="45" y="80" width="1510" height="520" rx="18" class="panel" />
+
+  <rect x="90" y="255" width="210" height="80" rx="12" class="node" />
+  <text x="195" y="295" class="text">Local CSV/XLSX</text>
+  <rect x="380" y="255" width="220" height="80" rx="12" class="node" />
+  <text x="490" y="295" class="text">Shared React UI</text>
+  <rect x="680" y="125" width="250" height="80" rx="12" class="node" />
+  <text x="805" y="165" class="text">Pure TypeScript rules</text>
+  <path d="M805 245 L930 295 L805 345 L680 295 Z" class="decision" />
+  <text x="805" y="295" class="text">Platform adapter</text>
+  <rect x="1010" y="255" width="250" height="80" rx="12" class="node" />
+  <text x="1135" y="295" class="text">Scoped Tauri commands</text>
+  <rect x="1320" y="115" width="200" height="80" rx="12" class="node" />
+  <text x="1420" y="145" class="text">SQLite in</text>
+  <text x="1420" y="170" class="text">app data</text>
+  <rect x="1320" y="255" width="200" height="80" rx="12" class="node" />
+  <text x="1420" y="285" class="text">Native</text>
+  <text x="1420" y="310" class="text">import/export</text>
+  <rect x="1320" y="395" width="200" height="80" rx="12" class="node" />
+  <text x="1420" y="425" class="text">Allowlisted HTTPS</text>
+  <text x="1420" y="450" class="text">provider</text>
+  <rect x="680" y="455" width="250" height="80" rx="12" class="node" />
+  <text x="805" y="485" class="text">Existing Node</text>
+  <text x="805" y="510" class="text">adapter</text>
+  <rect x="1000" y="455" width="250" height="80" rx="12" class="node" />
+  <text x="1125" y="485" class="text">Static Pages</text>
+  <text x="1125" y="510" class="text">session-only store</text>
+
+  <path d="M300 295 H380" class="edge" />
+  <path d="M600 275 C640 250 650 165 680 165" class="edge" />
+  <path d="M600 315 H680" class="edge" />
+  <path d="M930 295 H1010" class="edge" />
+  <text x="970" y="279" class="label">Desktop</text>
+  <path d="M1260 275 C1290 250 1290 155 1320 155" class="edge" />
+  <path d="M1260 295 H1320" class="edge" />
+  <path d="M1260 315 C1290 340 1290 435 1320 435" class="edge" />
+  <text x="1290" y="382" class="label">Explicit search</text>
+  <path d="M805 345 V455" class="edge" />
+  <text x="835" y="410" class="label">Web with Node</text>
+  <path d="M880 330 C915 390 960 455 1000 480" class="edge" />
+  <text x="1065" y="410" class="label">Static Pages</text>
+
+  <text x="800" y="655" class="title" text-anchor="middle">PR 13 evidence flow</text>
+  <rect x="45" y="685" width="1510" height="260" rx="18" class="panel" />
+  <rect x="90" y="775" width="170" height="80" rx="12" class="gate" />
+  <text x="175" y="815" class="text">PR 13</text>
+  <rect x="335" y="775" width="240" height="80" rx="12" class="gate" />
+  <text x="455" y="803" class="text">Pinned rustfmt</text>
+  <text x="455" y="828" class="text">and clippy</text>
+  <rect x="650" y="775" width="220" height="80" rx="12" class="gate" />
+  <text x="760" y="803" class="text">Every CI gate</text>
+  <text x="760" y="828" class="text">executes</text>
+  <rect x="945" y="775" width="240" height="80" rx="12" class="gate" />
+  <text x="1065" y="803" class="text">Native services</text>
+  <text x="1065" y="828" class="text">and recovery</text>
+  <rect x="1260" y="735" width="230" height="70" rx="12" class="gate" />
+  <text x="1375" y="758" class="text">Installed Windows</text>
+  <text x="1375" y="783" class="text">acceptance</text>
+  <rect x="1260" y="855" width="230" height="70" rx="12" class="gate" />
+  <text x="1375" y="878" class="text">Correct PR</text>
+  <text x="1375" y="903" class="text">evidence</text>
+
+  <path d="M260 815 H335" class="edge" />
+  <path d="M575 815 H650" class="edge" />
+  <path d="M870 815 H945" class="edge" />
+  <path d="M1185 805 C1215 790 1225 770 1260 770" class="edge" />
+  <path d="M1375 805 V855" class="edge" />
+</svg>
