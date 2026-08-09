@@ -9,6 +9,10 @@ const source = readFileSync(
   join(repositoryRoot, "scripts", "windows-upgrade-smoke.ps1"),
   "utf8",
 ).replace(/\r\n?/g, "\n");
+const workflow = readFileSync(
+  join(repositoryRoot, ".github", "workflows", "windows-desktop.yml"),
+  "utf8",
+).replace(/\r\n?/g, "\n");
 
 describe("Windows upgrade startup diagnostics", () => {
   it("keeps exact readiness while reporting only bounded phase-aware startup evidence", () => {
@@ -76,5 +80,75 @@ describe("Windows upgrade startup diagnostics", () => {
     );
     expect(source).toContain("$_.Exception.Data['swlProcessExited'] -eq $true");
     expect(source).toContain("'-Startup-Failure.json'");
+  });
+
+  it("prebuilds and invokes exact helpers without Cargo inside readiness", () => {
+    const helperBuildStep = workflow.match(
+      / {6}- name: Build exact test-only desktop acceptance helpers[\s\S]*?(?=\n {6}- name:)/,
+    )?.[0];
+    expect(helperBuildStep).toBeDefined();
+    expect(helperBuildStep).toContain(
+      "cargo build --locked --manifest-path src-tauri/Cargo.toml --target-dir src-tauri/target --features acceptance-tools --bin swl-db-acceptance --bin swl-legacy-seed\n          if ($LASTEXITCODE -ne 0)",
+    );
+    expect(helperBuildStep).toContain("SWL_DB_ACCEPTANCE_BINARY");
+    expect(helperBuildStep).toContain("SWL_LEGACY_SEED_BINARY");
+    expect(helperBuildStep).toContain(
+      "($helperDirectoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+    );
+    expect(helperBuildStep).toContain(
+      "@(Get-ChildItem -LiteralPath $helperDirectory -Force).Count -eq 0",
+    );
+    expect(workflow).toContain(
+      '-DatabaseAcceptanceBinaryPath "$env:SWL_DB_ACCEPTANCE_BINARY"',
+    );
+    expect(source).toContain("$DatabaseAcceptanceBinaryPath");
+    expect(source).toContain("$LegacySeedBinaryPath");
+    expect(source).toContain("../src-tauri/target/debug");
+    expect(source).toContain(
+      "($acceptanceDirectoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+    );
+    expect(source).toContain(
+      "@(Get-ChildItem -LiteralPath $acceptanceDirectory -Force).Count -eq 0",
+    );
+    expect(source).toContain("$helper.Name -cne $candidate.Value.name");
+    expect(source).toContain("-FilePath $helper.FullName");
+    expect(source).not.toContain("Get-Command cargo");
+    expect(source).not.toContain("cargo run");
+    expect(source).not.toMatch(/['"]run['"][\s\S]*?Cargo\.toml/);
+    expect(source).toContain(
+      "Get-Process -Id $ApplicationProcessId -ErrorAction SilentlyContinue",
+    );
+    expect(source).toContain("$probeDeadline = (Get-Date).AddMilliseconds");
+    expect(source).toContain("$waitSlice = [Math]::Min(250");
+    expect(source).toContain(
+      "$probeTimeoutMilliseconds = [Math]::Min(5000, $remainingMilliseconds)",
+    );
+    expect(source).toContain(
+      'throw "The installed $Phase upgrade-test application exited before acceptance evidence could be verified."',
+    );
+    expect(
+      source.match(
+        /Get-Process -Id \$ApplicationProcessId -ErrorAction SilentlyContinue/g,
+      ),
+    ).toHaveLength(3);
+    expect(source).toContain(
+      'throw "The scoped $Phase $Binary acceptance helper timed out."',
+    );
+    expect(source).toContain("-Phase 'legacy' `");
+    expect(source).toContain("-Phase 'current' `");
+    expect(source).toContain(
+      'throw "The installed $Phase upgrade-test application exited before its database became ready."',
+    );
+    expect(source).toContain(
+      'throw "The installed $Phase upgrade-test application database did not become ready in time. Last readiness failure: $lastFailure"',
+    );
+    const readinessFunction = source.match(
+      /function Wait-ForAcceptanceEvidence \{[\s\S]*?\n\}\n\nfunction Write-PostExitDatabaseClassification/,
+    )?.[0];
+    expect(readinessFunction).toBeDefined();
+    expect(readinessFunction).not.toContain(
+      "The installed upgrade-test application",
+    );
+    expect(source).toContain("$deadline = (Get-Date).AddSeconds(30)");
   });
 });

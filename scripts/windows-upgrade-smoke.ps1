@@ -1,6 +1,8 @@
 param(
   [Parameter(Mandatory = $true)][string]$LegacyInstallerPath,
   [Parameter(Mandatory = $true)][string]$CurrentInstallerPath,
+  [Parameter(Mandatory = $true)][string]$DatabaseAcceptanceBinaryPath,
+  [Parameter(Mandatory = $true)][string]$LegacySeedBinaryPath,
   [Parameter(Mandatory = $true)][string]$EvidencePath
 )
 
@@ -13,6 +15,34 @@ $legacyInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $LegacyInsta
 $currentInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $CurrentInstallerPath).Path
 $evidence = [IO.Path]::GetFullPath($EvidencePath)
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($evidence)) -Force | Out-Null
+$acceptanceDirectory = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../src-tauri/target/debug'))
+$acceptanceDirectoryInfo = Get-Item -LiteralPath $acceptanceDirectory
+if (!$acceptanceDirectoryInfo.PSIsContainer -or
+    ($acceptanceDirectoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+    @(Get-ChildItem -LiteralPath $acceptanceDirectory -Force).Count -eq 0) {
+  throw 'The prebuilt desktop acceptance helper directory failed validation.'
+}
+$acceptanceBinaries = [ordered]@{}
+$acceptanceCandidates = [ordered]@{
+  'swl-db-acceptance' = [ordered]@{ path = $DatabaseAcceptanceBinaryPath; name = 'swl-db-acceptance.exe' }
+  'swl-legacy-seed' = [ordered]@{ path = $LegacySeedBinaryPath; name = 'swl-legacy-seed.exe' }
+}
+foreach ($candidate in $acceptanceCandidates.GetEnumerator()) {
+  try {
+    $helper = Get-Item -LiteralPath (Resolve-Path -LiteralPath $candidate.Value.path).Path
+  }
+  catch {
+    throw 'A required prebuilt desktop acceptance helper is unavailable.'
+  }
+  if ($helper.PSIsContainer -or
+      $helper.Name -cne $candidate.Value.name -or
+      $helper.Length -le 0 -or
+      ($helper.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+      [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($helper.FullName)) -ine $acceptanceDirectory) {
+    throw 'A required prebuilt desktop acceptance helper failed exact path validation.'
+  }
+  $acceptanceBinaries[$candidate.Key] = $helper
+}
 
 function Get-DataManifest {
   param([string]$Root)
@@ -201,8 +231,10 @@ function Start-ApplicationAndWaitForWindow {
 
 function Invoke-JsonAcceptanceBinary {
   param(
-    [string]$Binary,
+    [ValidateSet('swl-db-acceptance', 'swl-legacy-seed')][string]$Binary,
+    [ValidateSet('legacy', 'current', 'legacy-seed', 'post-exit')][string]$Phase,
     [switch]$DisposableMarker,
+    [int]$ApplicationProcessId = 0,
     [ValidateRange(1, 60000)][int]$TimeoutMilliseconds = 30000
   )
   $priorMarker = $env:SWL_DISPOSABLE_ACCEPTANCE
@@ -213,35 +245,51 @@ function Invoke-JsonAcceptanceBinary {
     if ($DisposableMarker) { $env:SWL_DISPOSABLE_ACCEPTANCE = 'YES' }
     else { Remove-Item Env:SWL_DISPOSABLE_ACCEPTANCE -ErrorAction SilentlyContinue }
     try {
-      $cargo = Get-Command cargo -CommandType Application -ErrorAction Stop
-      $process = Start-Process -FilePath $cargo.Source -ArgumentList @(
-        'run',
-        '--quiet',
-        '--locked',
-        '--manifest-path',
-        'src-tauri/Cargo.toml',
-        '--features',
-        'acceptance-tools',
-        '--bin',
-        $Binary
-      ) -NoNewWindow -RedirectStandardOutput $standardOutput -RedirectStandardError $standardError -PassThru
+      $helper = $acceptanceBinaries[$Binary]
+      $process = Start-Process -FilePath $helper.FullName -NoNewWindow -RedirectStandardOutput $standardOutput -RedirectStandardError $standardError -PassThru
     }
     catch {
-      throw "The scoped $Binary acceptance helper could not be started."
+      throw "The scoped $Phase $Binary acceptance helper could not be started."
     }
-    if (!$process.WaitForExit($TimeoutMilliseconds)) {
+    $probeDeadline = (Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    $finished = $false
+    do {
+      $remainingMilliseconds = [int][Math]::Ceiling(($probeDeadline - (Get-Date)).TotalMilliseconds)
+      if ($remainingMilliseconds -le 0) { break }
+      $waitSlice = [Math]::Min(250, $remainingMilliseconds)
+      if ($process.WaitForExit($waitSlice)) {
+        $finished = $true
+        break
+      }
+      if ($ApplicationProcessId -gt 0 -and
+          !(Get-Process -Id $ApplicationProcessId -ErrorAction SilentlyContinue)) {
+        Stop-ExactProcessTree -RootProcessId $process.Id
+        throw "The installed $Phase upgrade-test application exited while its acceptance helper was running."
+      }
+    } while ((Get-Date) -lt $probeDeadline)
+    if (!$finished) {
       Stop-ExactProcessTree -RootProcessId $process.Id
-      throw "The scoped $Binary acceptance helper timed out."
+      throw "The scoped $Phase $Binary acceptance helper timed out."
     }
-    if ($process.ExitCode -ne 0) { throw "The scoped $Binary acceptance helper failed." }
+    $process.WaitForExit()
+    if ($ApplicationProcessId -gt 0 -and
+        !(Get-Process -Id $ApplicationProcessId -ErrorAction SilentlyContinue)) {
+      throw "The installed $Phase upgrade-test application exited before acceptance evidence could be verified."
+    }
+    if ($process.ExitCode -ne 0) { throw "The scoped $Phase $Binary acceptance helper failed." }
     if (!(Test-Path -LiteralPath $standardOutput -PathType Leaf) -or
         (Get-Item -LiteralPath $standardOutput).Length -gt 65536 -or
         (Test-Path -LiteralPath $standardError -PathType Leaf) -and
         (Get-Item -LiteralPath $standardError).Length -gt 65536) {
-      throw "The scoped $Binary acceptance helper returned invalid output."
+      throw "The scoped $Phase $Binary acceptance helper returned invalid output."
     }
-    try { return (Get-Content -LiteralPath $standardOutput -Raw) | ConvertFrom-Json }
-    catch { throw "The scoped $Binary acceptance helper returned invalid JSON." }
+    try { $result = (Get-Content -LiteralPath $standardOutput -Raw) | ConvertFrom-Json }
+    catch { throw "The scoped $Phase $Binary acceptance helper returned invalid JSON." }
+    if ($ApplicationProcessId -gt 0 -and
+        !(Get-Process -Id $ApplicationProcessId -ErrorAction SilentlyContinue)) {
+      throw "The installed $Phase upgrade-test application exited before acceptance evidence could be verified."
+    }
+    return $result
   }
   finally {
     Remove-Item -LiteralPath $standardOutput -Force -ErrorAction SilentlyContinue
@@ -326,6 +374,7 @@ function Wait-ForAcceptanceEvidence {
     [int]$RootProcessId,
     [string]$DatabasePath,
     [string]$Binary,
+    [ValidateSet('legacy', 'current')][string]$Phase,
     [scriptblock]$Assertion,
     [switch]$DisposableMarker
   )
@@ -333,13 +382,20 @@ function Wait-ForAcceptanceEvidence {
   $lastFailure = 'The scoped readiness probe did not return evidence.'
   do {
     if (!(Get-Process -Id $RootProcessId -ErrorAction SilentlyContinue)) {
-      throw 'The installed upgrade-test application exited before its database became ready.'
+      throw "The installed $Phase upgrade-test application exited before its database became ready."
     }
-    if (Test-RegularDatabaseReady -Path $DatabasePath) {
+    try {
+      $databaseReady = Test-RegularDatabaseReady -Path $DatabasePath
+    }
+    catch {
+      throw "The installed $Phase upgrade-test application database path failed validation."
+    }
+    if ($databaseReady) {
       $remainingMilliseconds = [int][Math]::Floor(($deadline - (Get-Date)).TotalMilliseconds)
       if ($remainingMilliseconds -le 0) { break }
+      $probeTimeoutMilliseconds = [Math]::Min(5000, $remainingMilliseconds)
       try {
-        $candidate = Invoke-JsonAcceptanceBinary -Binary $Binary -DisposableMarker:$DisposableMarker -TimeoutMilliseconds $remainingMilliseconds
+        $candidate = Invoke-JsonAcceptanceBinary -Binary $Binary -Phase $Phase -DisposableMarker:$DisposableMarker -ApplicationProcessId $RootProcessId -TimeoutMilliseconds $probeTimeoutMilliseconds
         & $Assertion $candidate
         return $candidate
       }
@@ -347,6 +403,9 @@ function Wait-ForAcceptanceEvidence {
         # A configured Tauri window is created before the application setup hook.
         # Keep the genuine application alive while its transactional setup finishes.
         $message = $_.Exception.Message
+        if ($message -match '^The installed (?:legacy|current) upgrade-test application exited (?:while its acceptance helper was running|before acceptance evidence could be verified)\.$') {
+          throw
+        }
         $lastFailure = if ($message -match '^The (?:scoped .+ acceptance helper|genuine former application database|migrated live database|clean upgrade profile|verified pre-migration backup)') {
           $message
         }
@@ -357,7 +416,7 @@ function Wait-ForAcceptanceEvidence {
     }
     Start-Sleep -Milliseconds 250
   } while ((Get-Date) -lt $deadline)
-  throw "The installed upgrade-test application database did not become ready in time. Last readiness failure: $lastFailure"
+  throw "The installed $Phase upgrade-test application database did not become ready in time. Last readiness failure: $lastFailure"
 }
 
 function Write-PostExitDatabaseClassification {
@@ -375,6 +434,7 @@ function Write-PostExitDatabaseClassification {
     if (Test-RegularDatabaseReady -Path $DatabasePath) {
       $databaseEvidence = Invoke-JsonAcceptanceBinary `
         -Binary 'swl-db-acceptance' `
+        -Phase 'post-exit' `
         -TimeoutMilliseconds 30000
       [long]$verifiedSchemaVersion = 0
       $counts = [ordered]@{}
@@ -463,6 +523,7 @@ try {
     -RootProcessId $legacyLaunch.ProcessId `
     -DatabasePath $databasePath `
     -Binary 'swl-db-acceptance' `
+    -Phase 'legacy' `
     -Assertion $emptyFormerAssertion)
 }
 finally {
@@ -477,7 +538,7 @@ finally {
 if (!(Test-RegularDatabaseReady -Path $databasePath)) {
   throw 'The genuine former application did not create its regular stable database.'
 }
-$legacySeed = Invoke-JsonAcceptanceBinary -Binary 'swl-legacy-seed' -DisposableMarker
+$legacySeed = Invoke-JsonAcceptanceBinary -Binary 'swl-legacy-seed' -Phase 'legacy-seed' -DisposableMarker
 Assert-ExactLegacyEvidence -Value $legacySeed
 $formerDatabaseSha256 = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash.ToLowerInvariant()
 $beforeUpgradeManifest = @(Get-DataManifest -Root $dataRoot)
@@ -518,6 +579,7 @@ try {
     -RootProcessId $currentLaunch.ProcessId `
     -DatabasePath $databasePath `
     -Binary 'swl-db-acceptance' `
+    -Phase 'current' `
     -Assertion $migratedAssertion
 }
 finally {
