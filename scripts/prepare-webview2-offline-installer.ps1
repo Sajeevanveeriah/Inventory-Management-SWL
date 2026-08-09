@@ -126,8 +126,9 @@ if ($signature.Status -ne 'Valid' -or
   throw 'The downloaded WebView2 payload does not have a valid Microsoft Authenticode signature.'
 }
 $version = $payloadInfo.VersionInfo
-if ($version.ProductName -notmatch 'WebView2' -or $version.FileVersion -notmatch '^\d+(?:\.\d+){3}$') {
-  throw 'The downloaded Microsoft payload does not identify as a versioned WebView2 installer.'
+if ($version.FileVersion -notmatch '^\d+(?:\.\d+){3}$' -and
+    $version.ProductVersion -notmatch '^\d+(?:\.\d+){3}$') {
+  throw 'The downloaded Microsoft WebView2 distribution does not expose a numeric four-part version.'
 }
 $hash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash.ToLowerInvariant()
 

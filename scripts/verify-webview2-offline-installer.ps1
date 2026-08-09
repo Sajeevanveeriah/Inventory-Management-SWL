@@ -98,8 +98,9 @@ try {
       $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)(?:CN|O)=Microsoft Corporation(?:,|$)') {
     throw "The embedded WebView2 installer does not have a valid Microsoft Authenticode signature."
   }
-  if ($candidate.VersionInfo.ProductName -notmatch 'WebView2') {
-    throw 'The embedded Microsoft payload does not identify as WebView2.'
+  if ($candidate.VersionInfo.FileVersion -notmatch '^\d+(?:\.\d+){3}$' -and
+      $candidate.VersionInfo.ProductVersion -notmatch '^\d+(?:\.\d+){3}$') {
+    throw 'The embedded Microsoft WebView2 distribution does not expose a numeric four-part version.'
   }
   if ([long]$prevalidationEvidence.bytes -ne $candidate.Length -or
       $prevalidationEvidence.fileVersion -ne $candidate.VersionInfo.FileVersion -or
