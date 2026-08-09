@@ -643,7 +643,9 @@ struct InputGrant {
 }
 
 struct ExportSession {
+    #[cfg(test)]
     grant_id: String,
+    #[cfg(test)]
     destination: PathBuf,
     temporary: PathBuf,
     filename: String,
@@ -2563,6 +2565,7 @@ fn list_catalogue_items(state: State<'_, AppState>) -> Result<Vec<CatalogueItem>
     Ok(items)
 }
 
+#[cfg(test)]
 fn update_catalogue_metadata(
     connection: &mut Connection,
     items: &[CatalogueItem],
@@ -2891,7 +2894,7 @@ fn attach_competitor_reference_inner(
     let observation_value = serde_json::to_value(&observation)
         .map_err(|_| "Competitor observation could not be validated.".to_string())?;
     let serialised = validate_json(&observation_value, "Competitor observation")?;
-    let _gate = lock_mutation_gate(&state)?;
+    let _gate = lock_mutation_gate(state)?;
     let connection = open_connection(&state.database_path)?;
     let record = CompetitorReferenceRecord {
         id: Uuid::new_v4().to_string(),
@@ -3592,6 +3595,7 @@ fn preview_configuration_import_inner(
     })
 }
 
+#[cfg(test)]
 fn apply_configuration_import_inner(
     state: &AppState,
     pending: PendingImport,
@@ -6266,7 +6270,9 @@ fn begin_export_file_inner(
     export_sessions.insert(
         session_id.clone(),
         ExportSession {
+            #[cfg(test)]
             grant_id,
+            #[cfg(test)]
             destination,
             temporary,
             filename,
@@ -6433,6 +6439,7 @@ fn prepare_export_session(session: &mut ExportSession) -> Result<(), String> {
     validate_export_contents(&session.temporary, &session.filename)
 }
 
+#[cfg(test)]
 fn commit_export_file_inner(state: &AppState, session_id: String) -> Result<String, String> {
     validate_identifier(&session_id, "Export session")?;
     let mut session = safe_lock(&state.export_sessions)?
@@ -6674,6 +6681,7 @@ fn commit_export_file(state: State<'_, AppState>, session_id: String) -> Result<
     prepare_export_file_for_batch_inner(&state, session_id)
 }
 
+#[cfg(test)]
 fn abort_export_file_inner(state: &AppState, session_id: String) -> Result<(), String> {
     validate_identifier(&session_id, "Export session")?;
     if let Some(mut session) = safe_lock(&state.export_sessions)?.remove(&session_id) {
