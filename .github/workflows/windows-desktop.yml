@@ -288,19 +288,93 @@ jobs:
       - name: Install exact external Tauri WebDriver
         shell: pwsh
         run: |
-          cargo install tauri-driver --version 2.0.6 --locked --root .tools/tauri-driver
-          $driverDirectory = "$PWD\.tools\tauri-driver\bin"
-          $driverExecutable = Join-Path $driverDirectory 'tauri-driver.exe'
-          $driverVersion = (& $driverExecutable --version).Trim()
-          if ($LASTEXITCODE -ne 0 -or $driverVersion -notmatch '\b2\.0\.6\b') {
-            throw 'The installed external tauri-driver does not match exact version 2.0.6.'
+          $driverRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE '.tools/tauri-driver'))
+          if (Test-Path -LiteralPath $driverRoot) {
+            throw 'The project-local tauri-driver root was not clean before installation.'
+          }
+          cargo install tauri-driver --registry crates-io --version 2.0.6 --locked --root $driverRoot
+          if ($LASTEXITCODE -ne 0) { throw 'The exact external tauri-driver installation failed.' }
+          $driverRootInfo = Get-Item -LiteralPath $driverRoot
+          if (!$driverRootInfo.PSIsContainer -or
+              ($driverRootInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The project-local tauri-driver root failed ordinary-directory validation.'
+          }
+          $installListingRaw = @(& cargo install --list --root $driverRoot --color never 2>&1)
+          $installListingExitCode = $LASTEXITCODE
+          $installListing = @($installListingRaw | ForEach-Object { ([string]$_).Replace("`r", '') })
+          if ($installListingExitCode -ne 0 -or
+              $installListing.Count -ne 2 -or
+              $installListing[0] -cne 'tauri-driver v2.0.6:' -or
+              $installListing[1] -cne '    tauri-driver.exe') {
+            throw 'Cargo does not list exactly the expected project-local tauri-driver 2.0.6 executable.'
+          }
+
+          $driverDirectory = [IO.Path]::GetFullPath((Join-Path $driverRoot 'bin'))
+          $driverDirectoryInfo = Get-Item -LiteralPath $driverDirectory
+          if (!$driverDirectoryInfo.PSIsContainer -or
+              ($driverDirectoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The project-local tauri-driver binary directory failed validation.'
+          }
+          $driverExecutablePath = [IO.Path]::GetFullPath((Join-Path $driverDirectory 'tauri-driver.exe'))
+          $driverExecutable = Get-Item -LiteralPath $driverExecutablePath
+          if ($driverExecutable.PSIsContainer -or
+              $driverExecutable.Length -le 0 -or
+              ($driverExecutable.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $driverExecutable.FullName -ine $driverExecutablePath -or
+              [IO.Path]::GetDirectoryName($driverExecutable.FullName) -ine $driverDirectory) {
+            throw 'The external tauri-driver executable failed exact regular-file validation.'
+          }
+          $driverHelpTimeoutMilliseconds = 10000
+          $maxDriverHelpBytes = 8 * 1024
+          $driverHelpStartInfo = [Diagnostics.ProcessStartInfo]::new()
+          $driverHelpStartInfo.FileName = $driverExecutable.FullName
+          [void]$driverHelpStartInfo.ArgumentList.Add('--help')
+          $driverHelpStartInfo.UseShellExecute = $false
+          $driverHelpStartInfo.CreateNoWindow = $true
+          $driverHelpStartInfo.RedirectStandardOutput = $true
+          $driverHelpStartInfo.RedirectStandardError = $true
+          $driverHelpProcess = [Diagnostics.Process]::new()
+          $driverHelpProcess.StartInfo = $driverHelpStartInfo
+          $driverHelpText = ''
+          $driverHelpError = ''
+          $driverHelpExitCode = -1
+          try {
+            if (!$driverHelpProcess.Start()) {
+              throw 'The exact external tauri-driver help probe did not start.'
+            }
+            $driverHelpOutputTask = $driverHelpProcess.StandardOutput.ReadToEndAsync()
+            $driverHelpErrorTask = $driverHelpProcess.StandardError.ReadToEndAsync()
+            if (!$driverHelpProcess.WaitForExit($driverHelpTimeoutMilliseconds)) {
+              try { $driverHelpProcess.Kill($true) } catch {}
+              [void]$driverHelpProcess.WaitForExit(5000)
+              throw 'The exact external tauri-driver help probe timed out.'
+            }
+            $driverHelpText = $driverHelpOutputTask.GetAwaiter().GetResult()
+            $driverHelpError = $driverHelpErrorTask.GetAwaiter().GetResult()
+            $driverHelpExitCode = $driverHelpProcess.ExitCode
+          }
+          finally { $driverHelpProcess.Dispose() }
+          $driverHelpBytes = [Text.Encoding]::UTF8.GetByteCount($driverHelpText) + [Text.Encoding]::UTF8.GetByteCount($driverHelpError)
+          if ($driverHelpBytes -gt $maxDriverHelpBytes -or
+              $driverHelpExitCode -ne 0 -or
+              ![string]::IsNullOrEmpty($driverHelpError) -or
+              $driverHelpText -notmatch [regex]::Escape('USAGE: tauri-driver [FLAGS] [OPTIONS]')) {
+            throw 'The exact external tauri-driver did not pass its supported help probe.'
           }
           New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e" -Force | Out-Null
           [ordered]@{
-            version = $driverVersion
-            source = 'crates.io tauri-driver 2.0.6 --locked'
+            package = 'tauri-driver'
+            version = '2.0.6'
+            registry = 'crates-io'
+            lockedDependencyResolution = $true
+            source = 'cargo install --registry crates-io tauri-driver 2.0.6 --locked'
+            executableFileName = $driverExecutable.Name
+            executableSha256 = (Get-FileHash -LiteralPath $driverExecutable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256Purpose = 'observational executable identity only; not a signature or provenance claim'
+            validation = 'exact Cargo installed-package listing plus exact regular-file and bounded supported help checks'
             boundary = 'external project-local CI executable; never bundled'
           } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/TAURI-DRIVER.json" -Encoding utf8
+          "SWL_TAURI_DRIVER_BINARY=$($driverExecutable.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $driverDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Prove a clean disposable profile for production-binary driving
         shell: pwsh
@@ -314,7 +388,13 @@ jobs:
         env:
           SWL_DESKTOP_BINARY: ${{ github.workspace }}\src-tauri\target\release\swl-pricing-desktop.exe
           SWL_DESKTOP_EVIDENCE_DIR: ${{ runner.temp }}\swl-diagnostics\desktop-e2e
-        run: ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR
+        run: |
+          $resolvedDrivers = @(Get-Command tauri-driver.exe -All -ErrorAction SilentlyContinue)
+          if ($resolvedDrivers.Count -ne 1 -or
+              $resolvedDrivers[0].Source -ine $env:SWL_TAURI_DRIVER_BINARY) {
+            throw 'The desktop test does not resolve exactly the validated project-local tauri-driver executable.'
+          }
+          ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR
       - name: Prove representative nonzero synthetic data before installer lifecycle checks
         shell: pwsh
         run: |

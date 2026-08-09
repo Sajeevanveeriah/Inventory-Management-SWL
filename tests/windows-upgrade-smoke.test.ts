@@ -151,4 +151,75 @@ describe("Windows upgrade startup diagnostics", () => {
     );
     expect(source).toContain("$deadline = (Get-Date).AddSeconds(30)");
   });
+
+  it("pins and validates the exact external Tauri driver without an unsupported version probe", () => {
+    const installStep = workflow.match(
+      / {6}- name: Install exact external Tauri WebDriver[\s\S]*?(?=\n {6}- name:)/,
+    )?.[0];
+    expect(installStep).toBeDefined();
+    expect(installStep).toContain(
+      "$driverRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE '.tools/tauri-driver'))",
+    );
+    expect(installStep).toContain(
+      "cargo install tauri-driver --registry crates-io --version 2.0.6 --locked --root $driverRoot\n          if ($LASTEXITCODE -ne 0)",
+    );
+    expect(installStep).toContain(
+      "($driverRootInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+    );
+    expect(installStep).toContain(
+      "@(& cargo install --list --root $driverRoot --color never 2>&1)",
+    );
+    expect(installStep).toContain("$installListingExitCode = $LASTEXITCODE");
+    expect(installStep).toContain("$installListing.Count -ne 2");
+    expect(installStep).toContain(
+      "$installListing[0] -cne 'tauri-driver v2.0.6:'",
+    );
+    expect(installStep).toContain(
+      "$installListing[1] -cne '    tauri-driver.exe'",
+    );
+    expect(installStep).not.toContain(".crates2.json");
+    expect(installStep).not.toContain("ConvertFrom-Json");
+    expect(installStep).toContain(
+      "$driverExecutable.FullName -ine $driverExecutablePath",
+    );
+    expect(installStep).toContain("$driverExecutable.PSIsContainer");
+    expect(installStep).toContain("$driverExecutable.Length -le 0");
+    expect(installStep).toContain(
+      "($driverExecutable.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0",
+    );
+    expect(installStep).toContain("$driverHelpTimeoutMilliseconds = 10000");
+    expect(installStep).toContain("$maxDriverHelpBytes = 8 * 1024");
+    expect(installStep).toContain("$driverHelpProcess.WaitForExit");
+    expect(installStep).toContain("$driverHelpProcess.Kill($true)");
+    expect(installStep).toContain("[Text.Encoding]::UTF8.GetByteCount");
+    expect(installStep).toContain("'USAGE: tauri-driver [FLAGS] [OPTIONS]'");
+    expect(installStep).not.toMatch(
+      /& \$driverExecutable(?:\.FullName)? --version/,
+    );
+    expect(installStep).toContain("SWL_TAURI_DRIVER_BINARY");
+    expect(installStep).toContain("$env:GITHUB_PATH");
+    const evidenceBlock = installStep?.match(
+      /\[ordered\]@\{[\s\S]*?\}\s*\| ConvertTo-Json/,
+    )?.[0];
+    expect(evidenceBlock).toBeDefined();
+    expect(evidenceBlock).toContain(
+      "boundary = 'external project-local CI executable; never bundled'",
+    );
+    expect(evidenceBlock).toContain(
+      "sha256Purpose = 'observational executable identity only; not a signature or provenance claim'",
+    );
+    expect(evidenceBlock).not.toMatch(/(?:fullName|path|helpOutput)\s*=/i);
+
+    const driveStep = workflow.match(
+      / {6}- name: Drive the production desktop executable with outbound networking denied[\s\S]*?(?=\n {6}- name:)/,
+    )?.[0];
+    expect(driveStep).toBeDefined();
+    expect(driveStep).toContain(
+      "@(Get-Command tauri-driver.exe -All -ErrorAction SilentlyContinue)",
+    );
+    expect(driveStep).toContain("$resolvedDrivers.Count -ne 1");
+    expect(driveStep).toContain(
+      "$resolvedDrivers[0].Source -ine $env:SWL_TAURI_DRIVER_BINARY",
+    );
+  });
 });
