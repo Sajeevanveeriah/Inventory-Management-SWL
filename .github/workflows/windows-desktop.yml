@@ -162,7 +162,10 @@ jobs:
       - name: Verify embedded WebView2 offline installer signature
         shell: pwsh
         run: ./scripts/verify-webview2-offline-installer.ps1 -InstallerPath $env:SWL_INSTALLER -PrevalidatedPayloadPath "$env:RUNNER_TEMP/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" -PrevalidationEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Prevalidation.json" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Evidence.json"
-      # actions/checkout v7.0.1 — immutable genuine 1.0.0 PR head, isolated for upgrade acceptance
+      - name: Configure deterministic former-source checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      # actions/checkout v7.0.1 — immutable 1.0.0 application source, isolated for upgrade acceptance
       - name: Check out the immutable former 1.0.0 source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -170,10 +173,20 @@ jobs:
           path: .ci-upgrade/legacy-1.0.0
           fetch-depth: 1
           persist-credentials: false
-      - name: Verify and build the immutable former 1.0.0 package
+      - name: Verify and build the former 1.0.0 package with its reviewed lock repair
         shell: pwsh
         run: |
           $legacy = Join-Path $env:GITHUB_WORKSPACE '.ci-upgrade/legacy-1.0.0'
+          $legacyLock = Join-Path $legacy 'src-tauri/Cargo.lock'
+          $lockFixture = Join-Path $env:GITHUB_WORKSPACE '.github/fixtures/legacy-e36ec72-Cargo.lock'
+          $expectedOriginalLockBlob = '562495d1fc7c3189d56859b0232d92b2c27a95b9'
+          $expectedOriginalLockHash = 'dfcfa8ee77e3d1139beefcde2f9f631bace818ed7a25cf5ac07863c23b44a8cb'
+          $expectedFixtureLockBlob = '49f021514c1fed112293b56d15bddfc2d1931613'
+          $expectedFixtureLockHash = '7bbe908f540455eb673274bc8e014b80b06a16b460ac781fca60f1c6169154e9'
+          $actualLegacySourceSha = (& git -C $legacy rev-parse HEAD).Trim()
+          if ($actualLegacySourceSha -ne $env:SWL_LEGACY_SOURCE_SHA) {
+            throw 'The checked-out former source does not match the reviewed immutable commit.'
+          }
           $package = Get-Content -LiteralPath (Join-Path $legacy 'package.json') -Raw | ConvertFrom-Json
           $lock = Get-Content -LiteralPath (Join-Path $legacy 'package-lock.json') -Raw | ConvertFrom-Json -AsHashtable
           $cargo = Get-Content -LiteralPath (Join-Path $legacy 'src-tauri/Cargo.toml') -Raw
@@ -191,6 +204,27 @@ jobs:
               throw "Former build script $($script.Name) downloads a mutable executable."
             }
           }
+          $originalLockBlob = (& git -C $legacy rev-parse 'HEAD:src-tauri/Cargo.lock').Trim()
+          $fixtureLockBlob = (& git -C $env:GITHUB_WORKSPACE rev-parse 'HEAD:.github/fixtures/legacy-e36ec72-Cargo.lock').Trim()
+          $originalLockHash = (Get-FileHash -LiteralPath $legacyLock -Algorithm SHA256).Hash.ToLowerInvariant()
+          $fixtureLockHash = (Get-FileHash -LiteralPath $lockFixture -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($originalLockBlob -ne $expectedOriginalLockBlob -or
+              $originalLockHash -ne $expectedOriginalLockHash -or
+              $fixtureLockBlob -ne $expectedFixtureLockBlob -or
+              $fixtureLockHash -ne $expectedFixtureLockHash) {
+            throw 'The former source lock or its reviewed reproducibility fixture has an unexpected identity.'
+          }
+          Copy-Item -LiteralPath $lockFixture -Destination $legacyLock -Force
+          [ordered]@{
+            sourceSha = $actualLegacySourceSha
+            originalLockBlobSha = $originalLockBlob
+            originalLockSha256 = $originalLockHash
+            fixtureLockBlobSha = $fixtureLockBlob
+            fixtureLockSha256 = $fixtureLockHash
+            derivation = 'Cargo 1.89.0 cargo update -p uuid --precise 1.18.1'
+            reason = 'the immutable manifest pins uuid 1.18.1 while its committed lock records uuid 1.24.0'
+            sourceChanges = 'none; only the package-manager-generated lock fixture is substituted for the acceptance build'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/Legacy-Lock-Fixture.json" -Encoding utf8
           npm ci --prefix $legacy
           if ($LASTEXITCODE -ne 0) { throw 'Locked former JavaScript dependency installation failed.' }
           cargo metadata --locked --manifest-path (Join-Path $legacy 'src-tauri/Cargo.toml') --format-version 1 | Out-Null
@@ -203,9 +237,15 @@ jobs:
               throw 'The former package is not using exact lockfile-installed Tauri CLI 2.11.4.'
             }
             & $tauriCli build --bundles nsis -- --locked
-            if ($LASTEXITCODE -ne 0) { throw 'The immutable former NSIS build failed.' }
-            git diff --exit-code -- src-tauri/Cargo.lock
-            if ($LASTEXITCODE -ne 0) { throw 'The former build changed its committed Cargo lock.' }
+            if ($LASTEXITCODE -ne 0) { throw 'The former-source NSIS build with the reviewed lock repair failed.' }
+            $postBuildLockHash = (Get-FileHash -LiteralPath $legacyLock -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($postBuildLockHash -ne $expectedFixtureLockHash) {
+              throw 'The former build changed its reviewed Cargo lock fixture.'
+            }
+            $changedPaths = @(& git diff --name-only -- .)
+            if ($LASTEXITCODE -ne 0 -or $changedPaths.Count -ne 1 -or $changedPaths[0] -ne 'src-tauri/Cargo.lock') {
+              throw 'The former build changed source outside the reviewed Cargo lock fixture.'
+            }
           }
           finally { Pop-Location }
           $legacyInstallers = @(Get-ChildItem (Join-Path $legacy 'src-tauri/target/release/bundle/nsis') -File -Filter '*.exe')

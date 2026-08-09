@@ -219,7 +219,7 @@ if ((@(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress) -n
 }
 
 [ordered]@{
-  scope = 'Genuine immutable 1.0.0 to 1.1.0 scripted upgrade on disposable GitHub-hosted Windows Server 2025; not interactive Windows 10/11 acceptance'
+  scope = 'Immutable former 1.0.0 application source with its reviewed hash-bound Cargo lock repair upgraded to 1.1.0 on disposable GitHub-hosted Windows Server 2025; not interactive Windows 10/11 acceptance'
   legacy = [ordered]@{
     sourceCommit = 'e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a'
     version = $legacyVersion

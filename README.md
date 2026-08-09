@@ -372,9 +372,11 @@ excludable record. A "Fictional demo data" badge is shown while active.
 - Selecting a different worksheet re-reads the file from the in-memory copy; browsers may
   invalidate very large `File` handles if the file changes on disk mid-session.
 - GST/tax transformations are intentionally not implemented.
-- Hosted Windows Server 2025 compilation, production-binary WebDriver, immutable 1.0.0-to-1.1.0
-  migration smoke and installer lifecycle smoke do not replace the release checklist's interactive
-  Windows 10/11 DPI, upgrade, restart, spreadsheet-open or complete visual acceptance.
+- Hosted Windows Server 2025 compilation, production-binary WebDriver, the documented former-source
+  1.0.0-to-1.1.0 migration smoke and installer lifecycle smoke do not replace the release
+  checklist's interactive Windows 10/11 DPI, upgrade, restart, spreadsheet-open or complete visual
+  acceptance. The former source's reviewed Cargo lock repair fixture and exact hashes are documented
+  in [.github/fixtures/README.md](.github/fixtures/README.md).
 
 ## Troubleshooting
 

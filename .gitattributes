@@ -1,4 +1,1 @@
-# Windows batch files must keep CRLF endings: cmd.exe misparses LF-only
-# scripts (skipped labels, broken multi-line blocks), which makes the
-# launcher window flash and close instantly.
-*.cmd text eol=crlf
+/.github/fixtures/legacy-e36ec72-Cargo.lock -text

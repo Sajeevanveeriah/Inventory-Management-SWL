@@ -58,11 +58,14 @@ provider, backup, restore and reset states. Those captures are separately labell
 Windows 10/11 acceptance. DPI scaling at 125/150/200%, reduced motion, assistive-technology use,
 restart, interactive lower-version upgrade on Windows 10/11, offline installation with WebView2
 absent, spreadsheet opening and human inspection still require an authorised disposable Windows
-10 or 11 environment. Separately, the hosted workflow builds immutable former PR head
-`e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a` with its lockfile-installed Tauri CLI, installs and
-launches that genuine 1.0.0 build, seeds exact synthetic records through a feature-gated stable-path
-helper, installs 1.1.0 over it, and verifies the migrated IDs, relationships, manifest counts,
-SQLite integrity and SHA-256-protected pre-migration backup before uninstall.
+10 or 11 environment. Separately, the hosted workflow builds former PR head
+`e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a` with its lockfile-installed Tauri CLI. The immutable
+source's manifest pins `uuid 1.18.1` but its committed lock records `1.24.0`, so the acceptance build
+uses the separately reviewed, hash-bound, package-manager-generated lock fixture documented in
+`.github/fixtures/README.md`; no application source changes. The workflow installs and launches
+that genuine 1.0.0 application build, seeds exact synthetic records through a feature-gated
+stable-path helper, installs 1.1.0 over it, and verifies the migrated IDs, relationships, manifest
+counts, SQLite integrity and SHA-256-protected pre-migration backup before uninstall.
 After the reset test proves zero records, the production UI creates a fresh nonzero synthetic
 catalogue with approvals and append-only history in the same disposable profile. The test-only
 read-only database acceptance helper records exact item identifiers and counts. Installer smoke

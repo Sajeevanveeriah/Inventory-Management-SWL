@@ -130,6 +130,7 @@ separate evidence classes. Neither is interactive Windows 10/11 DPI/scaling acce
 The hosted driver does not control Windows IFileDialog. Real native picker selection/cancel,
 same-file conflict UI, opening all five outputs in a spreadsheet, Windows restart, interactive
 Windows 10/11 lower-version upgrade and offline installation with WebView2 initially absent remain
-separate disposable Windows 10/11 acceptance gates. The scripted immutable 1.0.0 to 1.1.0 upgrade
+separate disposable Windows 10/11 acceptance gates. The scripted immutable former 1.0.0 application
+source plus its reviewed hash-bound Cargo lock repair to 1.1.0 upgrade
 evidence is Windows Server 2025 evidence only.
 '@ | Set-Content -LiteralPath (Join-Path $output 'RENDER-EVIDENCE-SCOPE.txt') -Encoding utf8

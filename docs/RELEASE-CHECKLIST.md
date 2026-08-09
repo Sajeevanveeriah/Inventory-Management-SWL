@@ -34,9 +34,10 @@ Complete every item before shipping a build of SWL Pricing and Inventory Control
       reopen and a second uninstall
 - [ ] Installed and reinstalled executable SHA-256 values exactly match the production binary driven
       by WDIO
-- [ ] The immutable `e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a` version 1.0.0 installer
-      creates the former schema, exact synthetic catalogue/approval/history records survive the
-      1.1.0 launch migration, and the verified pre-migration backup preserves their IDs and counts
+- [ ] The `e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a` version 1.0.0 source, built with its
+      reviewed hash-bound Cargo lock repair fixture, creates the former schema; exact synthetic
+      catalogue/approval/history records survive the 1.1.0 launch migration; and the verified
+      pre-migration backup preserves their IDs and counts
 
 ## Data recovery and security
 
