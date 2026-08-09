@@ -88,7 +88,7 @@ jobs:
             "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
           ) | Where-Object { Test-Path -LiteralPath $_ }
           if ($candidates.Count -ne 1) { throw "Expected exactly one installed Microsoft Edge executable." }
-          $edgePath = $candidates[0]
+          $edgePath = [string]($candidates | Select-Object -First 1)
           $signature = Get-AuthenticodeSignature -LiteralPath $edgePath
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft') {
             throw "The installed Microsoft Edge executable is not validly signed by Microsoft."
@@ -110,7 +110,7 @@ jobs:
           if ($driverCandidates.Count -ne 1) {
             throw "Expected exactly one installed Microsoft Edge WebDriver; found $($driverCandidates.Count)."
           }
-          $driverPath = $driverCandidates[0]
+          $driverPath = [string]($driverCandidates | Select-Object -First 1)
           $driverSignature = Get-AuthenticodeSignature -LiteralPath $driverPath
           if ($driverSignature.Status -ne 'Valid' -or $driverSignature.SignerCertificate.Subject -notmatch 'Microsoft') {
             throw 'The installed Microsoft Edge WebDriver is not validly signed by Microsoft.'
