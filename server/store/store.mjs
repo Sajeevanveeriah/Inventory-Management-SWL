@@ -28,6 +28,12 @@ export class MissingApprovalError extends Error {
     this.name = 'MissingApprovalError';
   }
 }
+export class MissingCatalogueItemError extends Error {
+  constructor(itemId) {
+    super(`Catalogue item ${itemId} does not exist. Reference refused.`);
+    this.name = 'MissingCatalogueItemError';
+  }
+}
 
 function readJson(path, fallback) {
   if (!existsSync(path)) return fallback;
@@ -128,6 +134,7 @@ export function createStore(dataDir) {
      * so it is provably incapable of altering a cost or sell price.
      */
     appendReference({ itemId, observation }) {
+      if (!this.getItem(itemId)) throw new MissingCatalogueItemError(itemId);
       const record = {
         id: randomUUID(),
         itemId,

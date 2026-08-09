@@ -1,5 +1,7 @@
 # SWL Pricing and Inventory Control
 
+> Competitor intelligence architecture, pricing evidence policy, provider setup and operations: [docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md](docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md).
+
 A local-first browser application for **Stan Wootton Locksmiths** that compares an untouched
 supplier price export against the current ServiceM8 Materials & Services export, applies the
 confirmed **30% markup on cost**, and produces a controlled, operator-reviewed candidate import

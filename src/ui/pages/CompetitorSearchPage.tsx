@@ -34,6 +34,293 @@ function retrievedLabel(iso: string): string {
   return `${MELBOURNE_TIME.format(at)} (${age})`;
 }
 
+const INTELLIGENCE_OFFERS = [
+  {
+    seller: 'Fictionville Security',
+    price: 14350,
+    provider: 'Fixture feed',
+    state: 'Eligible',
+    note: 'Exact MPN, new, each, GST and shipping known',
+  },
+  {
+    seller: 'Example Trade Locks',
+    price: 14600,
+    provider: 'Fixture feed',
+    state: 'Eligible',
+    note: 'Exact GTIN, new, each, GST and shipping known',
+  },
+  {
+    seller: 'Fictionville Hardware',
+    price: 14900,
+    provider: 'Fixture search',
+    state: 'Eligible',
+    note: 'Brand and MPN agree; probable match',
+  },
+  {
+    seller: 'Demo Wholesale',
+    price: 26500,
+    provider: 'Fixture feed',
+    state: 'Excluded',
+    note: 'Pack of 2 is incompatible',
+  },
+  {
+    seller: 'Provider error fixture',
+    price: null,
+    provider: 'Fixture error',
+    state: 'Provider failed',
+    note: 'Retryable upstream error retained in coverage',
+  },
+] as const;
+
+function IntelligenceWorkspace() {
+  const [batchState, setBatchState] = useState<'ready' | 'running' | 'paused' | 'cancelled'>(
+    'ready',
+  );
+  return (
+    <section className="ci-workspace" aria-labelledby="ci-title">
+      <div className="ci-heading">
+        <div>
+          <span className="eyebrow">Fixture-backed review</span>
+          <h2 id="ci-title">Competitor intelligence</h2>
+        </div>
+        <div className="ci-actions" aria-label="Batch controls">
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => setBatchState('running')}
+          >
+            Analyse 6 eligible items
+          </button>
+          <button
+            className="btn"
+            type="button"
+            disabled={batchState !== 'running'}
+            onClick={() => setBatchState('paused')}
+          >
+            Pause
+          </button>
+          <button
+            className="btn"
+            type="button"
+            disabled={batchState === 'ready' || batchState === 'cancelled'}
+            onClick={() => setBatchState('cancelled')}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+      <div className="ci-status-grid" aria-label="Provider and coverage summary">
+        <div>
+          <strong>3</strong>
+          <span>eligible sellers</span>
+        </div>
+        <div>
+          <strong>2 / 3</strong>
+          <span>providers healthy</span>
+        </div>
+        <div>
+          <strong>AUD 0.00</strong>
+          <span>worst-case paid cost</span>
+        </div>
+        <div>
+          <strong>{batchState}</strong>
+          <span>batch state</span>
+        </div>
+      </div>
+      <div className="ci-plan" role="status">
+        <strong>Preflight:</strong> 6 eligible items, 3 identifier stages, 8 cache hits, at most 10
+        fixture calls, paid ceiling AUD 0.00. No price will be applied automatically.
+      </div>
+      <div className="ci-detail-grid">
+        <article className="ci-panel">
+          <div className="ci-panel-title">
+            <div>
+              <span className="eyebrow">LW4570SC - exact identity</span>
+              <h3>Lockwood 4570 keyed deadlatch</h3>
+            </div>
+            <span className="pill pill-ok">Ready for review</span>
+          </div>
+          <div className="price-strip">
+            <div>
+              <span>Current</span>
+              <strong>$159.00</strong>
+            </div>
+            <div>
+              <span>Cost floor</span>
+              <strong>$130.00</strong>
+            </div>
+            <div>
+              <span>Lowest landed</span>
+              <strong>$143.50</strong>
+            </div>
+            <div>
+              <span>Suggested</span>
+              <strong>$142.50</strong>
+            </div>
+          </div>
+          <figure className="price-position" aria-labelledby="position-caption">
+            <svg
+              viewBox="0 0 700 140"
+              role="img"
+              aria-label="Price position from 125 to 165 Australian dollars. Floor 130, eligible offers 143.50, 146 and 149, suggestion 142.50, current 159."
+            >
+              <line x1="45" y1="82" x2="665" y2="82" className="axis" />
+              {[130, 140, 150, 160].map((value) => (
+                <g key={value}>
+                  <line
+                    x1={45 + (value - 125) * 15.5}
+                    y1="76"
+                    x2={45 + (value - 125) * 15.5}
+                    y2="90"
+                    className="tick"
+                  />
+                  <text x={45 + (value - 125) * 15.5} y="111" textAnchor="middle">
+                    ${value}
+                  </text>
+                </g>
+              ))}
+              <line x1="122.5" y1="35" x2="122.5" y2="82" className="marker floor" />
+              <text x="122.5" y="25" textAnchor="middle">
+                Floor $130
+              </text>
+              <line x1="316.25" y1="42" x2="316.25" y2="82" className="marker suggested" />
+              <text x="316.25" y="32" textAnchor="middle">
+                Suggested $142.50
+              </text>
+              {[143.5, 146, 149].map((value) => (
+                <circle
+                  key={value}
+                  cx={45 + (value - 125) * 15.5}
+                  cy="82"
+                  r="7"
+                  className="offer-dot"
+                >
+                  <title>Eligible offer ${value.toFixed(2)}</title>
+                </circle>
+              ))}
+              <line x1="572" y1="48" x2="572" y2="82" className="marker current" />
+              <text x="572" y="38" textAnchor="middle">
+                Current $159
+              </text>
+            </svg>
+            <figcaption id="position-caption">
+              Price position in AUD per sellable unit, delivered and GST-inclusive. The table below
+              is the complete text equivalent.
+            </figcaption>
+          </figure>
+          <div
+            className="table-scroll"
+            role="region"
+            aria-label="Price position text equivalent"
+            tabIndex={0}
+          >
+            <table className="data-table compact">
+              <thead>
+                <tr>
+                  <th>Evidence</th>
+                  <th>Value</th>
+                  <th>Formula or basis</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cost floor</td>
+                  <td>$130.00</td>
+                  <td>$100.00 cost + 30% markup; 23.08% gross margin</td>
+                </tr>
+                <tr>
+                  <td>Eligible offers</td>
+                  <td>$143.50, $146.00, $149.00</td>
+                  <td>AUD per unit, delivered, GST-inclusive</td>
+                </tr>
+                <tr>
+                  <td>Aggressive / recommended</td>
+                  <td>$142.50</td>
+                  <td>$143.50 - min($1.00, 1%); strict undercut and floor rechecked</td>
+                </tr>
+                <tr>
+                  <td>Market / defensive</td>
+                  <td>$145.00 / $145.00</td>
+                  <td>Median $146.00 - $1.00</td>
+                </tr>
+                <tr>
+                  <td>Current price</td>
+                  <td>$159.00</td>
+                  <td>Local catalogue value; never sent to providers</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+        <aside className="ci-panel ci-review" aria-label="Review decision">
+          <h3>Review decision</h3>
+          <dl className="kv">
+            <dt>Policy</dt>
+            <dd>aud-undercut-v1</dd>
+            <dt>Confidence</dt>
+            <dd>High - 3 distinct sellers</dd>
+            <dt>Freshness</dt>
+            <dd>All evidence under 24 h</dd>
+            <dt>Query</dt>
+            <dd>MPN "LW4570SC"</dd>
+            <dt>Terminal state</dt>
+            <dd>Recommended</dd>
+          </dl>
+          <label>
+            Reviewed price (AUD)
+            <input inputMode="decimal" defaultValue="142.50" />
+          </label>
+          <div className="ci-review-actions">
+            <button type="button" className="btn btn-primary">
+              Accept for confirmation
+            </button>
+            <button type="button" className="btn">
+              Reject
+            </button>
+          </div>
+          <p className="hint">
+            Acceptance only stages the value. A separate old-versus-new confirmation and append-only
+            history are required before application.
+          </p>
+        </aside>
+      </div>
+      <div
+        className="table-scroll"
+        role="region"
+        aria-label="Comparable offer evidence"
+        tabIndex={0}
+      >
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Seller</th>
+              <th>Provider</th>
+              <th>Landed price</th>
+              <th>State</th>
+              <th>Evidence or exclusion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {INTELLIGENCE_OFFERS.map((offer) => (
+              <tr key={offer.seller}>
+                <td>{offer.seller}</td>
+                <td>{offer.provider}</td>
+                <td>{offer.price == null ? 'Unknown' : formatAmount(centsToAud(offer.price))}</td>
+                <td>
+                  <span className={`pill ${offer.state === 'Eligible' ? 'pill-ok' : 'pill-warn'}`}>
+                    {offer.state}
+                  </span>
+                </td>
+                <td>{offer.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 const GST_LABELS: Record<CompetitorObservation['gstBasis'], string> = {
   'inc-gst': 'inc GST',
   'ex-gst': 'ex GST',
@@ -235,25 +522,26 @@ export function CompetitorsPage() {
   const attachRow = (state.comparison?.rows ?? []).find(
     (r) => r.s8?.itemNumber === attachTarget.trim() || r.supplier?.code === attachTarget.trim(),
   );
-  const attachEnabled = attachTarget.trim() !== '';
+  const attachEnabled = Boolean(attachRow);
 
   const attach = (result: LiveSearchResult) => {
     const itemId = attachTarget.trim();
     const observation: CompetitorObservation = {
       sku: itemId,
       sourceName: result.seller,
-      approvedSource: true,
+      approvedSource: false,
       observedAt: result.retrievedAt,
       price: result.priceAud,
       currency: 'AUD',
       gstBasis: result.gstBasis,
-      shipping: '0',
+      shipping: '',
       stockStatus: 'unknown',
-      condition: 'new',
-      packCompatible: true,
-      productOnly: true,
-      matchConfidence: 0.9,
-      reviewState: 'accepted',
+      condition: 'unknown',
+      packCompatible: false,
+      productOnly: false,
+      matchConfidence: 0,
+      reviewState: 'quarantined',
+      ambiguousMatch: true,
       url: result.url,
       ...(result.packSize ? { packSize: result.packSize } : {}),
     };
@@ -309,6 +597,7 @@ export function CompetitorsPage() {
         </button>
       }
     >
+      <IntelligenceWorkspace />
       <section className="card">
         <form
           className="searchbar"
@@ -449,7 +738,9 @@ export function CompetitorsPage() {
         <p className="hint" role="status">
           {attachTarget.trim() === ''
             ? `${state.references.length} reference(s) attached this session. Enter an item to enable Attach.`
-            : `Attach enabled for ${attachTarget.trim()}. Attaching stores price, source and timestamp as reference only; it never changes a cost or sell price (enforced and tested server-side).`}
+            : attachRow
+              ? `Reference attachment available for ${attachTarget.trim()}. Provider facts remain quarantined until explicit review; no cost or sell price changes.`
+              : `No catalogue item matches ${attachTarget.trim()}. Attachment is disabled to prevent an orphan reference.`}
         </p>
       </section>
 

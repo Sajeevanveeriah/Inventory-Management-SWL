@@ -3,7 +3,12 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createStore, FloorViolationError, MissingApprovalError } from '../server/store/store.mjs';
+import {
+  createStore,
+  FloorViolationError,
+  MissingApprovalError,
+  MissingCatalogueItemError,
+} from '../server/store/store.mjs';
 import {
   centsToAmount,
   minimumSellPriceCents,
@@ -101,6 +106,12 @@ describe('publication guards', () => {
 });
 
 describe('competitor references are provably inert', () => {
+  it('rejects an orphan reference for a missing catalogue item', () => {
+    const { store } = tempStore();
+    expect(() => store.appendReference({ itemId: 'missing', observation: {} })).toThrow(
+      MissingCatalogueItemError,
+    );
+  });
   it('attaching a reference leaves the catalogue item byte-identical', () => {
     const { dir, store } = tempStore();
     seedItem(store);

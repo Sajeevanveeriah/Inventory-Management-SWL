@@ -45,6 +45,16 @@ const files = new Set(
     .map((f) => f.trim())
     .filter(Boolean),
 );
+// A tracked file staged for deletion can still exist locally when it becomes
+// ignored (for example .env). Audit the proposed tracked result, not that
+// intentionally retained local file.
+const deletedFromIndex = new Set(
+  git(['diff', '--cached', '--diff-filter=D', '--name-only'])
+    .split('\n')
+    .map((f) => f.trim())
+    .filter(Boolean),
+);
+for (const file of deletedFromIndex) files.delete(file);
 
 const findings = [];
 for (const file of files) {
