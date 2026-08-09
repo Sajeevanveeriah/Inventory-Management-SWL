@@ -34,7 +34,8 @@ Authenticode signature and passes its path through `CHROMIUM_PATH`. It explicitl
 external official `tauri-driver` 2.0.6 into a project-local tools directory, drives the production
 desktop executable and scans the production output to prove the driver was not bundled. The same
 workflow downloads the official Microsoft x64 Evergreen WebView2 offline installer from reviewed
-HTTPS hosts, validates its x64 PE identity and Microsoft Authenticode signature before the bundle,
+HTTPS hosts, validates the platform-specific x64 distribution identity, Windows-compatible outer
+launcher and Microsoft Authenticode signature before the bundle,
 then proves the embedded bytes are identical. It builds the NSIS package, runs a scripted
 current-user install/Start Menu launch/process/listener/data-preserving uninstall and reinstall
 smoke and uploads checksum plus version/toolchain/lock metadata. Before the native run, exact

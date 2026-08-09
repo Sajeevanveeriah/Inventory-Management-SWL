@@ -15,6 +15,25 @@ $expectedHash = (Get-FileHash -LiteralPath $prevalidatedPayload -Algorithm SHA25
 if ($prevalidationEvidence.sha256 -ne $expectedHash) {
   throw "The prevalidated WebView2 payload no longer matches its evidence."
 }
+$officialSourceUrl = 'https://go.microsoft.com/fwlink/?linkid=2124701'
+$officialX64FileName = 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+$officialDeliveryHost = 'msedge.sf.dl.delivery.mp.microsoft.com'
+$architectureDocumentationUrl = 'https://learn.microsoft.com/en-us/microsoft-edge/webview2/samples/wv2deploymentvsinstallersample'
+$architectureEvidence = 'official Microsoft x64 Evergreen standalone endpoint, resolved X64 filename and valid Microsoft signature'
+$resolvedSource = [Uri]$prevalidationEvidence.resolvedSourceUrl
+if ($prevalidationEvidence.verification -ne 'pre-bundle-official-download' -or
+    $prevalidationEvidence.officialSourceUrl -ne $officialSourceUrl -or
+    $prevalidationEvidence.distributionArchitecture -ne 'x64' -or
+    $prevalidationEvidence.fileName -ne $officialX64FileName -or
+    $prevalidationEvidence.architectureEvidence -ne $architectureEvidence -or
+    $prevalidationEvidence.architectureDocumentationUrl -ne $architectureDocumentationUrl -or
+    $resolvedSource.Scheme -ne 'https' -or
+    $resolvedSource.DnsSafeHost.ToLowerInvariant() -ne $officialDeliveryHost -or
+    [IO.Path]::GetFileName($resolvedSource.AbsolutePath) -ne $officialX64FileName -or
+    $prevalidationEvidence.signatureStatus -ne 'Valid' -or
+    $prevalidationEvidence.signerSubject -notmatch '(?:^|,\s*)(?:CN|O)=Microsoft Corporation(?:,|$)') {
+  throw 'The prevalidation evidence does not identify the official Microsoft x64 Evergreen standalone installer.'
+}
 $sevenZip = Get-Command 7z -ErrorAction Stop
 $extractRoot = Join-Path $env:RUNNER_TEMP ("swl-webview-evidence-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $extractRoot | Out-Null
@@ -39,6 +58,18 @@ function Get-PeMachine([string]$Path) {
   }
 }
 
+function Get-CompatibleOuterPeMachine([string]$Path) {
+  $machine = Get-PeMachine $Path
+  if ($machine -ne 0x014c -and $machine -ne 0x8664) {
+    throw ('The embedded WebView2 x64 installer outer executable is not compatible with Windows x64 ' +
+      ('(observed PE machine 0x{0:x4}).' -f $machine))
+  }
+  return [ordered]@{
+    code = ('0x{0:x4}' -f $machine)
+    name = $(if ($machine -eq 0x014c) { 'x86 outer setup launcher' } else { 'x86_64 outer setup launcher' })
+  }
+}
+
 try {
   & $sevenZip.Source x -y "-o$extractRoot" $installer | Out-Null
   if ($LASTEXITCODE -ne 0) {
@@ -58,15 +89,27 @@ try {
   if ($embeddedHash -ne $expectedHash) {
     throw 'The embedded WebView2 payload is not byte-identical to the prevalidated official payload.'
   }
-  if ((Get-PeMachine $candidate.FullName) -ne 0x8664) {
-    throw 'The embedded WebView2 payload is not x64.'
+  $outerPe = Get-CompatibleOuterPeMachine $candidate.FullName
+  if ($outerPe.code -ne $prevalidationEvidence.outerPeMachine) {
+    throw 'The embedded WebView2 outer executable identity differs from the prevalidated payload.'
   }
   $signature = Get-AuthenticodeSignature -LiteralPath $candidate.FullName
-  if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:CN|O)=Microsoft Corporation') {
+  if ($signature.Status -ne 'Valid' -or
+      $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)(?:CN|O)=Microsoft Corporation(?:,|$)') {
     throw "The embedded WebView2 installer does not have a valid Microsoft Authenticode signature."
   }
   if ($candidate.VersionInfo.ProductName -notmatch 'WebView2') {
     throw 'The embedded Microsoft payload does not identify as WebView2.'
+  }
+  if ([long]$prevalidationEvidence.bytes -ne $candidate.Length -or
+      $prevalidationEvidence.fileVersion -ne $candidate.VersionInfo.FileVersion -or
+      $prevalidationEvidence.productVersion -ne $candidate.VersionInfo.ProductVersion -or
+      $prevalidationEvidence.productName -ne $candidate.VersionInfo.ProductName -or
+      $prevalidationEvidence.originalFileName -ne $candidate.VersionInfo.OriginalFilename -or
+      $prevalidationEvidence.signerSubject -ne $signature.SignerCertificate.Subject -or
+      $prevalidationEvidence.signerIssuer -ne $signature.SignerCertificate.Issuer -or
+      $prevalidationEvidence.signerThumbprint -ne $signature.SignerCertificate.Thumbprint) {
+    throw 'The embedded WebView2 payload metadata differs from the prevalidated Microsoft payload.'
   }
 
   [ordered]@{
@@ -76,10 +119,14 @@ try {
     resolvedSourceUrl = $prevalidationEvidence.resolvedSourceUrl
     installer = [IO.Path]::GetFileName($installer)
     fileName = $candidate.Name
+    distributionArchitecture = 'x64'
+    architectureEvidence = $prevalidationEvidence.architectureEvidence
+    architectureDocumentationUrl = $prevalidationEvidence.architectureDocumentationUrl
     bytes = $candidate.Length
     sha256 = $embeddedHash
     matchesPrevalidatedPayload = $true
-    peMachine = 'x86_64 (0x8664)'
+    outerPeMachine = $outerPe.code
+    outerPeMachineDescription = $outerPe.name
     fileVersion = $candidate.VersionInfo.FileVersion
     productVersion = $candidate.VersionInfo.ProductVersion
     productName = $candidate.VersionInfo.ProductName

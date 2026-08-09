@@ -6,6 +6,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $sourceUrl = [Uri]'https://go.microsoft.com/fwlink/?linkid=2124701'
 $allowedHosts = @('go.microsoft.com', 'msedge.sf.dl.delivery.mp.microsoft.com')
+$officialX64FileName = 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+$architectureDocumentationUrl = 'https://learn.microsoft.com/en-us/microsoft-edge/webview2/samples/wv2deploymentvsinstallersample'
+$architectureEvidence = 'official Microsoft x64 Evergreen standalone endpoint, resolved X64 filename and valid Microsoft signature'
 $payload = [IO.Path]::GetFullPath($PayloadPath)
 $evidence = [IO.Path]::GetFullPath($EvidencePath)
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($payload)) -Force | Out-Null
@@ -28,6 +31,21 @@ function Get-PeMachine([string]$Path) {
   finally {
     $reader.Dispose()
     $stream.Dispose()
+  }
+}
+
+function Get-CompatibleOuterPeMachine([string]$Path) {
+  $machine = Get-PeMachine $Path
+  # Microsoft's platform-specific x64 standalone installer can use an x86
+  # outer setup launcher. The authenticated distribution identity below, not
+  # the outer launcher's PE machine, selects the embedded runtime architecture.
+  if ($machine -ne 0x014c -and $machine -ne 0x8664) {
+    throw ('The WebView2 x64 installer outer executable is not compatible with Windows x64 ' +
+      ('(observed PE machine 0x{0:x4}).' -f $machine))
+  }
+  return [ordered]@{
+    code = ('0x{0:x4}' -f $machine)
+    name = $(if ($machine -eq 0x014c) { 'x86 outer setup launcher' } else { 'x86_64 outer setup launcher' })
   }
 }
 
@@ -71,7 +89,7 @@ try {
   if ($current.DnsSafeHost -ne 'msedge.sf.dl.delivery.mp.microsoft.com') {
     throw 'The WebView2 download did not resolve to the reviewed Microsoft delivery host.'
   }
-  if ([IO.Path]::GetFileName($current.AbsolutePath) -ne 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe') {
+  if ([IO.Path]::GetFileName($current.AbsolutePath) -ne $officialX64FileName) {
     throw 'The WebView2 download did not resolve to the x64 Evergreen standalone installer.'
   }
   $declaredLength = $response.Content.Headers.ContentLength
@@ -98,14 +116,17 @@ $payloadInfo = Get-Item -LiteralPath $payload
 if ($payloadInfo.Length -lt 50MB -or $payloadInfo.Length -gt 300MB) {
   throw 'The downloaded WebView2 payload length is outside the reviewed range.'
 }
-$machine = Get-PeMachine $payload
-if ($machine -ne 0x8664) { throw 'The downloaded WebView2 payload is not x64.' }
+if ($payloadInfo.Name -cne $officialX64FileName) {
+  throw 'The downloaded WebView2 payload filename does not match the official x64 distribution name.'
+}
+$outerPe = Get-CompatibleOuterPeMachine $payload
 $signature = Get-AuthenticodeSignature -LiteralPath $payload
-if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:CN|O)=Microsoft Corporation') {
+if ($signature.Status -ne 'Valid' -or
+    $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)(?:CN|O)=Microsoft Corporation(?:,|$)') {
   throw 'The downloaded WebView2 payload does not have a valid Microsoft Authenticode signature.'
 }
 $version = $payloadInfo.VersionInfo
-if ($version.ProductName -notmatch 'WebView2' -or $version.FileVersion -notmatch '^\d+(?:\.\d+){3}') {
+if ($version.ProductName -notmatch 'WebView2' -or $version.FileVersion -notmatch '^\d+(?:\.\d+){3}$') {
   throw 'The downloaded Microsoft payload does not identify as a versioned WebView2 installer.'
 }
 $hash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -117,9 +138,13 @@ $hash = (Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash.ToLowerInvar
   resolvedSourceUrl = $current.GetLeftPart([UriPartial]::Path)
   redirectChain = @($redirects)
   fileName = $payloadInfo.Name
+  distributionArchitecture = 'x64'
+  architectureEvidence = $architectureEvidence
+  architectureDocumentationUrl = $architectureDocumentationUrl
   bytes = $payloadInfo.Length
   sha256 = $hash
-  peMachine = 'x86_64 (0x8664)'
+  outerPeMachine = $outerPe.code
+  outerPeMachineDescription = $outerPe.name
   fileVersion = $version.FileVersion
   productVersion = $version.ProductVersion
   productName = $version.ProductName
