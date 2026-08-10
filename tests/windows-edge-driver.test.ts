@@ -17,10 +17,41 @@ const preparation = readSource("scripts", "prepare-edge-webdriver.ps1");
 const workflow = readSource(".github", "workflows", "windows-desktop.yml");
 const desktopRunner = readSource("scripts", "run-windows-desktop-e2e.ps1");
 const wdio = readSource("wdio.conf.ts");
+const tauriServicePatch = readSource(
+  "scripts",
+  "patch-tauri-service-edge-driver-label.mjs",
+);
 const supportedDriverBanner =
   /^Microsoft Edge WebDriver (?<version>\d+(?:\.\d+){3}) \([0-9a-f]{40}\)$/;
 const supportedDriverBannerSource =
   "'^Microsoft Edge WebDriver (?<version>\\d+(?:\\.\\d+){3}) \\([0-9a-f]{40}\\)$'";
+
+describe("locked Tauri service EdgeDriver compatibility", () => {
+  it("patches only reviewed 1.3.0 dependency bytes after npm ci", () => {
+    expect(tauriServicePatch).toContain(
+      'packageMetadata.version !== "1.3.0"',
+    );
+    expect(tauriServicePatch).toContain(
+      "9f40744cff59af6adfc7d324064de1493aafaa32e88827e1dec5e8f11439b593",
+    );
+    expect(tauriServicePatch).toContain(
+      "34c47d9b676c0f73870889c49f8ccc612591f42b9a221c9ec305497ac94bfe10",
+    );
+    expect(tauriServicePatch).toContain(
+      "27ff45e1807cd8be99a9b8410b903be036e4aba0d76afb03fa6d97ea4ca9a1ff",
+    );
+    expect(tauriServicePatch).toContain(
+      "e5cf999920b1eb105e84593c784f177b01dbcdb09a4f354eb1c2a6da9db11be6",
+    );
+    expect(tauriServicePatch).toContain(
+      "versionOutput.trim().match(/^Microsoft Edge WebDriver",
+    );
+    expect(workflow.indexOf("npm ci")).toBeLessThan(
+      workflow.indexOf("node scripts/patch-tauri-service-edge-driver-label.mjs"),
+    );
+    expect(wdio).toContain("autoDownloadEdgeDriver: false");
+  });
+});
 
 describe("exact WebView2 EdgeDriver preparation", () => {
   it("downloads only the exact installed signed WebView2 version through a bounded Microsoft route", () => {
