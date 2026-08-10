@@ -409,43 +409,46 @@ export default function App() {
                 Fictional demo data
               </span>
             )}
-            <button
-              type="button"
-              className="header-btn"
-              aria-pressed={state.settings.theme === "dark"}
-              onClick={(event) => {
-                const button = event.currentTarget;
-                button.disabled = true;
-                void actions
-                  .changeSettings(
-                    {
-                      ...state.settings,
-                      theme: state.settings.theme === "dark" ? "light" : "dark",
-                    },
-                    "Theme toggled",
-                    false,
-                  )
-                  .finally(() => {
-                    button.disabled = false;
-                  });
-              }}
-            >
-              {state.settings.theme === "dark" ? "Light theme" : "Dark theme"}
-            </button>
-            <button
-              type="button"
-              className="header-btn"
-              onClick={() => setPrivacyOpen(true)}
-            >
-              Privacy &amp; data
-            </button>
-            <button
-              type="button"
-              className="header-btn"
-              onClick={() => setSettingsOpen(true)}
-            >
-              Settings
-            </button>
+            <div className="topbar-actions">
+              <button
+                type="button"
+                className="header-btn"
+                aria-pressed={state.settings.theme === "dark"}
+                onClick={(event) => {
+                  const button = event.currentTarget;
+                  button.disabled = true;
+                  void actions
+                    .changeSettings(
+                      {
+                        ...state.settings,
+                        theme:
+                          state.settings.theme === "dark" ? "light" : "dark",
+                      },
+                      "Theme toggled",
+                      false,
+                    )
+                    .finally(() => {
+                      button.disabled = false;
+                    });
+                }}
+              >
+                {state.settings.theme === "dark" ? "Light theme" : "Dark theme"}
+              </button>
+              <button
+                type="button"
+                className="header-btn"
+                onClick={() => setPrivacyOpen(true)}
+              >
+                Privacy &amp; data
+              </button>
+              <button
+                type="button"
+                className="header-btn"
+                onClick={() => setSettingsOpen(true)}
+              >
+                Settings
+              </button>
+            </div>
           </header>
           <main id="main-content">
             {route === "#/dashboard" && <DashboardPage go={goRoute} />}
