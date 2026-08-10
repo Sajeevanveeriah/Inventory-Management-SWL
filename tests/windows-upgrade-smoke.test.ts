@@ -215,7 +215,7 @@ describe("Windows upgrade startup diagnostics", () => {
     expect(evidenceBlock).not.toMatch(/(?:fullName|path|helpOutput)\s*=/i);
 
     const driveStep = workflow.match(
-      / {6}- name: Drive the production desktop executable with outbound networking denied[\s\S]*?(?=\n {6}- name:)/,
+      / {6}- name: Drive the isolated release-profile desktop acceptance binary with outbound networking denied[\s\S]*?(?=\n {6}- name:)/,
     )?.[0];
     expect(driveStep).toBeDefined();
     expect(driveStep).toContain(
