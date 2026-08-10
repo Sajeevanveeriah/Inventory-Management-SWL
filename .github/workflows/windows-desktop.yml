@@ -1,0 +1,511 @@
+name: Windows desktop
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  history-secret-scan:
+    name: Reachable-history credential review
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      - name: Scan reachable history without displaying values
+        run: node scripts/check-secrets.mjs --scope=history
+
+  verify-and-package:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      CI: "true"
+      SWL_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SWL_LEGACY_SOURCE_SHA: e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install and select pinned Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.89.0-x86_64-pc-windows-msvc --profile minimal --component rustfmt,clippy --target x86_64-pc-windows-msvc
+          rustup override set 1.89.0-x86_64-pc-windows-msvc
+      - name: Prove active Rust toolchain and components
+        shell: pwsh
+        run: |
+          rustup show active-toolchain
+          rustc --version --verbose
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+          rustup component list --installed --toolchain 1.89.0-x86_64-pc-windows-msvc
+      - name: Verify the committed Rust dependency lock
+        id: cargo_lock
+        shell: pwsh
+        run: ./scripts/verify-cargo-lock.ps1 -DiagnosticDirectory "$env:RUNNER_TEMP/swl-diagnostics/cargo-lock"
+      - name: Install locked JavaScript dependencies
+        run: |
+          npm ci
+          node scripts/patch-tauri-service-edge-driver-label.mjs
+      - name: Run TypeScript, ESLint, Vitest and web production build
+        run: npm run verify
+      - name: Scan current tree for business data
+        run: npm run check:data-safety
+      - name: Scan the current proposed tree for secrets
+        run: node scripts/check-secrets.mjs --scope=current
+      - name: Build and validate GitHub Pages assets and routes
+        shell: pwsh
+        run: |
+          $env:VITE_BASE = '/Inventory-Management-SWL/'
+          $env:VITE_STATIC_DEMO = 'true'
+          npm run build
+          npm run check:pages
+      - name: Select Microsoft Edge for Playwright
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+            "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ }
+          if ($candidates.Count -ne 1) { throw "Expected exactly one installed Microsoft Edge executable." }
+          $edgePath = [string]($candidates | Select-Object -First 1)
+          $signature = Get-AuthenticodeSignature -LiteralPath $edgePath
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw "The installed Microsoft Edge executable is not validly signed by Microsoft."
+          }
+          "CHROMIUM_PATH=$edgePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $driverInputs = @(
+            $env:EdgeWebDriver,
+            'C:\SeleniumWebDrivers\EdgeDriver\msedgedriver.exe',
+            (Get-Command msedgedriver.exe -ErrorAction SilentlyContinue).Source
+          ) | Where-Object { ![string]::IsNullOrWhiteSpace($_) }
+          $driverCandidates = @($driverInputs | ForEach-Object {
+            $candidate = if (Test-Path -LiteralPath $_ -PathType Container) {
+              Join-Path $_ 'msedgedriver.exe'
+            } else { $_ }
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+              [IO.Path]::GetFullPath($candidate)
+            }
+          } | Sort-Object -Unique)
+          if ($driverCandidates.Count -ne 1) {
+            throw "Expected exactly one installed Microsoft Edge WebDriver; found $($driverCandidates.Count)."
+          }
+          $driverPath = [string]($driverCandidates | Select-Object -First 1)
+          $driverSignature = Get-AuthenticodeSignature -LiteralPath $driverPath
+          if ($driverSignature.Status -ne 'Valid' -or $driverSignature.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'The installed Microsoft Edge WebDriver is not validly signed by Microsoft.'
+          }
+          $edgeMajor = (Get-Item -LiteralPath $edgePath).VersionInfo.ProductVersion.Split('.')[0]
+          $driverMajor = (Get-Item -LiteralPath $driverPath).VersionInfo.ProductVersion.Split('.')[0]
+          if ($edgeMajor -ne $driverMajor) {
+            throw "Microsoft Edge major $edgeMajor does not match Edge WebDriver major $driverMajor."
+          }
+          "EDGEWEBDRIVER=$driverPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          [ordered]@{
+            browser = [ordered]@{
+              fileName = [IO.Path]::GetFileName($edgePath)
+              version = (Get-Item -LiteralPath $edgePath).VersionInfo.ProductVersion
+              sha256 = (Get-FileHash -LiteralPath $edgePath -Algorithm SHA256).Hash.ToLowerInvariant()
+              signatureStatus = $signature.Status.ToString()
+              signerSubject = $signature.SignerCertificate.Subject
+            }
+            driver = [ordered]@{
+              fileName = [IO.Path]::GetFileName($driverPath)
+              version = (Get-Item -LiteralPath $driverPath).VersionInfo.ProductVersion
+              sha256 = (Get-FileHash -LiteralPath $driverPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              signatureStatus = $driverSignature.Status.ToString()
+              signerSubject = $driverSignature.SignerCertificate.Subject
+            }
+          } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/Microsoft-Edge-Evidence.json" -Encoding utf8
+      - name: Run production Playwright and axe checks
+        run: npm run e2e
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - name: Run Rust Clippy with warnings denied
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Run Rust database, migration, IPC and security tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features
+      - name: Build exact test-only desktop acceptance helpers
+        shell: pwsh
+        run: |
+          cargo build --locked --manifest-path src-tauri/Cargo.toml --target-dir src-tauri/target --features acceptance-tools --bin swl-db-acceptance --bin swl-legacy-seed
+          if ($LASTEXITCODE -ne 0) { throw 'The exact test-only desktop acceptance helpers failed to build.' }
+          $helperDirectory = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/debug'))
+          $helperDirectoryInfo = Get-Item -LiteralPath $helperDirectory
+          if (!$helperDirectoryInfo.PSIsContainer -or
+              ($helperDirectoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              @(Get-ChildItem -LiteralPath $helperDirectory -Force).Count -eq 0) {
+            throw 'The scoped desktop acceptance helper directory failed validation.'
+          }
+          $helpers = [ordered]@{
+            'swl-db-acceptance.exe' = 'SWL_DB_ACCEPTANCE_BINARY'
+            'swl-legacy-seed.exe' = 'SWL_LEGACY_SEED_BINARY'
+          }
+          foreach ($entry in $helpers.GetEnumerator()) {
+            $helper = Get-Item -LiteralPath (Join-Path $helperDirectory $entry.Key)
+            if (!$helper.PSIsContainer -and
+                $helper.Length -gt 0 -and
+                ($helper.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -and
+                [IO.Path]::GetDirectoryName($helper.FullName) -ieq $helperDirectory) {
+              "$($entry.Value)=$($helper.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+            else {
+              throw 'A scoped desktop acceptance helper failed exact path validation.'
+            }
+          }
+      - name: Download and prevalidate the official WebView2 x64 offline installer
+        shell: pwsh
+        run: ./scripts/prepare-webview2-offline-installer.ps1 -PayloadPath "$env:RUNNER_TEMP/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Prevalidation.json"
+      - name: Build canonical unsigned NSIS package
+        run: npm run desktop:build
+      - name: Prove the Rust lock was not changed by the desktop build
+        run: git diff --exit-code -- src-tauri/Cargo.lock
+      - name: Resolve the single current NSIS installer
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis' -File -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw "Expected exactly one current NSIS installer; found $($installers.Count)." }
+          "SWL_INSTALLER=$($installers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify embedded WebView2 offline installer signature
+        shell: pwsh
+        run: ./scripts/verify-webview2-offline-installer.ps1 -InstallerPath $env:SWL_INSTALLER -PrevalidatedPayloadPath "$env:RUNNER_TEMP/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" -PrevalidationEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Prevalidation.json" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Evidence.json"
+      - name: Configure deterministic former-source checkout
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      # actions/checkout v7.0.1 — immutable 1.0.0 application source, isolated for upgrade acceptance
+      - name: Check out the immutable former 1.0.0 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a
+          path: .ci-upgrade/legacy-1.0.0
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify and build the former 1.0.0 package with its reviewed lock repair
+        shell: pwsh
+        run: |
+          $legacy = Join-Path $env:GITHUB_WORKSPACE '.ci-upgrade/legacy-1.0.0'
+          $legacyLock = Join-Path $legacy 'src-tauri/Cargo.lock'
+          $lockFixture = Join-Path $env:GITHUB_WORKSPACE '.github/fixtures/legacy-e36ec72-Cargo.lock'
+          $expectedOriginalLockBlob = '562495d1fc7c3189d56859b0232d92b2c27a95b9'
+          $expectedOriginalLockHash = 'dfcfa8ee77e3d1139beefcde2f9f631bace818ed7a25cf5ac07863c23b44a8cb'
+          $expectedFixtureLockBlob = '49f021514c1fed112293b56d15bddfc2d1931613'
+          $expectedFixtureLockHash = '7bbe908f540455eb673274bc8e014b80b06a16b460ac781fca60f1c6169154e9'
+          $actualLegacySourceSha = (& git -C $legacy rev-parse HEAD).Trim()
+          if ($actualLegacySourceSha -ne $env:SWL_LEGACY_SOURCE_SHA) {
+            throw 'The checked-out former source does not match the reviewed immutable commit.'
+          }
+          $package = Get-Content -LiteralPath (Join-Path $legacy 'package.json') -Raw | ConvertFrom-Json
+          $lock = Get-Content -LiteralPath (Join-Path $legacy 'package-lock.json') -Raw | ConvertFrom-Json -AsHashtable
+          $cargo = Get-Content -LiteralPath (Join-Path $legacy 'src-tauri/Cargo.toml') -Raw
+          $tauri = Get-Content -LiteralPath (Join-Path $legacy 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
+          $audit = Get-Content -LiteralPath (Join-Path $legacy 'src/core/audit.ts') -Raw
+          $cargoVersion = [regex]::Match($cargo, '(?ms)^\[package\].*?^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $auditVersion = [regex]::Match($audit, 'APP_VERSION\s*=\s*[''\"]([^''\"]+)[''\"]').Groups[1].Value
+          $lockVersion = $lock['packages']['']['version']
+          $legacyVersions = @($package.version, $lockVersion, $cargoVersion, $tauri.version, $auditVersion)
+          if ($legacyVersions.Count -ne 5 -or @($legacyVersions | Where-Object { $_ -ne '1.0.0' }).Count -ne 0) {
+            throw 'The immutable former source does not have coherent version 1.0.0 metadata.'
+          }
+          foreach ($script in $package.scripts.PSObject.Properties) {
+            if ([string]$script.Value -match '\bnpx\s+(?:-y|--yes)\b') {
+              throw "Former build script $($script.Name) downloads a mutable executable."
+            }
+          }
+          $originalLockBlob = (& git -C $legacy rev-parse 'HEAD:src-tauri/Cargo.lock').Trim()
+          $fixtureLockBlob = (& git -C $env:GITHUB_WORKSPACE rev-parse 'HEAD:.github/fixtures/legacy-e36ec72-Cargo.lock').Trim()
+          $originalLockHash = (Get-FileHash -LiteralPath $legacyLock -Algorithm SHA256).Hash.ToLowerInvariant()
+          $fixtureLockHash = (Get-FileHash -LiteralPath $lockFixture -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($originalLockBlob -ne $expectedOriginalLockBlob -or
+              $originalLockHash -ne $expectedOriginalLockHash -or
+              $fixtureLockBlob -ne $expectedFixtureLockBlob -or
+              $fixtureLockHash -ne $expectedFixtureLockHash) {
+            throw 'The former source lock or its reviewed reproducibility fixture has an unexpected identity.'
+          }
+          Copy-Item -LiteralPath $lockFixture -Destination $legacyLock -Force
+          [ordered]@{
+            sourceSha = $actualLegacySourceSha
+            originalLockBlobSha = $originalLockBlob
+            originalLockSha256 = $originalLockHash
+            fixtureLockBlobSha = $fixtureLockBlob
+            fixtureLockSha256 = $fixtureLockHash
+            derivation = 'Cargo 1.89.0 cargo update -p uuid --precise 1.18.1'
+            reason = 'the immutable manifest pins uuid 1.18.1 while its committed lock records uuid 1.24.0'
+            sourceChanges = 'none; only the package-manager-generated lock fixture is substituted for the acceptance build'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/Legacy-Lock-Fixture.json" -Encoding utf8
+          npm ci --prefix $legacy
+          if ($LASTEXITCODE -ne 0) { throw 'Locked former JavaScript dependency installation failed.' }
+          cargo metadata --locked --manifest-path (Join-Path $legacy 'src-tauri/Cargo.toml') --format-version 1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'The former Cargo lock is not reproducible.' }
+          Push-Location $legacy
+          try {
+            $tauriCli = Join-Path $legacy 'node_modules/.bin/tauri.cmd'
+            $tauriVersion = (& $tauriCli --version).Trim()
+            if ($LASTEXITCODE -ne 0 -or $tauriVersion -notmatch '\b2\.11\.4\b') {
+              throw 'The former package is not using exact lockfile-installed Tauri CLI 2.11.4.'
+            }
+            & $tauriCli build --bundles nsis -- --locked
+            if ($LASTEXITCODE -ne 0) { throw 'The former-source NSIS build with the reviewed lock repair failed.' }
+            $postBuildLockHash = (Get-FileHash -LiteralPath $legacyLock -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($postBuildLockHash -ne $expectedFixtureLockHash) {
+              throw 'The former build changed its reviewed Cargo lock fixture.'
+            }
+            $changedPaths = @(& git diff --name-only -- .)
+            if ($LASTEXITCODE -ne 0 -or $changedPaths.Count -ne 1 -or $changedPaths[0] -ne 'src-tauri/Cargo.lock') {
+              throw 'The former build changed source outside the reviewed Cargo lock fixture.'
+            }
+          }
+          finally { Pop-Location }
+          $legacyInstallers = @(Get-ChildItem (Join-Path $legacy 'src-tauri/target/release/bundle/nsis') -File -Filter '*.exe')
+          if ($legacyInstallers.Count -ne 1) { throw "Expected exactly one former NSIS installer; found $($legacyInstallers.Count)." }
+          "SWL_LEGACY_INSTALLER=$($legacyInstallers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify the former installer embeds the same official WebView2 payload
+        shell: pwsh
+        run: ./scripts/verify-webview2-offline-installer.ps1 -InstallerPath $env:SWL_LEGACY_INSTALLER -PrevalidatedPayloadPath "$env:RUNNER_TEMP/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" -PrevalidationEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Prevalidation.json" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Legacy-Evidence.json"
+      - name: Prove genuine 1.0.0 to 1.1.0 migration, backup and preservation
+        shell: pwsh
+        run: ./scripts/windows-upgrade-smoke.ps1 -LegacyInstallerPath "$env:SWL_LEGACY_INSTALLER" -CurrentInstallerPath "$env:SWL_INSTALLER" -DatabaseAcceptanceBinaryPath "$env:SWL_DB_ACCEPTANCE_BINARY" -LegacySeedBinaryPath "$env:SWL_LEGACY_SEED_BINARY" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Upgrade-Smoke.json"
+      - name: Prepare exact EdgeDriver for the installed WebView2 runtime
+        shell: pwsh
+        run: |
+          $edgeDriverPath = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'swl-edgedriver/msedgedriver.exe'))
+          ./scripts/prepare-edge-webdriver.ps1 -DriverPath "$edgeDriverPath" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Microsoft-EdgeDriver-Evidence.json"
+          "EDGEWEBDRIVER=$edgeDriverPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install exact external Tauri WebDriver
+        shell: pwsh
+        run: |
+          $driverRoot = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE '.tools/tauri-driver'))
+          if (Test-Path -LiteralPath $driverRoot) {
+            throw 'The project-local tauri-driver root was not clean before installation.'
+          }
+          cargo install tauri-driver --registry crates-io --version 2.0.6 --locked --root $driverRoot
+          if ($LASTEXITCODE -ne 0) { throw 'The exact external tauri-driver installation failed.' }
+          $driverRootInfo = Get-Item -LiteralPath $driverRoot
+          if (!$driverRootInfo.PSIsContainer -or
+              ($driverRootInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The project-local tauri-driver root failed ordinary-directory validation.'
+          }
+          $installListingRaw = @(& cargo install --list --root $driverRoot --color never 2>&1)
+          $installListingExitCode = $LASTEXITCODE
+          $installListing = @($installListingRaw | ForEach-Object { ([string]$_).Replace("`r", '') })
+          if ($installListingExitCode -ne 0 -or
+              $installListing.Count -ne 2 -or
+              $installListing[0] -cne 'tauri-driver v2.0.6:' -or
+              $installListing[1] -cne '    tauri-driver.exe') {
+            throw 'Cargo does not list exactly the expected project-local tauri-driver 2.0.6 executable.'
+          }
+
+          $driverDirectory = [IO.Path]::GetFullPath((Join-Path $driverRoot 'bin'))
+          $driverDirectoryInfo = Get-Item -LiteralPath $driverDirectory
+          if (!$driverDirectoryInfo.PSIsContainer -or
+              ($driverDirectoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'The project-local tauri-driver binary directory failed validation.'
+          }
+          $driverExecutablePath = [IO.Path]::GetFullPath((Join-Path $driverDirectory 'tauri-driver.exe'))
+          $driverExecutable = Get-Item -LiteralPath $driverExecutablePath
+          if ($driverExecutable.PSIsContainer -or
+              $driverExecutable.Length -le 0 -or
+              ($driverExecutable.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $driverExecutable.FullName -ine $driverExecutablePath -or
+              [IO.Path]::GetDirectoryName($driverExecutable.FullName) -ine $driverDirectory) {
+            throw 'The external tauri-driver executable failed exact regular-file validation.'
+          }
+          $driverHelpTimeoutMilliseconds = 10000
+          $maxDriverHelpBytes = 8 * 1024
+          $driverHelpStartInfo = [Diagnostics.ProcessStartInfo]::new()
+          $driverHelpStartInfo.FileName = $driverExecutable.FullName
+          [void]$driverHelpStartInfo.ArgumentList.Add('--help')
+          $driverHelpStartInfo.UseShellExecute = $false
+          $driverHelpStartInfo.CreateNoWindow = $true
+          $driverHelpStartInfo.RedirectStandardOutput = $true
+          $driverHelpStartInfo.RedirectStandardError = $true
+          $driverHelpProcess = [Diagnostics.Process]::new()
+          $driverHelpProcess.StartInfo = $driverHelpStartInfo
+          $driverHelpText = ''
+          $driverHelpError = ''
+          $driverHelpExitCode = -1
+          try {
+            if (!$driverHelpProcess.Start()) {
+              throw 'The exact external tauri-driver help probe did not start.'
+            }
+            $driverHelpOutputTask = $driverHelpProcess.StandardOutput.ReadToEndAsync()
+            $driverHelpErrorTask = $driverHelpProcess.StandardError.ReadToEndAsync()
+            if (!$driverHelpProcess.WaitForExit($driverHelpTimeoutMilliseconds)) {
+              try { $driverHelpProcess.Kill($true) } catch {}
+              [void]$driverHelpProcess.WaitForExit(5000)
+              throw 'The exact external tauri-driver help probe timed out.'
+            }
+            $driverHelpText = $driverHelpOutputTask.GetAwaiter().GetResult()
+            $driverHelpError = $driverHelpErrorTask.GetAwaiter().GetResult()
+            $driverHelpExitCode = $driverHelpProcess.ExitCode
+          }
+          finally { $driverHelpProcess.Dispose() }
+          $driverHelpBytes = [Text.Encoding]::UTF8.GetByteCount($driverHelpText) + [Text.Encoding]::UTF8.GetByteCount($driverHelpError)
+          if ($driverHelpBytes -gt $maxDriverHelpBytes -or
+              $driverHelpExitCode -ne 0 -or
+              ![string]::IsNullOrEmpty($driverHelpError) -or
+              $driverHelpText -notmatch [regex]::Escape('USAGE: tauri-driver [FLAGS] [OPTIONS]')) {
+            throw 'The exact external tauri-driver did not pass its supported help probe.'
+          }
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e" -Force | Out-Null
+          [ordered]@{
+            package = 'tauri-driver'
+            version = '2.0.6'
+            registry = 'crates-io'
+            lockedDependencyResolution = $true
+            source = 'cargo install --registry crates-io tauri-driver 2.0.6 --locked'
+            executableFileName = $driverExecutable.Name
+            executableSha256 = (Get-FileHash -LiteralPath $driverExecutable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256Purpose = 'observational executable identity only; not a signature or provenance claim'
+            validation = 'exact Cargo installed-package listing plus exact regular-file and bounded supported help checks'
+            boundary = 'external project-local CI executable; never bundled'
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/TAURI-DRIVER.json" -Encoding utf8
+          "SWL_TAURI_DRIVER_BINARY=$($driverExecutable.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $driverDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build isolated unbundled release-profile desktop acceptance binary
+        shell: pwsh
+        run: |
+          $productionBinaryPath = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/swl-pricing-desktop.exe'))
+          $productionBinary = Get-Item -LiteralPath $productionBinaryPath
+          $productionHashBefore = (Get-FileHash -LiteralPath $productionBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $acceptanceTarget = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'swl-desktop-acceptance-target'))
+          if (Test-Path -LiteralPath $acceptanceTarget) {
+            throw 'The isolated desktop acceptance target was not clean.'
+          }
+          $env:CARGO_TARGET_DIR = $acceptanceTarget
+          cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin swl-pricing-desktop --features tauri/devtools
+          if ($LASTEXITCODE -ne 0) { throw 'The isolated release-profile desktop acceptance build failed.' }
+          $productionHashAfter = (Get-FileHash -LiteralPath $productionBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($productionHashAfter -cne $productionHashBefore) {
+            throw 'The isolated desktop acceptance build changed the canonical production binary.'
+          }
+          $acceptanceBinaryPath = [IO.Path]::GetFullPath((Join-Path $acceptanceTarget 'release/swl-pricing-desktop.exe'))
+          $acceptanceBinary = Get-Item -LiteralPath $acceptanceBinaryPath
+          if ($acceptanceBinary.PSIsContainer -or
+              $acceptanceBinary.Length -le 0 -or
+              ($acceptanceBinary.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $acceptanceBinary.FullName -ine $acceptanceBinaryPath -or
+              [IO.Path]::GetDirectoryName($acceptanceBinary.FullName) -ine (Join-Path $acceptanceTarget 'release')) {
+            throw 'The isolated desktop acceptance binary failed exact regular-file validation.'
+          }
+          [ordered]@{
+            purpose = 'Unbundled release-profile WebDriver acceptance only'
+            cargoFeature = 'tauri/devtools'
+            distributed = $false
+            canonicalProductionSha256Before = $productionHashBefore
+            canonicalProductionSha256After = $productionHashAfter
+            acceptanceBinaryFileName = $acceptanceBinary.Name
+            acceptanceBinarySha256 = (Get-FileHash -LiteralPath $acceptanceBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/ACCEPTANCE-BINARY.json" -Encoding utf8
+          "SWL_DESKTOP_ACCEPTANCE_BINARY=$($acceptanceBinary.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Prove a clean disposable profile for acceptance-binary driving
+        shell: pwsh
+        run: |
+          $dataRoot = Join-Path $env:LOCALAPPDATA 'au.com.stanwoottonlocksmiths.swl-pricing'
+          if (Test-Path -LiteralPath $dataRoot) {
+            throw 'The disposable runner profile contains pre-existing SWL application data.'
+          }
+      - name: Drive the isolated release-profile desktop acceptance binary with outbound networking denied
+        shell: pwsh
+        env:
+          SWL_DESKTOP_EVIDENCE_DIR: ${{ runner.temp }}\swl-diagnostics\desktop-e2e
+        run: |
+          $resolvedDrivers = @(Get-Command tauri-driver.exe -All -ErrorAction SilentlyContinue)
+          if ($resolvedDrivers.Count -ne 1 -or
+              $resolvedDrivers[0].Source -ine $env:SWL_TAURI_DRIVER_BINARY) {
+            throw 'The desktop test does not resolve exactly the validated project-local tauri-driver executable.'
+          }
+          ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_ACCEPTANCE_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR -EdgeDriverPath $env:EDGEWEBDRIVER
+      - name: Prove representative nonzero synthetic data before installer lifecycle checks
+        shell: pwsh
+        run: |
+          $raw = @(& cargo run --quiet --locked --manifest-path src-tauri/Cargo.toml --features acceptance-tools --bin swl-db-acceptance 2>&1)
+          if ($LASTEXITCODE -ne 0) { throw 'The scoped database acceptance helper failed after desktop driving.' }
+          try { $databaseEvidence = ($raw -join [Environment]::NewLine) | ConvertFrom-Json }
+          catch { throw 'The scoped database acceptance helper returned invalid JSON.' }
+          if ($databaseEvidence.integrity -ne 'ok' -or
+              $databaseEvidence.catalogueItems -le 0 -or
+              $databaseEvidence.approvals -le 0 -or
+              $databaseEvidence.priceHistory -le 0) {
+            throw 'Desktop driving did not leave representative nonzero synthetic catalogue, approval and history data.'
+          }
+          $catalogueIds = @($databaseEvidence.catalogueItemIds)
+          $approvalIds = @($databaseEvidence.approvalIds)
+          $approvalItemIds = @($databaseEvidence.approvalItemIds)
+          $historyIds = @($databaseEvidence.priceHistoryIds)
+          $historyItemIds = @($databaseEvidence.priceHistoryItemIds)
+          $historyApprovalIds = @($databaseEvidence.priceHistoryApprovalIds)
+          if ($catalogueIds.Count -ne $databaseEvidence.catalogueItems -or
+              $approvalIds.Count -ne $databaseEvidence.approvals -or
+              $approvalItemIds.Count -ne $databaseEvidence.approvals -or
+              $historyIds.Count -ne $databaseEvidence.priceHistory -or
+              $historyItemIds.Count -ne $databaseEvidence.priceHistory -or
+              $historyApprovalIds.Count -ne $databaseEvidence.priceHistory) {
+            throw 'The exact synthetic identifier evidence does not match its record counts.'
+          }
+          foreach ($itemId in @($approvalItemIds + $historyItemIds)) {
+            if ($catalogueIds -notcontains $itemId) { throw 'Synthetic lifecycle evidence contains an orphan item identifier.' }
+          }
+          foreach ($approvalId in $historyApprovalIds) {
+            if ($approvalIds -notcontains $approvalId) { throw 'Synthetic lifecycle evidence contains an orphan approval identifier.' }
+          }
+          $databaseEvidence | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/PREINSTALL-SYNTHETIC-DATABASE.json" -Encoding utf8
+      - name: Verify desktop production boundaries and driver absence
+        run: npm run check:desktop-boundaries
+      - name: Install, launch and uninstall in the disposable Windows runner
+        shell: pwsh
+        run: ./scripts/windows-installer-smoke.ps1 -InstallerPath $env:SWL_INSTALLER -ProductionBinaryPath '${{ github.workspace }}\src-tauri\target\release\swl-pricing-desktop.exe' -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Installer-Smoke.json"
+      - name: Create SHA-256 manifest and truthful build metadata
+        shell: pwsh
+        run: ./scripts/create-windows-artifact-metadata.ps1 -InstallerPath $env:SWL_INSTALLER -OutputDirectory 'src-tauri/target/release/bundle/nsis/evidence' -WebViewEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Evidence.json" -SmokeEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Installer-Smoke.json" -UpgradeEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Upgrade-Smoke.json" -DesktopRenderScopePath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/NATIVE-RENDER-SCOPE.json"
+      # actions/upload-artifact v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: swl-windows-unsigned-internal-${{ env.SWL_SOURCE_SHA }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/evidence/*
+          if-no-files-found: error
+          retention-days: 14
+      # actions/upload-artifact v7.0.1
+      - name: Upload Windows Server 2025 native-render evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: swl-windows-server-2025-native-renders-${{ env.SWL_SOURCE_SHA }}
+          path: ${{ runner.temp }}/swl-diagnostics/desktop-e2e/**
+          if-no-files-found: error
+          retention-days: 14
+      # actions/upload-artifact v7.0.1
+      - name: Upload sanitised CI and browser-render diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: swl-windows-ci-evidence-${{ env.SWL_SOURCE_SHA }}
+          path: |
+            ${{ runner.temp }}/swl-diagnostics/**
+            screenshots/*.png
+            playwright-report/**
+            test-results/**
+          if-no-files-found: ignore
+          retention-days: 14

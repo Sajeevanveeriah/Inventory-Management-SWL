@@ -2,34 +2,54 @@
 
 ```mermaid
 flowchart LR
-  Files[Local CSV/XLSX files] --> Parse[Browser parser]
-  Parse --> Map[Mapping and profiles]
-  Map --> Compare[Deterministic comparison]
-  Compare --> Review[Exceptions and approvals]
-  Review --> Export[Candidate workbooks]
-  Config[Typed configuration registry] --> Map
-  Config --> Compare
-  Config --> Export
-  Competitors[Competitor evidence] --> Review
-  Store[IndexedDB metadata only] --> Map
-  Store --> Config
-  Browser[SPA] -->|own origin /api| Server[Node server]
-  Server -->|licensed provider API| Live[Live shopping search]
-  Server --> Data[JSON/JSONL store: items, price history, approvals, references, sources]
+  Files["Local CSV/XLSX"] --> UI["Shared React UI"]
+  UI --> Core["Pure TypeScript rules"]
+  UI --> Adapter{"Platform adapter"}
+  Adapter -->|Desktop| Rust["Scoped Tauri commands"]
+  Rust --> DB["SQLite in app data"]
+  Rust --> Export["Native import/export"]
+  Rust -->|Explicit search| Provider["Allowlisted HTTPS provider"]
+  Adapter -->|Web with Node| Server["Existing Node adapter"]
+  Adapter -->|Static Pages| Session["Session-only demo store"]
 ```
 
-Text equivalent: local files enter browser-only parsing, confirmed mappings and profiles feed deterministic comparison, configuration supplies safe rules, competitor evidence is reviewed locally, approved valid changes generate candidate outputs, and IndexedDB stores only approved metadata. The browser additionally calls its own origin's small Node server (`server/`), which performs live competitor searches through a licensed provider (rate limited, cached, honest user agent) and persists catalogue items, append-only price history, approval records, competitor references and source-registry state to a JSON/JSONL directory store.
+Rendered companion: [SWL desktop architecture and PR evidence flow](architecture-desktop.svg).
 
-The React shell uses hash routes. GitHub Pages alone can serve the static SPA, but the full application (live search plus persistence) needs the Node server (`npm run server`), which also serves `dist/` in production as a single origin. Domain modules under `src/core` hold parsing-adjacent logic, comparison, pricing, output eligibility, configuration, competitor recommendations, operational exceptions, proposals and run metadata. UI route components call those modules and do not perform spreadsheet algorithms directly.
+Text equivalent: local files enter one shared React interface and pure TypeScript business rules. A typed platform boundary sends desktop operations to narrowly scoped Rust commands, local SQLite and native import/export, while the server-backed web demonstration retains the Node adapter and static Pages uses a no-network session-only store. Optional user-initiated search may leave the computer only through approved HTTPS provider hosts; when it is unconfigured or offline, manual evidence remains available.
+
+The React shell uses hash routes. GitHub Pages alone serves the static demonstration surface; its
+web adapter deterministically switches to a no-network, in-memory operational session for that
+build. Approved catalogue records, approval/history records, references and source changes expire
+on refresh, while operator-authored configuration remains in IndexedDB. Server-backed live search
+and durable JSON/JSONL persistence need the Node adapter (`npm run server`). The
+desktop application does not use that server: the same typed platform contract routes to Tauri IPC,
+Rust-owned SQLite and native file/search services. Domain modules under `src/core` hold
+parsing-adjacent logic, comparison, pricing, output eligibility, configuration, competitor
+recommendations, operational exceptions, proposals and run metadata. UI route components call
+those modules and do not perform spreadsheet algorithms directly.
 
 ## Desktop shell (Windows)
 
 `src-tauri/` packages the identical web bundle as a Tauri 2 Windows application. The frontend
-detects the shell through the injected `window.__TAURI__` global (`src/platform/desktop.ts`)
-and, when present, offers a native output-folder workflow on the Export step. The Rust side
-exposes exactly three commands: `choose_output_folder` (native picker), `write_export_file`
-(sanitised filename, traversal-guarded write into the chosen folder) and `shell_info`. The
-desktop build uses `vite build --mode desktop`, which relaxes the Content Security Policy only
-enough to reach the local Tauri IPC bridge; the web build permits `connect-src 'self'` only. Product
-search lives in `src/core/search.ts` (deterministic exact-first ranking) and is exercised by
-unit and end-to-end tests.
+uses the reviewed imported Tauri API and typed contract under `src/platform/`. The Rust side owns
+SQLite, ordered migrations, backups and restore, native file authority, optional provider search
+and protected credential operations. Custom permissions group read, write, recovery, search and
+file commands for the main window; broad dialog, shell, process, filesystem and HTTP permissions
+are not granted. The desktop bundle receives one CSP from Tauri, while the web build permits
+`connect-src 'self'` only. Product search lives in `src/core/search.ts` and is exercised by unit
+and end-to-end tests.
+
+## Pull-request evidence flow
+
+```mermaid
+flowchart TD
+  PR["PR 13"] --> Toolchain["Pinned rustfmt and clippy"]
+  Toolchain --> Gates["Every CI gate executes"]
+  Gates --> Native["Complete native services and recovery"]
+  Native --> Windows["Installed Windows acceptance"]
+  Windows --> Evidence["Correct PR evidence"]
+```
+
+Text equivalent: continue PR 13, provision the complete pinned Rust toolchain, execute every
+previously skipped gate, finish the native services and recovery boundaries, validate the
+installed Windows application and then publish only truthful evidence to the pull request.

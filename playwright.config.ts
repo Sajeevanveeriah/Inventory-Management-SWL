@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig } from "@playwright/test";
 
 /**
  * E2E tests run against the PRODUCTION deployment shape: the bundled Node
@@ -8,23 +8,25 @@ import { defineConfig } from '@playwright/test';
  * so populated surfaces (dashboard charts, price history) can be exercised.
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: "./e2e",
   timeout: 60_000,
-  fullyParallel: true,
+  // Browser cases mutate an append-only synthetic Node store. One worker plus
+  // the automatic seed-snapshot fixture provides deterministic isolation.
+  fullyParallel: false,
+  workers: 1,
   retries: 0,
-  reporter: [['list']],
+  reporter: [["list"]],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: "http://127.0.0.1:4173",
     launchOptions: {
       // Pre-installed browser in this environment; do not download.
-      executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium',
+      executablePath: process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium",
     },
   },
   webServer: {
-    command:
-      'npm run build && node server/seed.mjs --data-dir .e2e-data && SWL_DATA_DIR=.e2e-data node server/index.mjs --port 4173 --fixture',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: true,
+    command: "npm run build && node scripts/e2e-server.mjs",
+    url: "http://127.0.0.1:4173",
+    reuseExistingServer: !process.env.CI,
     timeout: 180_000,
   },
 });

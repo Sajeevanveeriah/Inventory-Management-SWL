@@ -1,13 +1,26 @@
 # SWL Pricing and Inventory Control
 
+## Windows desktop status
+
+The repository contains one React frontend with a Tauri 2 desktop target. The packaged target is designed to open in its own native WebView2 window without starting the Node demonstration server or a loopback listener. The browser demonstration remains available through the existing Node adapter. Each release candidate must still pass the native process, listener and installed-window checks in `docs/RELEASE-CHECKLIST.md` before that behaviour is claimed for an artefact.
+
+Desktop operational metadata is stored in SQLite under the per-user application local-data directory resolved by Tauri for `au.com.stanwoottonlocksmiths.swl-pricing`; it is never stored in the installation directory. Raw supplier and ServiceM8 import rows remain memory-only. Provider credentials are protected by Windows and are not stored in SQLite. Optional native search is disabled by default and manual evidence remains available offline.
+
+The canonical package target is an unsigned NSIS current-user installer for Windows 10/11 x64. Packaging is configured for the Evergreen WebView2 offline installer, which increases installer size so first installation can work without network access. The Windows workflow is configured to prevalidate the official x64 payload and prove the embedded bytes and Microsoft Authenticode identity for each built artefact. Native Windows 10/11 installation and interactive acceptance are still release gates. Uninstall is designed to preserve application data, and the workflow is configured to check that boundary in a hosted-runner smoke; production signing, automatic updates, MSI distribution and installation on the real SWL computer are outside the current release boundary. An unsigned internal installer is expected to show a Windows SmartScreen or unknown-publisher warning.
+
+New dated exports use `YYYYMMDD-<existing-remainder>.<ext>`. Existing files are never silently overwritten.
+
+Development requires Node 22.22.2, npm, Rust 1.89.0 and the Windows MSVC build prerequisites. Install project dependencies with `npm ci`, verify with `npm run verify`, and build the Windows package on native Windows x64 with `npm run desktop:build`. The installed computer does not require Node.js, Rust, npm or a repository checkout.
+
 > Competitor intelligence architecture, pricing evidence policy, provider setup and operations: [docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md](docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md).
 
-A local-first browser application for **Stan Wootton Locksmiths** that compares an untouched
+A local-first application with Windows desktop and browser surfaces for **Stan Wootton
+Locksmiths** that compares an untouched
 supplier price export against the current ServiceM8 Materials & Services export, applies the
 confirmed **30% markup on cost**, and produces a controlled, operator-reviewed candidate import
 file — together with change, exception, rollback and audit reports.
 
-> **No production data in this repository.** This is a public repository. Never commit real
+> **No production data in this repository.** Never commit real
 > supplier exports, ServiceM8 exports, customer information, credentials or generated business
 > outputs. Run `npm run check:data-safety` before committing; `.gitignore` also blocks common
 > export patterns. All sample data in the app and tests is clearly fictional ("Fictionville").
@@ -22,22 +35,29 @@ Key operational capabilities:
   exact-first ranked search across supplier codes, ServiceM8 item numbers and descriptions,
   with status filter chips. See `src/core/search.ts`.
 - **Supplier profiles** (`#/suppliers`): save, apply, export, import (JSON) and delete mapping
-  profiles stored locally in the browser.
+  profiles through the selected platform adapter (IndexedDB for the web demonstration, SQLite for
+  the Windows application).
 - **Exceptions** (`#/exceptions`): searchable queue with exclude-with-reason for eligible rows;
   ambiguous and invalid rows stay blocked.
 - **Approvals** (`#/approvals`): per-proposal approve and withdraw actions backed by the same
   reviewed decision state as the Review step.
 - **Integrations** (`#/integrations`): honest adapter status for ServiceM8 (file handoff) and
   Xero (locked boundary). No live external writes are possible from the application.
-- **Competitor search** (`#/competitors`): **live internet search** for a typed-in product name,
-  part number, SKU, brand, partial description or barcode — no prior import required. The
-  browser calls the bundled Node server on its own origin; the server queries a licensed
-  shopping-search provider (SerpAPI Google Shopping, Australian region, AUD), rate limited and
-  cached, with an honest user agent. Results carry title, AUD price, GST basis (or "unknown"),
+- **Competitor search** (`#/competitors`): optional explicit internet search for a typed-in product
+  name, part number, SKU, brand, partial description or barcode — no prior import required. The
+  web demonstration calls its Node adapter on the same origin; the desktop adapter calls the Rust
+  backend, which permits only the reviewed provider HTTPS endpoint and rejects redirects. Calls
+  remain disabled until the operator stores and successfully validates the protected credential,
+  enters a positive total ceiling and positive per-call reservation in integer cents, and then
+  explicitly enables paid calls. The native budget pessimistically reserves the per-call amount
+  before each request and reports quota exhaustion before a request could exceed the ceiling.
+  Results carry title,
+  AUD price, GST basis (or "unknown"),
   unit/pack size where determinable, seller/source domain, retrieval timestamp and a working
   source link. A lowest/median/highest price band with source counts sits above the results, and
-  coverage gaps (empty and failed sources) are always disclosed. Provider failure, timeout,
-  quota exhaustion and zero results render as four distinct visible states. Manual entry stays
+  coverage gaps (empty and failed sources) are always disclosed. Not-configured, offline,
+  provider failure, timeout, quota exhaustion, local rate limiting and zero results render as
+  distinct visible states. Manual entry stays
   as the fallback. Attaching a result to a catalogue item stores reference information only: it
   is provably incapable of altering a cost or sell price (asserted byte-for-byte in tests).
 - **Source registry** (`#/sources`): every competitor/supplier source with its access method
@@ -45,48 +65,94 @@ Key operational capabilities:
 
 ## Windows desktop application (Tauri)
 
-The same application ships as a Windows desktop shell built with Tauri 2 (`src-tauri/`):
+The same frontend is packaged as a Windows desktop shell built with Tauri 2 (`src-tauri/`):
 
-- native output-folder picker on the Export step, with all generated files written straight to
-  the chosen folder;
+- native input and output pickers using bounded Rust-owned grants; exports are chunked, written
+  atomically and never silently overwrite an existing file;
 - Rust-side filename sanitisation (Windows-invalid characters, reserved device names, path
   traversal) with unit tests;
-- no extra JavaScript dependencies — the shell injects its API (`withGlobalTauri`), and the web
-  build contains zero desktop code paths.
+- a reviewed imported Tauri API and a typed platform adapter; global Tauri injection is disabled;
+- narrowly scoped custom permissions for native data, recovery, search and file operations;
+- installer icons are a bundled square adaptation of the official SW Locksmiths brand mark from
+  `https://www.swlocksmiths.com.au/wp-content/themes/swlocksmiths/img/logo.png`, reviewed on
+  9 August 2026 (source SHA-256
+  `7e99b6eec950f5f952d75043e9b903adbee4e3c65d18eee7a2726114b82db9f7`); no remote image is loaded
+  at runtime;
+- the browser build retains its Node adapter while the desktop build contains no Node server.
 
-Build on a Windows machine with Rust and the WebView2 runtime installed:
+Build on Windows x64 with the exact Node/Rust toolchains and the documented Microsoft build
+prerequisites. Accept a workflow-built installer only after its evidence proves that the embedded
+Evergreen WebView2 payload matches the prevalidated Microsoft-signed x64 payload; the developer
+machine still needs the normal Tauri Windows prerequisites:
 
 ```bash
-npm install
-npm run desktop:build   # produces MSI and NSIS installers via tauri build
+npm ci
+npm run desktop:build   # produces the canonical unsigned NSIS installer
 npm run desktop:dev     # development shell
 ```
 
-The desktop production build uses a Content Security Policy that permits its own origin plus the
-local Tauri IPC bridge (`--mode desktop`); the web build permits `connect-src 'self'` only.
+The desktop production build receives one Content Security Policy from Tauri and permits only
+bundled resources plus the local IPC bridge. The web build uses its own CSP with
+`connect-src 'self'` only.
 
-Competitor evidence is integrated into the TypeScript application as local-only manual or imported evidence. The nested Python prototype remains preserved as legacy reference material until documented feature-parity criteria are met.
+### Internal installer, upgrade and recovery procedure
+
+1. On a disposable or approved Windows 10/11 x64 standard-user profile, compare the downloaded
+   installer's SHA-256 with `SHA256SUMS.txt`. Internal artefacts are unsigned: continue past an
+   unknown-publisher or SmartScreen warning only when the file came from the authorised PR
+   artefact and its checksum matches.
+2. Run the NSIS installer as the current user, then launch **SWL Pricing and Inventory Control**
+   from the Start Menu. Do not install Node.js or start the browser-demonstration server.
+3. Before an upgrade, open **Settings > Backup and recovery** and create a verified local backup.
+   The current UI retains verified backups inside application data; it does not import an arbitrary
+   external backup file. For additional off-computer protection, close the application and copy the
+   entire runtime-resolved data directory to an approved protected medium. Installing the newer
+   current-user package over the existing package preserves that directory beneath
+   `%LOCALAPPDATA%\au.com.stanwoottonlocksmiths.swl-pricing` and creates a verified automatic
+   pre-migration backup before changing its schema.
+4. If an upgrade launches but must be rolled back, preview and restore the verified pre-upgrade
+   backup in **Backup and recovery**, close the application, uninstall the newer binaries, then
+   reinstall the last accepted internal installer. Uninstall never doubles as data erasure.
+5. If the upgraded application cannot reach its recovery screen, stop. Preserve the entire data
+   directory and installer evidence unchanged for supervised recovery; do not open the newer
+   database with an older executable or manually replace SQLite/WAL files. Reintroducing a whole
+   off-computer directory copy is a supervised recovery action, not an in-app import in this
+   release.
+
+Application-data erasure is a separate in-app preview plus exact confirmation phrase. It creates a
+verified backup first and is never performed by the uninstaller. On desktop it erases the native
+SQLite/configuration store and protected provider credential in the displayed scope; it preserves
+same-WebView legacy IndexedDB configuration as a non-authoritative migration source for later
+previewed reimport.
+
+Competitor evidence supports local manual records and the optional explicit provider path
+described above. The nested Python prototype remains preserved as legacy reference material until
+documented feature-parity criteria are met.
 
 Configuration is represented by a versioned typed registry in `src/core/configRegistry.ts`; locked safety invariants cannot be changed by imported configuration.
 
 ## Privacy model
 
-> **Invariant change (authorised by the repository owner, August 2026).** The application is no
-> longer "no network". A small bundled Node server performs live competitor searches through a
-> licensed provider and persists pricing history. The browser may still connect to **its own
-> origin only** (`connect-src 'self'`); no third-party origin is ever reachable from the page.
+> **Network boundary.** The browser demonstration uses the existing Node adapter on its own
+> origin. The installed desktop application does not bundle or start that server. Optional
+> desktop search is initiated explicitly and is performed by Rust only through approved HTTPS
+> provider hosts; the WebView cannot contact provider endpoints directly.
 
-- **Business file processing still happens in the browser tab.** Imported supplier and
-  ServiceM8 rows are never transmitted anywhere: only the operator's typed competitor search
-  query reaches the server, which forwards it to the licensed search provider.
+- **Business file processing stays in the shared UI's memory.** Imported supplier and ServiceM8
+  rows are never included in network requests. Only the operator's typed competitor query may
+  leave the computer: through Rust on desktop or the same-origin Node adapter in the web demo.
 - No analytics, no telemetry, no remote fonts and no CDN assets.
-- The production build ships a restrictive Content Security Policy with `connect-src 'self'`,
-  so the browser refuses any connection except to the application's own origin.
+- The desktop CSP permits bundled resources and the Tauri IPC bridge only; the WebView cannot
+  contact provider hosts. The web demonstration CSP permits its own origin only.
 - Uploaded files stay in memory. **Imported business rows are never persisted.**
-- Only three kinds of operator-authored configuration can be stored (IndexedDB, this browser
-  only): mapping profiles, approved aliases, and settings (markup %, tax selection, theme).
-- "Clear session data" wipes in-memory work; "Delete saved profiles and aliases" (with
-  confirmation) wipes everything stored.
+- The web demonstration stores operator-authored mapping profiles, approved aliases and settings
+  in IndexedDB. The desktop adapter stores authorised operational records in SQLite under the
+  stable per-user local-data directory. Raw imported rows remain memory-only on both platforms.
+- "Clear session data" wipes in-memory work. "Preview application data erasure…" shows an exact
+  scope, creates a verified backup and requires the displayed confirmation phrase before deleting
+  authorised local records; uninstall remains separate and preserves application data. Desktop
+  reset preserves legacy WebView IndexedDB configuration outside the native-store erasure scope so
+  it can be previewed for reimport.
 - Raw records and sensitive values are never written to the browser console.
 
 See [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md).
@@ -150,7 +216,7 @@ Duplicate identifiers in either file, and uncertain matches, are blocked as exce
    5. Human-readable audit summary (run id, file hashes, rules, totals, decisions)
 
 Filenames are deterministic and sanitised:
-`<date>_<profile>_<purpose>_run-<id>.<ext>`.
+`YYYYMMDD-<profile>_<purpose>_run-<id>.<ext>`.
 
 **Formula injection is prevented**: generated cells are written as string-typed values and any
 value beginning with `=`, `+`, `-`, `@`, tab or carriage return is neutralised with a leading
@@ -159,16 +225,17 @@ apostrophe and flagged.
 ### "Candidate" import file
 
 The genuine ServiceM8 import template has not yet been supplied, so production column names are
-never invented. When a ServiceM8 export is loaded, the import workbook **adapts its exact headers
-and column order** (price-change rows re-emit the original row with only cost/sell replaced).
+never invented. When a ServiceM8 export is loaded, the import workbook **adapts its header meanings
+and column order** (formula-like header text is neutralised; price-change rows re-emit the original
+row with only cost/sell replaced).
 The output is labelled a _candidate_ import file until it is validated against a real ServiceM8
 import template — see [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the
 adaptation workflow.
 
-## Deployment shape
+## Browser demonstration shape
 
-The application is now **one SPA plus one small Node server** (`server/`, plain Node, zero extra
-runtime dependencies):
+The secondary browser demonstration is **the shared SPA plus one small Node server** (`server/`,
+plain Node, zero extra runtime dependencies):
 
 - the browser calls its own origin only; the server performs outbound provider searches and
   returns normalised results;
@@ -178,37 +245,53 @@ runtime dependencies):
 - in production the same server serves the built SPA from `dist/`, so everything runs as a
   single origin.
 
-> **GitHub Pages alone can no longer host the full application.** Pages can serve the static
-> SPA, but live competitor search and persistence need the Node server running somewhere with
-> outbound network access — a small VPS, an always-on office machine, or a Node-capable host.
-> Without the server the SPA still runs; the competitor search surface then reports that live
-> search is unavailable and manual entry remains usable.
+> **GitHub Pages is a session-only demonstration surface.** Its deterministic static build never
+> calls `/api`: approved catalogue records, approvals, price history, references and source changes
+> remain in memory for the current tab and disappear on refresh. Browser downloads and the complete
+> synthetic seven-stage workflow remain available; live search reports not configured and manual
+> evidence remains usable. Operator-authored profiles, aliases and settings continue to use
+> IndexedDB. Durable operational persistence and live search require the same-origin Node adapter.
 
 ### Live search API key
 
 Live search uses SerpAPI (Google Shopping, Australian region) behind a provider interface
-(`server/search/`) so the provider can be swapped. Copy `.env.example` to `.env` (placeholders
-only — never commit a real key) and set `SERPAPI_KEY`. Without a key the application still
-starts and the search surface states clearly that live search is not configured and how to
-configure it.
+(`server/search/`) so the provider can be swapped. A key alone never authorises a paid call.
+The Node demonstration requires `SERPAPI_KEY`, `SWL_PAID_CALLS_ENABLED=true`, a positive integer
+`SWL_PROVIDER_COST_CEILING_CENTS` and a positive integer
+`SWL_PROVIDER_COST_PER_CALL_CENTS`. Keep these values in the process environment and never commit
+them. Missing, partial, malformed or non-positive budget configuration fails closed as not configured.
+The in-memory budget reserves the declared per-call cents before every request and reports quota
+exhaustion when the ceiling is reached. The deterministic fixture is offline and exempt.
 
-## Getting started
+## Development and browser demonstration
 
-Prerequisites: Node.js ≥ 20.19 and npm (no global installs required).
-
-**Windows one-click:** double-click `start-swl.cmd` in the repository folder. On first run it
-installs, seeds and builds; then it starts the server and opens the app in the browser at
-http://127.0.0.1:8787. Keep the window open while using the app. For real live prices, first
-copy `.env.example` to `.env` and set `SERPAPI_KEY` — the server loads `.env` automatically.
+Development requires exact Node.js 22.22.2 and the locked project dependencies. The installed
+Windows application does not require Node.js, a repository checkout, a terminal or a browser.
+The commands below are for development and the secondary browser demonstration only.
 
 ```bash
-npm install          # install pinned dependencies (see below)
+npm ci               # install the exact locked dependency graph
 npm run seed         # seed realistic fictional sample data into server/data/
 npm run server       # serves the app AND the API on http://127.0.0.1:8787 (.env auto-loaded)
 npm run dev          # development server (proxies /api to the Node server)
 npm run build        # type-check + production build (dist/)
 npm run server:fixture  # offline deterministic fixture provider (testing/demo)
 ```
+
+The `server` scripts allow only the exact loopback Vite development and preview origins in addition
+to their own origin. Foreign origins, forged hosts, cross-site requests and non-JSON mutations are
+rejected before request bodies or paid-search routes are processed.
+
+Those controls protect the browser boundary, not against another process already running on the
+same computer. The optional Node demonstration has no OS-user authentication: do not run it with
+real operational data or a live provider credential on a shared or untrusted workstation. This
+limitation does not affect the packaged desktop, which does not start or contact the Node server.
+
+Configuration hydration fails closed. If settings, mappings, aliases, sources or the legacy
+IndexedDB migration status cannot be validated, comparison, approval and export remain blocked
+rather than silently substituting defaults. Web configuration imports are additive and reject
+conflicting identifiers; reset confirmation is bound to the exact previewed snapshot so later
+changes require a new preview.
 
 Quality gates:
 
@@ -217,24 +300,53 @@ npm run typecheck      # TypeScript strict mode
 npm run lint           # ESLint
 npm run test           # Vitest unit + integration tests
 npm run e2e            # Playwright end-to-end + accessibility tests (production build)
-npm run check:data-safety  # detect likely business exports/secrets in git
+npm run e2e:desktop    # external WebDriver against a built production desktop executable
+npm run check:data-safety  # detect likely business exports in the proposed tree
+npm run check:secrets      # scan the proposed tree and reachable history without printing values
+npm run check:pages        # validate a Pages-base production build
+npm run check:desktop-boundaries  # validate CSP, capabilities and production driver absence
 npm run verify         # typecheck + lint + test + build
 ```
 
 ### Dependencies (runtime)
 
-| Package           | Purpose                                    | Licence |
-| ----------------- | ------------------------------------------ | ------- |
-| react / react-dom | UI framework                               | MIT     |
-| papaparse         | CSV parsing                                | MIT     |
-| exceljs           | XLSX read/write in-browser                 | MIT     |
-| big.js            | Decimal-safe currency arithmetic           | MIT     |
-| zod               | Schema validation for stored configuration | MIT     |
-| idb               | Typed IndexedDB wrapper                    | ISC     |
+| Package           | Purpose                                    | Licence        |
+| ----------------- | ------------------------------------------ | -------------- |
+| react / react-dom | UI framework                               | MIT            |
+| papaparse         | CSV parsing                                | MIT            |
+| exceljs           | XLSX read/write in-browser                 | MIT            |
+| big.js            | Decimal-safe currency arithmetic           | MIT            |
+| zod               | Schema validation for stored configuration | MIT            |
+| idb               | Typed IndexedDB wrapper                    | ISC            |
+| @tauri-apps/api   | Imported desktop IPC API                   | MIT/Apache-2.0 |
+
+Desktop Rust dependencies are deliberately exact and locked in `src-tauri/Cargo.lock`:
+
+| Crate                        |                    Exact version | Licence           | Desktop purpose                                                                                            |
+| ---------------------------- | -------------------------------: | ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| tauri / tauri-build          |                   2.11.5 / 2.6.3 | Apache-2.0 OR MIT | Native window, scoped IPC and NSIS build                                                                   |
+| tauri-plugin-dialog          |                            2.7.2 | Apache-2.0 OR MIT | Native operator-selected input/output dialogs                                                              |
+| tauri-plugin-single-instance |                            2.3.7 | Apache-2.0 OR MIT | One database-writing application instance                                                                  |
+| rusqlite                     |                           0.37.0 | MIT               | Parameterised SQLite, transactions and backup API; bundled SQLite avoids a target-machine DLL prerequisite |
+| reqwest                      |                           0.13.4 | Apache-2.0 OR MIT | Rust-owned allowlisted HTTPS provider client with Rustls                                                   |
+| serde / serde_json           |                1.0.229 / 1.0.151 | Apache-2.0 OR MIT | Deny-unknown typed IPC and persisted JSON validation                                                       |
+| uuid / base64 / sha2 / url   | 1.24.0 / 0.22.1 / 0.10.9 / 2.5.8 | Apache-2.0 OR MIT | Opaque grants, bounded chunks, SHA-256 integrity and URL validation                                        |
+| quick-xml / zip              |                   0.41.0 / 8.2.0 | MIT               | Bounded native XLSX metadata and decompression-limit inspection                                            |
 
 Dev/test: vite, typescript, vitest, @testing-library/*, fast-check, @playwright/test,
-@axe-core/playwright, eslint + typescript-eslint, prettier. Versions are pinned exactly in
-`package.json`.
+@axe-core/playwright, the external @wdio Tauri service, eslint + typescript-eslint and prettier.
+Versions are pinned exactly in `package.json`; `tauri-driver` 2.0.6 is installed externally and
+project-locally by Windows CI, never compiled into the application.
+
+| Desktop test tool          | Exact version | Licence           | Boundary                                  |
+| -------------------------- | ------------- | ----------------- | ----------------------------------------- |
+| @wdio/cli and local runner | 9.30.1        | MIT               | Development/CI only                       |
+| @wdio/globals              | 9.29.1        | MIT               | Development/CI only                       |
+| @wdio/jasmine-framework    | 9.30.1        | MIT               | Development/CI only                       |
+| @types/jasmine             | 5.1.15        | MIT               | Desktop-test TypeScript declarations only |
+| @wdio/spec-reporter        | 9.30.1        | MIT               | Development/CI only                       |
+| @wdio/tauri-service        | 1.3.0         | MIT               | External driver orchestration only        |
+| tauri-driver               | 2.0.6         | Apache-2.0 OR MIT | External project-local CI executable only |
 
 ## Demonstration mode
 
@@ -270,6 +382,11 @@ excludable record. A "Fictional demo data" badge is shown while active.
 - Selecting a different worksheet re-reads the file from the in-memory copy; browsers may
   invalidate very large `File` handles if the file changes on disk mid-session.
 - GST/tax transformations are intentionally not implemented.
+- Hosted Windows Server 2025 compilation, production-binary WebDriver, the documented former-source
+  1.0.0-to-1.1.0 migration smoke and installer lifecycle smoke do not replace the release
+  checklist's interactive Windows 10/11 DPI, upgrade, restart, spreadsheet-open or complete visual
+  acceptance. The former source's reviewed Cargo lock repair fixture and exact hashes are documented
+  in [.github/fixtures/README.md](.github/fixtures/README.md).
 
 ## Troubleshooting
 
