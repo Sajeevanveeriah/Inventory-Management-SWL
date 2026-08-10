@@ -12,6 +12,21 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 
 const ALLOWED_DATA_PATHS = [/^tests\/fixtures\//, /^src\/demo\//];
 
+/**
+ * Source modules are code, not data. The name heuristics below match on FILE
+ * NAMES, so a module that implements the ServiceM8 contract trips them purely
+ * for being named after what it does.
+ *
+ * Only the three BUSINESS-DATA name heuristics are relaxed for these paths, and
+ * only for source extensions. A spreadsheet, key, environment file or generated
+ * output is never exempt no matter where it sits, and every file's CONTENT is
+ * still scanned below.
+ */
+const SOURCE_CODE_PATH =
+  /^(?:src|tests|e2e|desktop-e2e|scripts|server)\/.*\.(?:ts|tsx|mjs|cjs|js)$/;
+const BUSINESS_DATA_NAME_REASONS =
+  /ServiceM8 export name|supplier export name|price list name/;
+
 const SUSPICIOUS_NAME = [
   { re: /\.(xlsx|xls|csv)$/i, why: "spreadsheet export" },
   { re: /servicem8/i, why: "ServiceM8 export name" },
@@ -71,10 +86,12 @@ for (const file of deletedFromIndex) files.delete(file);
 const findings = [];
 for (const file of files) {
   const allowed = ALLOWED_DATA_PATHS.some((re) => re.test(file));
+  const sourceCode = SOURCE_CODE_PATH.test(file);
   for (const { re, why } of SUSPICIOUS_NAME) {
-    if (re.test(file) && !(allowed && /spreadsheet|price list/.test(why))) {
-      findings.push(`${file}: filename looks like ${why}`);
-    }
+    if (!re.test(file)) continue;
+    if (allowed && /spreadsheet|price list/.test(why)) continue;
+    if (sourceCode && BUSINESS_DATA_NAME_REASONS.test(why)) continue;
+    findings.push(`${file}: filename looks like ${why}`);
   }
   if (TEXT_EXTENSIONS.test(file)) {
     if (!existsSync(file)) continue;
