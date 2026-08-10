@@ -383,17 +383,52 @@ jobs:
           } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/TAURI-DRIVER.json" -Encoding utf8
           "SWL_TAURI_DRIVER_BINARY=$($driverExecutable.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $driverDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Prove a clean disposable profile for production-binary driving
+      - name: Build isolated unbundled release-profile desktop acceptance binary
+        shell: pwsh
+        run: |
+          $productionBinaryPath = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/swl-pricing-desktop.exe'))
+          $productionBinary = Get-Item -LiteralPath $productionBinaryPath
+          $productionHashBefore = (Get-FileHash -LiteralPath $productionBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $acceptanceTarget = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'swl-desktop-acceptance-target'))
+          if (Test-Path -LiteralPath $acceptanceTarget) {
+            throw 'The isolated desktop acceptance target was not clean.'
+          }
+          $env:CARGO_TARGET_DIR = $acceptanceTarget
+          cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin swl-pricing-desktop --features tauri/devtools
+          if ($LASTEXITCODE -ne 0) { throw 'The isolated release-profile desktop acceptance build failed.' }
+          $productionHashAfter = (Get-FileHash -LiteralPath $productionBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($productionHashAfter -cne $productionHashBefore) {
+            throw 'The isolated desktop acceptance build changed the canonical production binary.'
+          }
+          $acceptanceBinaryPath = [IO.Path]::GetFullPath((Join-Path $acceptanceTarget 'release/swl-pricing-desktop.exe'))
+          $acceptanceBinary = Get-Item -LiteralPath $acceptanceBinaryPath
+          if ($acceptanceBinary.PSIsContainer -or
+              $acceptanceBinary.Length -le 0 -or
+              ($acceptanceBinary.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+              $acceptanceBinary.FullName -ine $acceptanceBinaryPath -or
+              [IO.Path]::GetDirectoryName($acceptanceBinary.FullName) -ine (Join-Path $acceptanceTarget 'release')) {
+            throw 'The isolated desktop acceptance binary failed exact regular-file validation.'
+          }
+          [ordered]@{
+            purpose = 'Unbundled release-profile WebDriver acceptance only'
+            cargoFeature = 'tauri/devtools'
+            distributed = $false
+            canonicalProductionSha256Before = $productionHashBefore
+            canonicalProductionSha256After = $productionHashAfter
+            acceptanceBinaryFileName = $acceptanceBinary.Name
+            acceptanceBinarySha256 = (Get-FileHash -LiteralPath $acceptanceBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          } | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/desktop-e2e/ACCEPTANCE-BINARY.json" -Encoding utf8
+          "SWL_DESKTOP_ACCEPTANCE_BINARY=$($acceptanceBinary.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Prove a clean disposable profile for acceptance-binary driving
         shell: pwsh
         run: |
           $dataRoot = Join-Path $env:LOCALAPPDATA 'au.com.stanwoottonlocksmiths.swl-pricing'
           if (Test-Path -LiteralPath $dataRoot) {
             throw 'The disposable runner profile contains pre-existing SWL application data.'
           }
-      - name: Drive the production desktop executable with outbound networking denied
+      - name: Drive the isolated release-profile desktop acceptance binary with outbound networking denied
         shell: pwsh
         env:
-          SWL_DESKTOP_BINARY: ${{ github.workspace }}\src-tauri\target\release\swl-pricing-desktop.exe
           SWL_DESKTOP_EVIDENCE_DIR: ${{ runner.temp }}\swl-diagnostics\desktop-e2e
         run: |
           $resolvedDrivers = @(Get-Command tauri-driver.exe -All -ErrorAction SilentlyContinue)
@@ -401,7 +436,7 @@ jobs:
               $resolvedDrivers[0].Source -ine $env:SWL_TAURI_DRIVER_BINARY) {
             throw 'The desktop test does not resolve exactly the validated project-local tauri-driver executable.'
           }
-          ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR -EdgeDriverPath $env:EDGEWEBDRIVER
+          ./scripts/run-windows-desktop-e2e.ps1 -ApplicationPath $env:SWL_DESKTOP_ACCEPTANCE_BINARY -EvidenceDirectory $env:SWL_DESKTOP_EVIDENCE_DIR -EdgeDriverPath $env:EDGEWEBDRIVER
       - name: Prove representative nonzero synthetic data before installer lifecycle checks
         shell: pwsh
         run: |

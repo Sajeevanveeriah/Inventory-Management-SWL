@@ -159,6 +159,31 @@ describe("exact WebView2 EdgeDriver preparation", () => {
   });
 });
 
+describe("isolated release-profile desktop acceptance binary", () => {
+  it("enables DevTools only in a temporary unbundled target and preserves production bytes", () => {
+    expect(workflow).toContain(
+      "Build isolated unbundled release-profile desktop acceptance binary",
+    );
+    expect(workflow).toContain(
+      "$env:CARGO_TARGET_DIR = $acceptanceTarget",
+    );
+    expect(workflow).toContain("--features tauri/devtools");
+    expect(workflow).toContain(
+      "$productionHashAfter -cne $productionHashBefore",
+    );
+    expect(workflow).toContain("distributed = $false");
+    expect(workflow).toContain(
+      "-ApplicationPath $env:SWL_DESKTOP_ACCEPTANCE_BINARY",
+    );
+    expect(workflow).not.toContain(
+      "-ApplicationPath $env:SWL_DESKTOP_BINARY",
+    );
+    expect(desktopRunner).toContain(
+      "Exact unbundled release-profile acceptance application",
+    );
+  });
+});
+
 describe("production WDIO driver boundary", () => {
   it("prepares the driver after upgrade and passes its exact path without a global PATH append", () => {
     const upgradeIndex = workflow.indexOf(
@@ -168,7 +193,7 @@ describe("production WDIO driver boundary", () => {
       "- name: Prepare exact EdgeDriver for the installed WebView2 runtime",
     );
     const driveIndex = workflow.indexOf(
-      "- name: Drive the production desktop executable with outbound networking denied",
+      "- name: Drive the isolated release-profile desktop acceptance binary with outbound networking denied",
     );
 
     expect(prepareIndex).toBeGreaterThan(upgradeIndex);

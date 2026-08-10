@@ -211,7 +211,7 @@ try {
   }
 
   [ordered]@{
-    scope = 'Exact production application, selected Microsoft EdgeDriver and installed Microsoft WebView2 executables; outbound Internet denied for the complete WDIO run'
+    scope = 'Exact unbundled release-profile acceptance application, selected Microsoft EdgeDriver and installed Microsoft WebView2 executables; outbound Internet denied for the complete WDIO run'
     applicationFileName = [IO.Path]::GetFileName($application)
     applicationSha256 = (Get-FileHash -LiteralPath $application -Algorithm SHA256).Hash.ToLowerInvariant()
     edgeDriver = [ordered]@{
@@ -292,7 +292,7 @@ try {
       Start-Sleep -Milliseconds 100
     }
     [ordered]@{
-      scope = 'Continuous process-tree TCP sampling during production-binary WDIO; exact outbound Internet rules active separately'
+      scope = 'Continuous process-tree TCP sampling during release-profile acceptance WDIO; exact outbound Internet rules active separately'
       sampleIntervalMilliseconds = 100
       samples = $samples
       applicationSamples = $applicationSamples
@@ -415,12 +415,12 @@ $forbiddenDescendants = @($networkEvidence.observedProcessNames | Where-Object {
   $_ -match '^(?:node|cmd|powershell|pwsh|conhost)\.exe$'
 })
 if ($forbiddenDescendants.Count -ne 0) {
-  throw 'The production desktop workflow launched a forbidden Node, command or terminal descendant.'
+  throw 'The desktop acceptance workflow launched a forbidden Node, command or terminal descendant.'
 }
 if ($networkEvidence.monitorErrorCount -ne 0 -or
     $networkEvidence.testInfrastructureLoopbackListenerCount -ne 0 -or
     $networkEvidence.nonLoopbackListenerCount -ne 0 -or
     $networkEvidence.unexpectedRemoteConnectionCount -ne 0) {
-  throw 'The production desktop workflow violated the fail-closed process/network boundary.'
+  throw 'The desktop acceptance workflow violated the fail-closed process/network boundary.'
 }
 if ($testExitCode -ne 0) { exit $testExitCode }
