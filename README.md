@@ -10,6 +10,12 @@ The canonical package target is an unsigned NSIS current-user installer for Wind
 
 New dated exports use `YYYYMMDD-<existing-remainder>.<ext>`. Existing files are never silently overwritten.
 
+> **Outstanding security action.** A provider credential was committed to this repository's
+> history before the current safeguards existed (`npm run check:secrets` reports the reachable
+> blobs). The repository is private, but that key must be **rotated at the provider** and the old
+> one revoked. The working tree is clean and `.gitignore` blocks `.env`; rotation is the only
+> remaining step, and it cannot be done from inside the repository.
+
 Development requires Node 22.22.2, npm, Rust 1.89.0 and the Windows MSVC build prerequisites. Install project dependencies with `npm ci`, verify with `npm run verify`, and build the Windows package on native Windows x64 with `npm run desktop:build`. The installed computer does not require Node.js, Rust, npm or a repository checkout.
 
 > Competitor intelligence architecture, pricing evidence policy, provider setup and operations: [docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md](docs/COMPETITOR-INTELLIGENCE-ARCHITECTURE.md).
@@ -17,8 +23,44 @@ Development requires Node 22.22.2, npm, Rust 1.89.0 and the Windows MSVC build p
 A local-first application with Windows desktop and browser surfaces for **Stan Wootton
 Locksmiths** that compares an untouched
 supplier price export against the current ServiceM8 Materials & Services export, applies the
-confirmed **30% markup on cost**, and produces a controlled, operator-reviewed candidate import
-file — together with change, exception, rollback and audit reports.
+confirmed **30% markup on the GST-exclusive cost**, and produces a controlled, operator-reviewed
+**ServiceM8 import CSV in ServiceM8's exact format** — together with change, exception, rollback
+and audit reports.
+
+> **Proprietary software.** Copyright © 2026 Stan Wootton Locksmiths. All rights reserved.
+> See [LICENSE](LICENSE). No licence is granted by publication of this repository.
+
+## The ServiceM8 round trip
+
+The import file this application generates is a ServiceM8 Materials & Services CSV, produced so
+that it is structurally indistinguishable from a genuine ServiceM8 export: the same nine columns
+in the same order, the same value conventions, and the same CSV dialect (UTF-8 with no BOM, CRLF
+on every line, quoting only where a field contains a comma, a quote or a line break). The writer
+reproduces a genuine-shaped export byte-for-byte in test.
+
+Each changed item is emitted by copying its original ServiceM8 row verbatim and replacing only
+`Price` and `Purchase Cost`; every other column survives untouched. The rollback file is the same
+format carrying the prior values, so an undo is a single import rather than a manual repair.
+
+**GST is handled per row.** ServiceM8 records each material's price against one of two bases in
+its `Price Includes Taxes` column, and a single marked-up number cannot serve both — writing the
+GST-exclusive figure into a tax-inclusive row under-prices it by the whole GST rate. The markup is
+therefore applied to the GST-exclusive cost, and GST is added only for rows that say their price
+includes it. How the SUPPLIER quotes its costs is the one fact the files cannot answer, so the
+operator states it in Configuration; until they do, a release gate blocks export.
+
+**Do not open the generated CSV in a spreadsheet.** Opening and saving it rewrites long item
+numbers and barcodes into scientific notation irreversibly — damage already visible in genuine
+ServiceM8 exports, which the application detects and reports rather than matching on.
+
+To verify the whole pipeline against real files on your own computer, without ever putting
+business data in this repository:
+
+```bash
+SWL_VERIFY_SUPPLIER_CSV=/path/to/supplier.csv \
+SWL_VERIFY_SERVICEM8_CSV=/path/to/servicem8-export.csv \
+npm test -- real-file-verification
+```
 
 > **No production data in this repository.** Never commit real
 > supplier exports, ServiceM8 exports, customer information, credentials or generated business

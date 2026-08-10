@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" role="img" aria-label="Stan Wootton Locksmiths">
+  <title>Stan Wootton Locksmiths</title>
+  <rect width="240" height="200" fill="#D81E24" />
+  <text
+    x="120"
+    y="126"
+    text-anchor="middle"
+    fill="#ffffff"
+    font-family="'Arial Black', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+    font-weight="900"
+    font-size="118"
+    letter-spacing="-4"
+  >SW</text>
+  <text
+    x="120"
+    y="164"
+    text-anchor="middle"
+    fill="#ffffff"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-style="italic"
+    font-size="30"
+  >Stan Wootton</text>
+</svg>

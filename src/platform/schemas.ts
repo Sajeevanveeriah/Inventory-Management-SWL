@@ -1,37 +1,42 @@
-import { z } from "zod";
-import { SettingsSchema } from "../core/settings";
+import { z } from 'zod';
+import { SettingsSchema } from '../core/settings';
 
 const boundedText = (max: number) => z.string().min(1).max(max);
 const timestamp = z.string().min(1).max(64);
 const cents = z.number().int().min(0).max(1_000_000_000);
-const gstBasis = z.enum(["inc-gst", "ex-gst", "unknown"]);
+const gstBasis = z.enum(['inc-gst', 'ex-gst', 'unknown']);
 const httpsUrl = z
   .string()
   .url()
   .max(2048)
   .refine((value) => {
     const parsed = new URL(value);
-    return (
-      parsed.protocol === "https:" &&
-      parsed.username === "" &&
-      parsed.password === ""
-    );
-  }, "A credential-free HTTPS URL is required.");
+    return parsed.protocol === 'https:' && parsed.username === '' && parsed.password === '';
+  }, 'A credential-free HTTPS URL is required.');
 
 const columnIndex = z.number().int().min(0).max(4095);
-const SupplierMappingSchema = z.partialRecord(
-  z.enum(["supplierCode", "supplierDescription", "supplierCost"]),
-  columnIndex,
-);
-const Servicem8MappingSchema = z.partialRecord(
-  z.enum([
-    "itemNumber",
-    "itemDescription",
-    "existingCost",
-    "existingSellPrice",
-  ]),
-  columnIndex,
-);
+// These enumerations must stay in step with SupplierFieldKey and S8FieldKey in
+// src/core/fields.ts; a field missing here makes every profile that uses it
+// fail validation and become unsaveable. src/core/fields.test.ts asserts it.
+export const SUPPLIER_MAPPING_KEYS = [
+  'supplierCode',
+  'supplierDescription',
+  'supplierCost',
+  'supplierBarcode',
+] as const;
+export const SERVICEM8_MAPPING_KEYS = [
+  'itemNumber',
+  'itemDescription',
+  'existingCost',
+  'existingSellPrice',
+  'priceIncludesTaxes',
+  'taxRate',
+  'quantityInStock',
+  'itemIsInventoried',
+  'barcode',
+] as const;
+const SupplierMappingSchema = z.partialRecord(z.enum(SUPPLIER_MAPPING_KEYS), columnIndex);
+const Servicem8MappingSchema = z.partialRecord(z.enum(SERVICEM8_MAPPING_KEYS), columnIndex);
 export const MappingProfileSchema = z
   .object({
     id: boundedText(128),
@@ -103,7 +108,7 @@ export const LiveSearchResultSchema = z
     title: boundedText(1000),
     priceCents: cents,
     priceAud: z.string().regex(/^\d+(?:\.\d{2})$/),
-    currency: z.literal("AUD"),
+    currency: z.literal('AUD'),
     gstBasis,
     packSize: z.string().max(256).nullable(),
     seller: boundedText(512),
@@ -123,18 +128,18 @@ export const CompetitorObservationSchema = z
       .string()
       .regex(/^\d+(?:\.\d{1,2})?$/)
       .max(32),
-    currency: z.literal("AUD"),
+    currency: z.literal('AUD'),
     gstBasis,
     shipping: z
       .string()
       .regex(/^\d+(?:\.\d{1,2})?$/)
       .max(32),
-    stockStatus: z.enum(["in-stock", "out-of-stock", "unknown"]),
-    condition: z.enum(["new", "used", "unknown"]),
+    stockStatus: z.enum(['in-stock', 'out-of-stock', 'unknown']),
+    condition: z.enum(['new', 'used', 'unknown']),
     packCompatible: z.boolean(),
     productOnly: z.boolean(),
     matchConfidence: z.number().min(0).max(1),
-    reviewState: z.enum(["accepted", "rejected", "quarantined"]),
+    reviewState: z.enum(['accepted', 'rejected', 'quarantined']),
     ambiguousMatch: z.boolean().optional(),
     url: httpsUrl.optional(),
     packSize: z.string().max(256).optional(),
@@ -144,19 +149,19 @@ export const CompetitorObservationSchema = z
 export const LiveSearchOutcomeSchema = z
   .object({
     state: z.enum([
-      "ok",
-      "empty",
-      "not_configured",
-      "offline",
-      "timeout",
-      "provider_error",
-      "quota_exhausted",
-      "rate_limited",
-      "invalid_query",
-      "server_unreachable",
+      'ok',
+      'empty',
+      'not_configured',
+      'offline',
+      'timeout',
+      'provider_error',
+      'quota_exhausted',
+      'rate_limited',
+      'invalid_query',
+      'server_unreachable',
     ]),
     query: z.string().max(512),
-    queryKind: z.enum(["identifier", "barcode", "free-text", "empty"]),
+    queryKind: z.enum(['identifier', 'barcode', 'free-text', 'empty']),
     provider: z.string().max(128),
     results: z.array(LiveSearchResultSchema).max(100),
     band: z
@@ -200,9 +205,7 @@ export const LiveHealthSchema = z
     costCeilingCents: z.number().int().min(0).max(1_000_000_000).optional(),
     costPerCallCents: z.number().int().min(0).max(1_000_000_000).optional(),
     spentCents: z.number().int().min(0).max(1_000_000_000).optional(),
-    paidPolicyState: z
-      .enum(["fixture", "disabled", "invalid", "enabled", "exhausted"])
-      .optional(),
+    paidPolicyState: z.enum(['fixture', 'disabled', 'invalid', 'enabled', 'exhausted']).optional(),
     schemaVersion: z.number().int().min(0).optional(),
   })
   .strict();
@@ -211,7 +214,7 @@ export const CompetitorSourceSchema = z
   .object({
     id: boundedText(128),
     name: boundedText(256),
-    accessMethod: z.enum(["live-api", "manual-entry", "file-import"]),
+    accessMethod: z.enum(['live-api', 'manual-entry', 'file-import']),
     automatedAccessNote: z.string().max(2000),
     enabled: z.boolean(),
   })
@@ -244,7 +247,7 @@ const ConfigurationConflictCountsSchema = z
 export const ConfigurationEnvelopeSchema = z
   .object({
     schemaVersion: z.literal(1),
-    application: z.literal("swl-pricing-inventory-control"),
+    application: z.literal('swl-pricing-inventory-control'),
     exportedAt: timestamp,
     counts: ConfigurationCountsSchema,
     data: z
@@ -329,14 +332,14 @@ export const ProviderStatusSchema = z
   .object({
     provider: z.string().max(128),
     state: z.enum([
-      "configured",
-      "fixture",
-      "not_configured",
-      "offline",
-      "timeout",
-      "quota_exhausted",
-      "rate_limited",
-      "provider_error",
+      'configured',
+      'fixture',
+      'not_configured',
+      'offline',
+      'timeout',
+      'quota_exhausted',
+      'rate_limited',
+      'provider_error',
     ]),
     paidCallsEnabled: z.boolean(),
     costCeilingAud: z.string().regex(/^\d+(?:\.\d{2})$/),
@@ -365,7 +368,7 @@ export const InputFileGrantSchema = z
       .int()
       .min(1)
       .max(25 * 1024 * 1024),
-    extension: z.enum(["csv", "xlsx", "json"]),
+    extension: z.enum(['csv', 'xlsx', 'json']),
   })
   .strict();
 

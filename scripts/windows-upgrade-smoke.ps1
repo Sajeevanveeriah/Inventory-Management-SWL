@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 $applicationIdentifier = 'au.com.stanwoottonlocksmiths.swl-pricing'
 $productName = 'SWL Pricing and Inventory Control'
 $legacyVersion = '1.0.0'
-$currentVersion = '1.1.0'
+$currentVersion = '1.2.0'
 $legacyInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $LegacyInstallerPath).Path
 $currentInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $CurrentInstallerPath).Path
 $evidence = [IO.Path]::GetFullPath($EvidencePath)
@@ -551,7 +551,7 @@ if (($beforeCurrentLaunchManifest | ConvertTo-Json -Depth 5 -Compress) -ne
 }
 $currentApplication = Get-ApplicationExecutable -InstallRoot $installRoot
 if ($currentApplication.VersionInfo.ProductVersion -notmatch '^1\.1\.0(?:\.0)?$') {
-  throw 'The upgraded application does not identify as version 1.1.0.'
+  throw 'The upgraded application does not identify as version 1.2.0.'
 }
 $startupFailureEvidence = Join-Path `
   ([IO.Path]::GetDirectoryName($evidence)) `
@@ -611,7 +611,7 @@ if ((@(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress) -n
 }
 
 [ordered]@{
-  scope = 'Immutable former 1.0.0 application source with its reviewed hash-bound Cargo lock repair upgraded to 1.1.0 on disposable GitHub-hosted Windows Server 2025; not interactive Windows 10/11 acceptance'
+  scope = 'Immutable former 1.0.0 application source with its reviewed hash-bound Cargo lock repair upgraded to 1.2.0 on disposable GitHub-hosted Windows Server 2025; not interactive Windows 10/11 acceptance'
   legacy = [ordered]@{
     sourceCommit = 'e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a'
     version = $legacyVersion

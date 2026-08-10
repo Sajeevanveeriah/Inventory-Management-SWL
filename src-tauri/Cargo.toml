@@ -1,6 +1,6 @@
 [package]
 name = "swl-pricing-desktop"
-version = "1.1.0"
+version = "1.2.0"
 description = "SWL Pricing and Inventory Control - Windows desktop shell"
 authors = ["Stan Wootton Locksmiths"]
 edition = "2021"

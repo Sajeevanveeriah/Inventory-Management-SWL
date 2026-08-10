@@ -1,6 +1,8 @@
 import type { ComparisonResult, ComparisonRow } from './compare';
 import type { DecisionMap } from './review';
 import { isBlocked } from './statuses';
+import type { ServiceM8LayoutMatch } from './servicem8Format';
+import { SERVICEM8_COLUMNS } from './servicem8Format';
 
 /**
  * Output selection and pre-export gating.
@@ -16,6 +18,8 @@ export function rowsForImport(rows: ComparisonRow[], decisions: DecisionMap): Co
     if (row.status !== 'price-changed' && row.status !== 'new-item') return false;
     if (row.supplier === null || row.supplier.cost === null || row.proposedSell === null)
       return false;
+    // A proposal without a full derivation cannot be written safely.
+    if (row.pricing === null || row.targetBasis === null) return false;
     return true;
   });
 }
@@ -33,7 +37,8 @@ export interface ChecklistInput {
   comparison: ComparisonResult;
   decisions: DecisionMap;
   mappingComplete: boolean;
-  templateAdapted: boolean;
+  /** Resolution of the loaded ServiceM8 header row against the contract. */
+  layout: ServiceM8LayoutMatch;
   markupPercent: string;
   taxHandling: string;
 }
@@ -112,22 +117,38 @@ export function buildReleaseChecklist(input: ChecklistInput): GateResult[] {
       repair: 'Clear the approval on the affected rows; their source data is not usable.',
     },
     {
-      id: 'headers',
-      label: 'Output headers validated',
-      ok: true,
+      id: 'gst-basis',
+      label: 'Supplier GST basis confirmed',
+      ok: comparison.costBasisConfirmed,
       blocking: true,
-      detail: input.templateAdapted
-        ? 'Headers are adapted from the loaded ServiceM8 file.'
-        : 'Using the built-in candidate header set (no ServiceM8 template loaded).',
+      detail: comparison.costBasisConfirmed
+        ? `Supplier costs are treated as ${comparison.costBasis === 'including-gst' ? 'GST-inclusive' : 'GST-exclusive'}, and each ServiceM8 price uses that row's own tax basis.`
+        : 'The supplier’s GST basis has not been confirmed. Reading it wrongly moves every generated price by the full GST rate.',
+      repair: 'Open Configuration and state whether the supplier’s costs include or exclude GST.',
     },
     {
-      id: 'template',
-      label: 'Template compatibility checked',
-      ok: true,
-      blocking: false,
-      detail: input.templateAdapted
-        ? 'Column names and order follow the loaded ServiceM8 export. The file is still a CANDIDATE import until verified against a genuine ServiceM8 import template.'
-        : 'No genuine ServiceM8 import template has been supplied, so the output is labelled a CANDIDATE import file and must be verified before importing.',
+      id: 'servicem8-contract',
+      label: 'ServiceM8 column contract satisfied',
+      ok: input.layout.usable,
+      blocking: true,
+      detail: input.layout.usable
+        ? input.layout.complete
+          ? `All ${SERVICEM8_COLUMNS.length} ServiceM8 columns are present, so the generated file carries the complete contract.`
+          : `The essential ServiceM8 columns are present. Missing optional columns: ${input.layout.missing.join(', ')}.`
+        : `The loaded ServiceM8 file is missing required columns: ${input.layout.missing.join(', ')}.`,
+      repair:
+        'Load the Materials & Services export straight from ServiceM8, without editing its header row.',
+    },
+    {
+      id: 'tax-basis-per-row',
+      label: 'Every exported row has a known tax basis',
+      ok: importRows.every((row) => row.targetBasis !== null),
+      blocking: true,
+      detail: importRows.every((row) => row.targetBasis !== null)
+        ? 'Each approved row carries the GST basis its ServiceM8 record uses.'
+        : 'One or more approved rows have no determinable GST basis.',
+      repair:
+        'Clear the approval on rows whose “Price Includes Taxes” value is missing or unreadable.',
     },
     {
       id: 'approvals',
@@ -152,7 +173,9 @@ export function buildReleaseChecklist(input: ChecklistInput): GateResult[] {
       label: 'Markup and tax settings confirmed',
       ok: true,
       blocking: false,
-      detail: `Markup ${input.markupPercent}% on cost; tax handling: ${input.taxHandling}.`,
+      detail: `Markup ${input.markupPercent}% on the GST-exclusive cost; supplier basis: ${input.taxHandling}. New items: ${
+        comparison.newItemConvention.includesTaxes ? 'price includes GST' : 'price excludes GST'
+      }, tax rate “${comparison.newItemConvention.taxRate}”.`,
     },
   ];
   return gates;

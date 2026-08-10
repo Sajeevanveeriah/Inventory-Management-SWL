@@ -283,7 +283,7 @@ jobs:
       - name: Verify the former installer embeds the same official WebView2 payload
         shell: pwsh
         run: ./scripts/verify-webview2-offline-installer.ps1 -InstallerPath $env:SWL_LEGACY_INSTALLER -PrevalidatedPayloadPath "$env:RUNNER_TEMP/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" -PrevalidationEvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Prevalidation.json" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Legacy-Evidence.json"
-      - name: Prove genuine 1.0.0 to 1.1.0 migration, backup and preservation
+      - name: Prove genuine 1.0.0 to 1.2.0 migration, backup and preservation
         shell: pwsh
         run: ./scripts/windows-upgrade-smoke.ps1 -LegacyInstallerPath "$env:SWL_LEGACY_INSTALLER" -CurrentInstallerPath "$env:SWL_INSTALLER" -DatabaseAcceptanceBinaryPath "$env:SWL_DB_ACCEPTANCE_BINARY" -LegacySeedBinaryPath "$env:SWL_LEGACY_SEED_BINARY" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/Upgrade-Smoke.json"
       - name: Prepare exact EdgeDriver for the installed WebView2 runtime
