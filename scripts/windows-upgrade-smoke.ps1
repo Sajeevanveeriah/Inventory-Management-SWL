@@ -11,6 +11,12 @@ $applicationIdentifier = 'au.com.stanwoottonlocksmiths.swl-pricing'
 $productName = 'SWL Pricing and Inventory Control'
 $legacyVersion = '1.0.0'
 $currentVersion = '1.2.0'
+# Derive the identity patterns from the versions above. Writing the version a
+# second time as a literal regex is how a bump silently half-lands: the message
+# said 1.2.0 while the pattern still demanded 1.1.0, and the mismatch only
+# surfaced fifty minutes into a Windows CI job.
+$legacyVersionPattern = '^' + [regex]::Escape($legacyVersion) + '(?:\.0)?$'
+$currentVersionPattern = '^' + [regex]::Escape($currentVersion) + '(?:\.0)?$'
 $legacyInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $LegacyInstallerPath).Path
 $currentInstaller = Get-Item -LiteralPath (Resolve-Path -LiteralPath $CurrentInstallerPath).Path
 $evidence = [IO.Path]::GetFullPath($EvidencePath)
@@ -508,8 +514,8 @@ if ($installRoot.Contains(' ')) { throw 'The scripted NSIS destination contains 
 
 Install-UnsignedPackage -Installer $legacyInstaller -Destination $installRoot
 $legacyApplication = Get-ApplicationExecutable -InstallRoot $installRoot
-if ($legacyApplication.VersionInfo.ProductVersion -notmatch '^1\.0\.0(?:\.0)?$') {
-  throw 'The installed former application does not identify as version 1.0.0.'
+if ($legacyApplication.VersionInfo.ProductVersion -notmatch $legacyVersionPattern) {
+  throw "The installed former application does not identify as version $legacyVersion."
 }
 $legacyApplicationSha256 = (Get-FileHash -LiteralPath $legacyApplication.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 $databasePath = Join-Path $dataRoot 'swl-pricing.sqlite3'
@@ -550,8 +556,8 @@ if (($beforeCurrentLaunchManifest | ConvertTo-Json -Depth 5 -Compress) -ne
   throw 'Installing the current package changed former-version data before migration launch.'
 }
 $currentApplication = Get-ApplicationExecutable -InstallRoot $installRoot
-if ($currentApplication.VersionInfo.ProductVersion -notmatch '^1\.1\.0(?:\.0)?$') {
-  throw 'The upgraded application does not identify as version 1.2.0.'
+if ($currentApplication.VersionInfo.ProductVersion -notmatch $currentVersionPattern) {
+  throw "The upgraded application does not identify as version $currentVersion."
 }
 $startupFailureEvidence = Join-Path `
   ([IO.Path]::GetDirectoryName($evidence)) `
