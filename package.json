@@ -1,7 +1,9 @@
 {
   "name": "swl-pricing-inventory-control",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Stan Wootton Locksmiths",
   "description": "SWL Pricing and Inventory Control — local-first supplier price comparison and ServiceM8 import preparation for Stan Wootton Locksmiths.",
   "type": "module",
   "scripts": {

@@ -33,6 +33,8 @@ function supplier(code: string, description: string): SupplierRecord {
     description,
     costRaw: '100.00',
     cost: '100.00',
+    barcode: '',
+    priceOnApplication: false,
     issues: [],
   };
 }
@@ -48,6 +50,12 @@ function s8(itemNumber: string, description: string): S8Record {
     existingCost: '90.00',
     existingSellRaw: '117.00',
     existingSell: '117.00',
+    includesTaxes: false,
+    includesTaxesRaw: 'No',
+    taxRateRaw: 'GST on Income',
+    quantityInStockRaw: '0',
+    itemIsInventoriedRaw: 'No',
+    barcodeRaw: '',
     issues: [],
   };
 }
@@ -60,7 +68,11 @@ function row(id: string, code: string, description: string): ComparisonRow {
     supplier: supplier(code, description),
     s8: s8(code, description),
     proposedSell: '130.00',
+    targetBasis: 'excluding-gst',
+    pricing: null,
     costDelta: '10.00',
+    priceDelta: null,
+    duplicateSourceRows: [],
     messages: [],
     suggestions: [],
   };
@@ -81,9 +93,20 @@ function comparison(rows: ComparisonRow[]): ComparisonResult {
       ambiguous: 0,
       invalid: 0,
       duplicates: 0,
+      duplicatesCollapsed: 0,
       blocked: 0,
     },
     markupPercent: '30',
+    costBasis: 'excluding-gst',
+    costBasisConfirmed: true,
+    newItemConvention: {
+      includesTaxes: false,
+      taxRate: 'GST on Income',
+      support: 1,
+      total: 1,
+      fallback: false,
+      inconsistent: 0,
+    },
   };
 }
 

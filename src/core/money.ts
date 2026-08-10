@@ -92,9 +92,33 @@ export function minimumSellPrice(costAmount: string | number): string {
   return new Big(costAmount).times(MINIMUM_MARKUP_ON_COST).round(2, HALF_UP).toFixed(2);
 }
 
+/**
+ * Add GST to a tax-exclusive amount: amount × (1 + rate/100), half-up to 2dp.
+ */
+export function addGst(amount: string, ratePercent: string | number): string {
+  const factor = new Big(1).plus(new Big(ratePercent).div(100));
+  return new Big(amount).times(factor).round(2, HALF_UP).toFixed(2);
+}
+
+/**
+ * Remove GST from a tax-inclusive amount: amount ÷ (1 + rate/100), half-up to
+ * 2dp. `addGst(removeGst(x))` may differ from `x` by one cent for some inputs;
+ * that is inherent to rounding a divided amount and is why the ex-GST value is
+ * always derived from the source of truth rather than round-tripped.
+ */
+export function removeGst(amount: string, ratePercent: string | number): string {
+  const factor = new Big(1).plus(new Big(ratePercent).div(100));
+  return new Big(amount).div(factor).round(2, HALF_UP).toFixed(2);
+}
+
 /** Exact comparison of two canonical amount strings. */
 export function amountEquals(a: string, b: string): boolean {
   return new Big(a).eq(new Big(b));
+}
+
+/** True when `a` is strictly less than `b`. */
+export function amountLessThan(a: string, b: string): boolean {
+  return new Big(a).lt(new Big(b));
 }
 
 /** b - a as a signed fixed 2-decimal string (positive = increase). */

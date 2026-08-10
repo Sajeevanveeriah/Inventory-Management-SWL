@@ -4,6 +4,7 @@ import type { SupplierRecord } from './records';
 import { buildReleaseChecklist, checklistPasses, rowsForImport } from './output';
 import type { BaseStatus } from './statuses';
 import type { DecisionMap } from './review';
+import { SERVICEM8_COLUMNS, matchServiceM8Layout } from './servicem8Format';
 
 function supplier(code: string, cost: string | null): SupplierRecord {
   return {
@@ -14,6 +15,8 @@ function supplier(code: string, cost: string | null): SupplierRecord {
     description: `Fictional ${code}`,
     costRaw: cost ?? '',
     cost,
+    barcode: '',
+    priceOnApplication: false,
     issues: [],
   };
 }
@@ -31,7 +34,21 @@ function row(
     supplier: supplier(id, cost),
     s8: null,
     proposedSell,
+    targetBasis: proposedSell === null ? null : 'excluding-gst',
+    pricing:
+      cost === null || proposedSell === null
+        ? null
+        : {
+            costExGst: cost,
+            sellExGst: proposedSell,
+            sellIncGst: proposedSell,
+            price: proposedSell,
+            purchaseCost: cost,
+            explanation: 'test fixture',
+          },
     costDelta: null,
+    priceDelta: null,
+    duplicateSourceRows: [],
     messages: [],
     suggestions: [],
   };
@@ -52,11 +69,24 @@ function comparison(rows: ComparisonRow[]): ComparisonResult {
       ambiguous: 0,
       invalid: 0,
       duplicates: 0,
+      duplicatesCollapsed: 0,
       blocked: 0,
     },
     markupPercent: '30',
+    costBasis: 'excluding-gst',
+    costBasisConfirmed: true,
+    newItemConvention: {
+      includesTaxes: false,
+      taxRate: 'GST on Income',
+      support: 0,
+      total: 0,
+      fallback: true,
+      inconsistent: 0,
+    },
   };
 }
+
+const LAYOUT = matchServiceM8Layout([...SERVICEM8_COLUMNS]);
 
 describe('rowsForImport', () => {
   it('includes only approved price-changed and new-item rows', () => {
@@ -104,9 +134,9 @@ describe('rowsForImport', () => {
 describe('buildReleaseChecklist', () => {
   const base = {
     mappingComplete: true,
-    templateAdapted: true,
+    layout: LAYOUT,
     markupPercent: '30',
-    taxHandling: 'Not configured',
+    taxHandling: 'Supplier costs exclude GST',
   };
 
   it('passes with a clean approved set', () => {

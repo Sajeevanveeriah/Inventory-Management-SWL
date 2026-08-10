@@ -2,6 +2,7 @@ import { fieldsForRole } from '../../core/fields';
 import { validateMapping } from '../../core/mapping';
 import { buildReleaseChecklist, checklistPasses } from '../../core/output';
 import { TAX_HANDLING_OPTIONS } from '../../core/settings';
+import { matchServiceM8Layout } from '../../core/servicem8Format';
 import { useAppDispatch, useAppState } from '../../state/store';
 
 export function ChecklistStep() {
@@ -41,7 +42,7 @@ export function ChecklistStep() {
     comparison,
     decisions: state.review.decisions,
     mappingComplete,
-    templateAdapted: true,
+    layout: matchServiceM8Layout(state.servicem8.table.headers),
     markupPercent: comparison.markupPercent,
     taxHandling: TAX_HANDLING_OPTIONS[state.settings.taxHandling],
   });

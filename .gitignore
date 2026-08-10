@@ -44,6 +44,18 @@ server/data/
 *supplier-export*
 *price-list*
 *pricelist*
+# ...but the patterns above are about DATA, not about the word. Source files
+# that implement the ServiceM8 contract legitimately carry it in their names,
+# and without these exceptions `git add` drops them silently and CI fails on a
+# module that exists locally. Data files are still blocked: every export format
+# (*.csv, *.xlsx, *.xls) is excluded wholesale above, and these exceptions only
+# re-admit code and documentation.
+!src/**/*ervice[mM]8*.ts
+!src/**/*ervice[mM]8*.tsx
+!tests/**/*ervice[mM]8*.ts
+!e2e/**/*ervice[mM]8*.ts
+!desktop-e2e/**/*ervice[mM]8*.ts
+!docs/**/*ervice[mM]8*.md
 rollback-*
 import-candidate-*
 change-report-*

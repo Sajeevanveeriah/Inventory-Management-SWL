@@ -13,6 +13,8 @@ function supplier(code: string, description: string): SupplierRecord {
     description,
     costRaw: '10.00',
     cost: '10.00',
+    barcode: '',
+    priceOnApplication: false,
     issues: [],
   };
 }
@@ -28,6 +30,12 @@ function s8(itemNumber: string, description: string): S8Record {
     existingCost: '10.00',
     existingSellRaw: '13.00',
     existingSell: '13.00',
+    includesTaxes: false,
+    includesTaxesRaw: 'No',
+    taxRateRaw: 'GST on Income',
+    quantityInStockRaw: '0',
+    itemIsInventoriedRaw: 'No',
+    barcodeRaw: '',
     issues: [],
   };
 }
@@ -45,7 +53,11 @@ function row(
     supplier: sup,
     s8: service,
     proposedSell: sup?.cost ? '13.00' : null,
+    targetBasis: 'excluding-gst',
+    pricing: null,
     costDelta: null,
+    priceDelta: null,
+    duplicateSourceRows: [],
     messages: [],
     suggestions: [],
   };

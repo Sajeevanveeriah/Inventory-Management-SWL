@@ -1,13 +1,9 @@
-import { useState } from "react";
-import { ROUNDING_RULE_LABEL } from "../core/money";
-import {
-  TAX_HANDLING_OPTIONS,
-  type Settings,
-  type TaxHandling,
-} from "../core/settings";
-import { useAppState } from "../state/store";
-import { useActions } from "../state/useActions";
-import { Dialog } from "./Dialog";
+import { useState } from 'react';
+import { ROUNDING_RULE_LABEL } from '../core/money';
+import { TAX_HANDLING_OPTIONS, type Settings, type TaxHandling } from '../core/settings';
+import { useAppState } from '../state/store';
+import { useActions } from '../state/useActions';
+import { Dialog } from './Dialog';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -22,11 +18,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const markupValid =
-    /^\d{1,3}(\.\d{1,2})?$/.test(markup) && Number(markup) >= 30;
-  const changed =
-    markup !== state.settings.markupPercent ||
-    tax !== state.settings.taxHandling;
+  const markupValid = /^\d{1,3}(\.\d{1,2})?$/.test(markup) && Number(markup) >= 30;
+  const changed = markup !== state.settings.markupPercent || tax !== state.settings.taxHandling;
 
   const apply = async () => {
     const next: Settings = {
@@ -36,13 +29,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
     const parts: string[] = [];
     if (markup !== state.settings.markupPercent)
-      parts.push(
-        `markup changed ${state.settings.markupPercent}% → ${markup}%`,
-      );
+      parts.push(`markup changed ${state.settings.markupPercent}% → ${markup}%`);
     if (tax !== state.settings.taxHandling)
-      parts.push(`tax handling changed to “${TAX_HANDLING_OPTIONS[tax]}”`);
+      parts.push(`supplier cost basis changed to “${TAX_HANDLING_OPTIONS[tax]}”`);
     setSaving(true);
-    const saved = await actions.changeSettings(next, parts.join("; "));
+    const saved = await actions.changeSettings(next, parts.join('; '));
     setSaving(false);
     if (!saved) return;
     setConfirming(false);
@@ -56,8 +47,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div className="field">
             <label htmlFor="setting-markup">Markup percentage (on cost)</label>
             <span className="help">
-              Selling price = supplier cost × (1 + markup ÷ 100). The confirmed
-              business rule is 30%. Rounding: {ROUNDING_RULE_LABEL}.
+              Selling price = supplier cost × (1 + markup ÷ 100). The confirmed business rule is
+              30%. Rounding: {ROUNDING_RULE_LABEL}.
             </span>
             <input
               id="setting-markup"
@@ -72,7 +63,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <span
                 id="markup-error"
                 className="small"
-                style={{ color: "var(--danger)" }}
+                style={{ color: 'var(--danger)' }}
                 role="alert"
               >
                 Enter a number between 30 and 999.99. The minimum is 30%.
@@ -80,22 +71,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             )}
           </div>
           <fieldset>
-            <legend>Tax handling (GST)</legend>
-            <p
-              className="help small muted"
-              style={{ margin: "0.2rem 0 0.5rem" }}
-            >
-              This tool does not infer or alter GST treatment. No transformation
-              is applied under any option; the selection is recorded in the
-              audit report so downstream use is unambiguous.
+            <legend>Supplier cost basis (GST)</legend>
+            <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
+              State how your supplier quotes its costs. It is the one fact this tool cannot read
+              from the files, and the markup must be applied to a GST-exclusive cost — so reading it
+              wrongly moves every generated price by the full GST rate. Export stays blocked until
+              it is set.
+            </p>
+            <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
+              This does <strong>not</strong> decide whether each ServiceM8 price includes GST. That
+              is read per row from that row&rsquo;s own &ldquo;Price Includes Taxes&rdquo; column
+              and is never assumed.
             </p>
             {(Object.keys(TAX_HANDLING_OPTIONS) as TaxHandling[]).map((key) => (
               <label
                 key={key}
                 style={{
-                  display: "block",
+                  display: 'block',
                   fontWeight: 400,
-                  marginBottom: "0.3rem",
+                  marginBottom: '0.3rem',
                 }}
               >
                 <input
@@ -104,7 +98,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   value={key}
                   checked={tax === key}
                   onChange={() => setTax(key)}
-                />{" "}
+                />{' '}
                 {TAX_HANDLING_OPTIONS[key]}
               </label>
             ))}
@@ -121,7 +115,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   .changeSettings(
                     {
                       ...state.settings,
-                      theme: e.target.value as Settings["theme"],
+                      theme: e.target.value as Settings['theme'],
                     },
                     `theme changed to ${e.target.value}`,
                     false,
@@ -133,7 +127,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <option value="dark">Dark</option>
             </select>
           </div>
-          <div className="btn-row" style={{ justifyContent: "flex-end" }}>
+          <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
             <button type="button" className="btn" onClick={onClose}>
               Close
             </button>
@@ -150,26 +144,24 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       ) : (
         <div>
           <div className="callout callout-warn" role="alert">
-            <p style={{ marginBottom: "0.4rem" }}>
-              <strong>Confirm business-rule change.</strong> This change is
-              recorded in the audit report, and any existing comparison will be
-              re-run, which may reset review decisions.
+            <p style={{ marginBottom: '0.4rem' }}>
+              <strong>Confirm business-rule change.</strong> This change is recorded in the audit
+              report, and any existing comparison will be re-run, which may reset review decisions.
             </p>
-            <ul className="small" style={{ margin: 0, paddingLeft: "1.2rem" }}>
+            <ul className="small" style={{ margin: 0, paddingLeft: '1.2rem' }}>
               {markup !== state.settings.markupPercent && (
                 <li>
-                  Markup: {state.settings.markupPercent}% →{" "}
-                  <strong>{markup}%</strong>
+                  Markup: {state.settings.markupPercent}% → <strong>{markup}%</strong>
                 </li>
               )}
               {tax !== state.settings.taxHandling && (
                 <li>
-                  Tax handling: <strong>{TAX_HANDLING_OPTIONS[tax]}</strong>
+                  Supplier cost basis: <strong>{TAX_HANDLING_OPTIONS[tax]}</strong>
                 </li>
               )}
             </ul>
           </div>
-          <div className="btn-row" style={{ justifyContent: "flex-end" }}>
+          <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
             <button
               type="button"
               className="btn"
@@ -184,7 +176,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               disabled={saving}
               onClick={() => void apply()}
             >
-              {saving ? "Saving verified settings…" : "Confirm and apply"}
+              {saving ? 'Saving verified settings…' : 'Confirm and apply'}
             </button>
           </div>
         </div>

@@ -1,0 +1,68 @@
+PROPRIETARY SOFTWARE LICENCE
+
+SWL Pricing and Inventory Control
+Copyright (c) 2026 Stan Wootton Locksmiths. All rights reserved.
+
+This software, its source code, its documentation, its design assets and the
+Stan Wootton Locksmiths name and marks contained in it (together, "the
+Software") are the confidential and proprietary property of Stan Wootton
+Locksmiths.
+
+1. GRANT
+
+   No licence is granted by publication of this repository. Use, copying,
+   modification, merging, publishing, distribution, sublicensing, sale or
+   disclosure of the Software, in whole or in part, requires the prior written
+   permission of Stan Wootton Locksmiths.
+
+   Where such permission is given, it is a non-exclusive, non-transferable,
+   revocable licence for the internal business purposes of Stan Wootton
+   Locksmiths only, and it does not transfer ownership of anything.
+
+2. RESTRICTIONS
+
+   Without prior written permission you must not:
+
+   a. distribute, publish or make the Software available to any third party;
+   b. create derivative works from the Software;
+   c. remove or alter any copyright, trade mark or attribution notice;
+   d. use the Stan Wootton Locksmiths name, logo or marks for any purpose.
+
+3. THIRD-PARTY COMPONENTS
+
+   The Software incorporates third-party open-source components, each governed
+   by its own licence. Those licences apply to those components only and do not
+   apply to the Software as a whole. The components and their licences are
+   recorded in package-lock.json and src-tauri/Cargo.lock.
+
+4. BUSINESS DATA
+
+   Supplier price files, ServiceM8 exports, customer information and any file
+   generated from them are business records of Stan Wootton Locksmiths. They are
+   not part of the Software, must never be committed to this repository, and are
+   subject to the confidentiality obligations of whoever holds them.
+
+5. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. THE PRICES, REPORTS AND
+   IMPORT FILES IT PRODUCES ARE PROPOSALS FOR HUMAN REVIEW, NOT FINANCIAL OR TAX
+   ADVICE, AND MUST BE CHECKED BEFORE THEY ARE ACTED ON.
+
+6. LIMITATION OF LIABILITY
+
+   TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE AUTHORS OR
+   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+   IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+   Nothing in this licence excludes, restricts or modifies any guarantee, right
+   or remedy that cannot lawfully be excluded, restricted or modified under the
+   Australian Consumer Law.
+
+7. GOVERNING LAW
+
+   This licence is governed by the laws of the State of Victoria, Australia.
+
+Enquiries: Stan Wootton Locksmiths.
