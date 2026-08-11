@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "buildCommand": "node -e \"console.log('API-only deployment: no frontend build required')\"",
   "functions": {
     "api/*.mjs": {
       "maxDuration": 20
