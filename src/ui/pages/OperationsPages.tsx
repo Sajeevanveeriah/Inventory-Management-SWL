@@ -128,13 +128,10 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
   const buckets = useMemo(() => priceBuckets(history ?? []), [history]);
   const hasHistory = (history?.length ?? 0) > 0;
   const pagesSession =
-    platform.kind === "web" &&
-    platform.capabilities.sessionAccessToken === true;
+    platform.kind === "web" && !platform.capabilities.liveSearch;
   const persistedHistory =
     platform.kind === "desktop" ||
-    (platform.kind === "web" &&
-      platform.capabilities.liveSearch &&
-      !pagesSession);
+    (platform.kind === "web" && platform.capabilities.liveSearch);
   const changed = rows.filter((r) => r.status === "price-changed").length;
   const blocked = rows.filter(
     (r) => r.status === "ambiguous" || r.status === "invalid",
@@ -187,7 +184,7 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
         : platform.kind === "desktop"
           ? "no approved versions yet"
           : pagesSession
-            ? "session-only history is empty"
+            ? "session-only demo is empty"
             : platform.capabilities.liveSearch
               ? "web service not seeded"
               : "session-only demo is empty",
