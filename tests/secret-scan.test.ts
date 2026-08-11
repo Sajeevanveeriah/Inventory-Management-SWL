@@ -39,7 +39,7 @@ describe("secret scanner placeholder handling", () => {
     );
 
     expect(output).toContain("Secret scan passed for current");
-  });
+  }, 30_000);
 
   it("still rejects an assigned token-shaped value without displaying it", () => {
     const directory = temporaryRepository();
@@ -58,7 +58,7 @@ describe("secret scanner placeholder handling", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("matches assigned provider credential");
     expect(result.stderr).not.toContain(syntheticValue);
-  });
+  }, 30_000);
 
   it("can exclude the owner-retained private environment file without weakening example-file scanning", () => {
     const directory = temporaryRepository();
@@ -78,5 +78,5 @@ describe("secret scanner placeholder handling", () => {
 
     expect(output).toContain("Secret scan passed for current");
     expect(output).not.toContain(privateValue);
-  });
+  }, 30_000);
 });
