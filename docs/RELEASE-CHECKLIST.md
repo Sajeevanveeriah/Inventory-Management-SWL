@@ -59,27 +59,16 @@ Complete every item before shipping a build of SWL Pricing and Inventory Control
 ## Mandatory live-provider evidence gates
 
 Synthetic responses prove only deterministic behaviour. Do not describe a release as having
-gathered real competitor results until both of these operator-approved, budgeted smokes pass.
-Never record the SerpAPI key, SWL bearer token or Redis credential in evidence.
+gathered real competitor results until the operator-approved, budgeted desktop smoke passes. Never
+record the SerpAPI key in evidence. GitHub Pages is static and must make no provider request.
 
-- [ ] GitHub Pages is loaded from its real Pages URL and sends search traffic only to the exact
-      configured API-only HTTPS origin
-- [ ] A valid per-user SWL web access token is entered for the current tab and is absent from URL,
-      browser storage, logs, screenshots and exported files
-- [ ] With an explicitly approved reservation for two provider requests, Pages completes one
-      Shopping discovery, the operator selects the exact product, and Immersive Product returns
-      direct merchant-store observations
-- [ ] The configured budget period equals the current `YYYY-MM` in `Australia/Melbourne`; stale and
-      future periods fail before Redis reservation or provider work, and the new-month ceiling has
-      separate operator approval
-- [ ] The sanitised Pages record includes query, selected product title/brand/product ID, retrieval
-      time, application/provider cache indicators, merchant domains and item/shipping/tax/total
-      components; every merchant link is opened and checked against the displayed seller/product
+- [ ] The deployed GitHub Pages CSP contains only `connect-src 'self'`, and the competitor page
+      clearly presents manual evidence rather than live-provider controls
 - [ ] The installed desktop stores and validates the provider credential through Windows Credential
       Manager, then completes the same two-stage smoke within a separately approved two-request
       reservation
 - [ ] The sanitised desktop record includes the same provenance and component fields, and confirms
-      there was no localhost listener or dependency on the Vercel API
+      there was no localhost listener or external web-service dependency
 - [ ] Mismatched pack, used/refurbished, out-of-stock, financing-only, contradictory price-component
       or unknown-total offers are visibly excluded and never enter the band
 - [ ] The final hand-off states the exact observed scope and does not claim all competitors,
