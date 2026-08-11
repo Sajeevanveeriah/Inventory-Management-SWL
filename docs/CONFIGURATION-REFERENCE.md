@@ -16,7 +16,7 @@ Scopes resolve in this order: run, product, category, supplier, global, default.
 - Output: candidate template, report shape, summary sheet and audit detail.
 - Display and accessibility: theme, density, dates and timezone.
 - Privacy and retention: metadata, snapshots, retention, profile and alias retention.
-- Locked safety invariants: local business-file processing, no production writes, no scraping, ambiguous and invalid blocking, missing-item non-deletion, formula protection, leading-zero preservation, no raw-row persistence by default, approved-valid-changed-only output, floor enforcement, no arbitrary expressions and no release action. The only optional external runtime call is an explicit, budgeted competitor query through the reviewed native or Node provider adapter; it never includes imported rows, costs, sell prices, notes or customer data.
+- Locked safety invariants: local business-file processing, no production writes, no scraping, ambiguous and invalid blocking, missing-item non-deletion, formula protection, leading-zero preservation, no raw-row persistence by default, approved-valid-changed-only output, floor enforcement, no arbitrary expressions and no release action. The only optional external runtime call is an explicit, budgeted competitor query through the reviewed native desktop adapter, local Node adapter or protected API-only web adapter; it never includes imported rows, costs, sell prices, notes or customer data.
 
 ## Import and export
 
@@ -24,3 +24,15 @@ Configuration export uses the versioned checksummed envelope documented by the p
 Import rejects unknown keys, invalid enum values, out-of-range numbers, conflicts and locked-setting
 overrides. Unsupported or malformed versions leave live configuration unchanged and block the
 workflow; they are never converted to defaults or silently discarded.
+
+## Live-provider runtime controls
+
+GitHub Pages contains only the canonical HTTPS origin of the protected API. SerpAPI and Redis
+credentials, the token pepper, rate controls and paid-call controls are server-side variables in the
+API-only runtime. The browser access token is entered for one tab and remains in memory only.
+
+The Vercel budget period is an operator-approved calendar month. `SWL_PROVIDER_BUDGET_PERIOD` must
+equal the current `YYYY-MM` in `Australia/Melbourne`; stale or future values fail closed before
+Redis reservation or provider work. A new month therefore requires an explicit ceiling review and
+configuration update. The prior Redis ledger is retained beyond the active period so expiry cannot
+re-authorise the same named allowance.
