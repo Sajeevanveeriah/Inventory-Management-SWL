@@ -53,8 +53,6 @@ import {
 
 const MAX_CONFIGURATION_BYTES = 10 * 1024 * 1024;
 const RESET_CONFIRMATION = "ERASE SWL LOCAL DATA";
-// Longer than the API function's 20-second ceiling so a paid call cannot keep
-// running after the browser has already encouraged the operator to retry.
 const REQUEST_TIMEOUT_MS = 25_000;
 
 const WebCatalogueItemSchema = z.object({
@@ -88,27 +86,6 @@ const SessionApprovedChangeSchema = z
 export interface WebPlatformOptions {
   /** Static Pages has no Node process; operational records are session-only. */
   sessionOnly?: boolean;
-  /** Optional HTTPS origin for the protected live-search API used by Pages. */
-  liveSearchApiOrigin?: string;
-}
-
-function canonicalApiOrigin(value: string | undefined): string | null {
-  if (!value) return null;
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    return null;
-  }
-  return parsed.protocol === "https:" &&
-    parsed.username === "" &&
-    parsed.password === "" &&
-    parsed.pathname === "/" &&
-    parsed.search === "" &&
-    parsed.hash === "" &&
-    parsed.origin === value
-    ? parsed.origin
-    : null;
 }
 
 function sanitisedFetchError(error: unknown): string {
@@ -414,45 +391,12 @@ function webProviderStatus(health: {
   };
 }
 
-function webSessionTokenMissingStatus(): ProviderStatus {
-  return {
-    provider: "serpapi-google-shopping-au",
-    state: "not_configured",
-    paidCallsEnabled: false,
-    costCeilingAud: "0.00",
-    costCeilingCents: 0,
-    costPerCallCents: 0,
-    spentCents: 0,
-    credentialConfigured: false,
-    credentialHint: null,
-    lastValidatedAt: null,
-  };
-}
-
 export function createWebPlatformService(
   storage: WebConfigurationStorage = browserDb,
   options: WebPlatformOptions = {},
 ): PlatformService {
   const sessionOnly = options.sessionOnly === true;
-  const liveSearchApiOrigin = canonicalApiOrigin(options.liveSearchApiOrigin);
-  const liveSearchEnabled = !sessionOnly || liveSearchApiOrigin !== null;
-  let sessionApiAccessToken: string | null = null;
-  const liveUrl = (path: string) =>
-    liveSearchApiOrigin === null ? path : `${liveSearchApiOrigin}${path}`;
-  const liveRequestJson = <T>(
-    path: string,
-    schema: z.ZodType<T>,
-    init?: RequestInit,
-  ) =>
-    requestJson(liveUrl(path), schema, {
-      ...init,
-      headers: {
-        ...init?.headers,
-        ...(sessionApiAccessToken
-          ? { authorization: `Bearer ${sessionApiAccessToken}` }
-          : {}),
-      },
-    });
+  const liveSearchEnabled = !sessionOnly;
   const importPreviews = new Map<string, ConfigurationEnvelope>();
   const resetPreviews = new Map<
     string,
@@ -578,7 +522,6 @@ export function createWebPlatformService(
       protectedCredentials: false,
       recovery: true,
       liveSearch: liveSearchEnabled,
-      sessionAccessToken: liveSearchApiOrigin !== null,
     },
     rawImportPersistence: "never",
     manualEvidencePersistence: "catalogue-reference-or-session",
@@ -594,7 +537,7 @@ export function createWebPlatformService(
               schemaVersion: 1,
             }),
           )
-        : (liveRequestJson("/api/health", LiveHealthSchema) as Promise<
+        : (requestJson("/api/health", LiveHealthSchema) as Promise<
             PlatformResult<LiveHealth>
           >),
 
@@ -1091,9 +1034,6 @@ export function createWebPlatformService(
             lastValidatedAt: null,
           });
         }
-        if (liveSearchApiOrigin !== null && sessionApiAccessToken === null) {
-          return platformOk(webSessionTokenMissingStatus());
-        }
         const health = await service.health();
         return health.ok ? platformOk(webProviderStatus(health.value)) : health;
       },
@@ -1111,20 +1051,7 @@ export function createWebPlatformService(
               "The static Pages demonstration is manual-only and makes no network search request.",
           };
         }
-        if (liveSearchApiOrigin !== null && sessionApiAccessToken === null) {
-          return {
-            state: "not_configured",
-            query,
-            queryKind: query.trim() ? "free-text" : "empty",
-            provider: "serpapi-google-shopping-au",
-            candidates: [],
-            results: [],
-            band: null,
-            detail:
-              "Enter the revocable SWL web API access token for this tab before searching.",
-          };
-        }
-        const result = await liveRequestJson(
+        const result = await requestJson(
           "/api/competitor-search",
           LiveSearchOutcomeSchema,
           {
@@ -1137,9 +1064,6 @@ export function createWebPlatformService(
           },
         );
         if (result.ok) return result.value as LiveSearchOutcome;
-        if (result.error.code === "permission_denied") {
-          sessionApiAccessToken = null;
-        }
         return {
           state:
             result.error.code === "timeout"
@@ -1173,27 +1097,26 @@ export function createWebPlatformService(
           "unavailable",
           "Paid provider calls are configured on the web server.",
         ),
-      async configureCredential(secret) {
-        if (!/^[A-Za-z0-9_-]{43,256}$/u.test(secret)) {
-          return platformFail(
-            "invalid_input",
-            "Enter the API access token issued for this application.",
-          );
-        }
-        sessionApiAccessToken = secret;
-        const status = await service.search.status();
-        if (!status.ok) sessionApiAccessToken = null;
-        return status;
-      },
-      validateCredential: async () => service.search.status(),
-      async replaceCredential(secret) {
-        sessionApiAccessToken = null;
-        return service.search.configureCredential(secret);
-      },
-      async removeCredential() {
-        sessionApiAccessToken = null;
-        return platformOk(webSessionTokenMissingStatus());
-      },
+      configureCredential: async () =>
+        platformFail(
+          "unavailable",
+          "Provider credentials are configured only in the Windows desktop application.",
+        ),
+      validateCredential: async () =>
+        platformFail(
+          "unavailable",
+          "Provider credential validation is available only in the Windows desktop application.",
+        ),
+      replaceCredential: async () =>
+        platformFail(
+          "unavailable",
+          "Provider credentials are configured only in the Windows desktop application.",
+        ),
+      removeCredential: async () =>
+        platformFail(
+          "unavailable",
+          "Provider credentials are configured only in the Windows desktop application.",
+        ),
     },
     files: {
       async chooseInputFile() {
