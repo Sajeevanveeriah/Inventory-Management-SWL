@@ -5958,7 +5958,7 @@ fn parse_immersive_offers(
             .or_else(|| candidate.brand.clone()),
         product_id: candidate.product_id.clone(),
     };
-    let mut results = Vec::new();
+    let mut results: Vec<SearchResult> = Vec::new();
     let mut exact_offers = HashMap::new();
     for store in stores {
         let Some(mut offer) = normalise_offer(store, Some(candidate), &retrieved_at) else {
