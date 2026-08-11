@@ -8,6 +8,7 @@ import { PrivacyDialog } from './ui/PrivacyDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { RecoveryPanel, SettingsPage } from './ui/pages/ConfigPages';
 import { CompetitorsPage, SourcesPage } from './ui/pages/CompetitorSearchPage';
+import { ExpansionCataloguePage } from './ui/pages/ExpansionCataloguePage';
 import { IntegrationsPage } from './ui/pages/IntegrationsPage';
 import {
   ApprovalsPage,
@@ -34,6 +35,7 @@ const ROUTES = [
   ['#/new-run', 'New run'],
   ['#/runs', 'Runs'],
   ['#/inventory', 'Inventory search'],
+  ['#/expansion', 'Expansion catalogue'],
   ['#/suppliers', 'Suppliers'],
   ['#/mapping-profiles', 'Mapping profiles'],
   ['#/pricing-rules', 'Pricing rules'],
@@ -53,7 +55,7 @@ type Route = (typeof ROUTES)[number][0];
 /** Left rail grouping: section label + routes, commercial-platform style. */
 const NAV_GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<Route>]> = [
   ['Overview', ['#/dashboard', '#/new-run', '#/runs']],
-  ['Catalogue', ['#/inventory', '#/suppliers', '#/mapping-profiles']],
+  ['Catalogue', ['#/inventory', '#/expansion', '#/suppliers', '#/mapping-profiles']],
   ['Pricing', ['#/pricing-rules', '#/competitors', '#/sources']],
   ['Review', ['#/exceptions', '#/approvals', '#/exports']],
   ['System', ['#/integrations', '#/audit', '#/settings', '#/help']],
@@ -65,6 +67,7 @@ const NAV_ICONS: Record<Route, string> = {
   '#/new-run': 'M8 3v10M3 8h10',
   '#/runs': 'M3 4h10M3 8h10M3 12h6',
   '#/inventory': 'M7 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM10 10l4 4',
+  '#/expansion': 'M3 13V7l5-4 5 4v6M8 3v10M5 8h6',
   '#/suppliers': 'M2 12V6l6-3 6 3v6l-6 3zM8 3v6M2 6l6 3 6-3',
   '#/mapping-profiles': 'M3 3h4v4H3zM9 9h4v4H9zM7 5h4M11 5v4',
   '#/pricing-rules': 'M8 2v12M5 5h4.5a2 2 0 1 1 0 4H6a2 2 0 1 0 0 4h5',
@@ -542,6 +545,9 @@ export default function App() {
                 goToNewRun={() => go('#/new-run')}
               />
             )}
+            {route === '#/expansion' && (
+              <ExpansionCataloguePage goToNewRun={() => go('#/new-run')} />
+            )}
             {route === '#/suppliers' && <SuppliersPage />}
             {route === '#/mapping-profiles' && <MappingProfilesPage />}
             {route === '#/pricing-rules' && <PricingRulesPage />}
@@ -576,3 +582,4 @@ export default function App() {
     </>
   );
 }
+
