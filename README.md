@@ -69,13 +69,16 @@ npm test -- real-file-verification
 
 ## Operations hub revamp
 
-The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, suppliers, mapping profiles, pricing rules, competitor search, source registry, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
+The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, expansion catalogue, suppliers, mapping profiles, pricing rules, competitor search, source registry, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
 
 Key operational capabilities:
 
 - **Product search** (`#/inventory` and the topbar search, shortcut `/`): deterministic,
   exact-first ranked search across supplier codes, ServiceM8 item numbers and descriptions,
   with status filter chips. See `src/core/search.ts`.
+- **Expansion catalogue** (`#/expansion`): retains the supplier's optional Category column and
+  groups valid supplier-only products for future range planning. The page is read-only and does
+  not bypass review: a new ServiceM8 item is emitted only after explicit operator approval.
 - **Supplier profiles** (`#/suppliers`): save, apply, export, import (JSON) and delete mapping
   profiles through the selected platform adapter (IndexedDB for the web demonstration, SQLite for
   the Windows application).

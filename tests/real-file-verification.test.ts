@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { runComparison } from '../src/core/compare';
 import { deriveTaxConvention } from '../src/core/conventions';
 import { extractS8Records, extractSupplierRecords } from '../src/core/records';
+import { buildExpansionCatalogue } from '../src/core/expansion';
 import { approveRows, EMPTY_REVIEW } from '../src/core/review';
 import { buildAllOutputs } from '../src/io/exportWorkbooks';
 import { parseFile } from '../src/io/parse';
@@ -97,6 +98,7 @@ describe.skipIf(!enabled)('verification against real supplier and ServiceM8 expo
       supplierDescription: 'Description',
       supplierBarcode: 'Barcode',
       supplierCost: 'Item Price',
+      supplierCategory: 'Category',
     });
     const s8Mapping = mappingFrom(s8Table.headers, {
       itemNumber: 'Item Number',
@@ -118,6 +120,15 @@ describe.skipIf(!enabled)('verification against real supplier and ServiceM8 expo
       costBasisConfirmed: true,
       newItemConvention: deriveTaxConvention(s8Records),
     });
+
+    // The optional supplier category survives the real-file pipeline and
+    // supplier-only items remain a review-only future catalogue.
+    expect(supplierRecords.some((record) => (record.category ?? '') !== '')).toBe(true);
+    const expansion = buildExpansionCatalogue(comparison.rows);
+    expect(expansion.length).toBeGreaterThan(0);
+    expect(expansion.flatMap((category) => category.items)).toHaveLength(
+      comparison.rows.filter((row) => row.status === 'new-item').length,
+    );
 
     const approvable = comparison.rows.filter(
       (row) => row.status === 'price-changed' || row.status === 'new-item',
@@ -209,3 +220,4 @@ describe.skipIf(!enabled)('verification against real supplier and ServiceM8 expo
     }
   }, 600_000);
 });
+

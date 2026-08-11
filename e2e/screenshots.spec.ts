@@ -255,6 +255,7 @@ test.describe('surface tour, light and dark, 1440px and 390px', () => {
     ['#/new-run', 'new-run'],
     ['#/runs', 'runs'],
     ['#/inventory', 'inventory'],
+    ['#/expansion', 'expansion'],
     ['#/suppliers', 'suppliers'],
     ['#/mapping-profiles', 'mapping-profiles'],
     ['#/pricing-rules', 'pricing-rules'],
@@ -293,3 +294,4 @@ test.describe('surface tour, light and dark, 1440px and 390px', () => {
     }
   }
 });
+

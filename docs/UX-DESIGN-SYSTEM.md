@@ -2,7 +2,7 @@
 
 The application uses a calm internal operations shell with deep navy navigation, warm neutral canvas, steel-blue primary actions, restrained maroon notices and labelled green, amber and red status states. It avoids external fonts, icon services, decorative charts and repetitive helper text.
 
-Primary destinations are hash routes compatible with GitHub Pages: dashboard, new run, runs, inventory, suppliers, mapping profiles, pricing rules, competitors, exceptions, approvals, exports, audit, settings and help.
+Primary destinations are hash routes compatible with GitHub Pages: dashboard, new run, runs, inventory, expansion catalogue, suppliers, mapping profiles, pricing rules, competitors, exceptions, approvals, exports, audit, settings and help.
 
 The run workflow remains inside the New run workspace and no longer replaces global navigation.
 
@@ -30,12 +30,11 @@ Every text and icon colour is measured against WCAG 2.2 AA (4.5:1) in both theme
 The interface is the Stan Wootton Locksmiths operations console, so it carries the SWL identity
 directly.
 
-**Brand mark.** `src/ui/Brand.tsx` draws the SW monogram as geometry, not text. A logo built from
-a `<text>` element would silently substitute a different typeface on any machine without the
-original font — and the desktop Content Security Policy forbids remote fonts entirely — so the
-letterforms are paths and render identically everywhere. `public/brand/swl-mark.svg` is the same
-mark, and the Windows application and installer icons are rendered from it (`src-tauri/icons/`,
-RGBA, 16–512px, with a seven-size `.ico`).
+**Brand mark.** `src/ui/Brand.tsx` renders the exact proprietor-supplied Stan Wootton raster logo
+from the data asset in `src/assets/swlLogo.ts`. Vite bundles it into both browser and desktop builds, so the mark
+has no network or font dependency and remains permitted by the Content Security Policy. The
+Windows application and installer icons remain the reviewed square adaptation in
+`src-tauri/icons/` for legibility at native icon sizes.
 
 **Colour roles.** The brand red `#d81e24` belongs to the mark and to nothing else. It is never an
 interactive colour, so it can never be confused with the destructive red. Interaction uses the

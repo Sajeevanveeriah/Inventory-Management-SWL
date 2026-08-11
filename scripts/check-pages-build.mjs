@@ -81,6 +81,7 @@ const routes = [
   "#/new-run",
   "#/runs",
   "#/inventory",
+  "#/expansion",
   "#/suppliers",
   "#/mapping-profiles",
   "#/pricing-rules",
@@ -102,3 +103,4 @@ for (const route of routes) {
 console.log(
   `Pages build check passed: ${localRefs.length} local assets and ${routes.length} hash routes.`,
 );
+

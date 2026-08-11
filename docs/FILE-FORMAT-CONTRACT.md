@@ -170,6 +170,15 @@ The generated import file is verified against a genuine ServiceM8 export, not as
 A trial import into ServiceM8 remains the right final check before a large run, but the file's
 structure is now proven rather than presumed.
 
+### Supplier category and future expansion
+
+`Category` is an optional supplier mapping. When present, it is retained on comparison records
+and shown in the Inventory Search and Expansion Catalogue. The Expansion Catalogue contains only
+valid supplier-only items and is deliberately read-only. Category membership never creates a
+ServiceM8 row by itself; the existing explicit approval gate remains the only route to the import
+candidate. Saved mapping profiles retain the optional column, so subsequent price-list runs do
+not require it to be mapped again unless the supplier changes its layout.
+
 ### Formula-injection protection, and why the CSV is exempt
 
 Text written to the XLSX **reports** is string-typed, and formula-like values are additionally

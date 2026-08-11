@@ -134,6 +134,8 @@ test('dashboard, catalogue search and approvals with demo data', async ({ page }
   await page.getByRole('button', { name: 'Inventory search' }).click();
   await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
   await expectNoSeriousViolations(page, 'inventory-search');
+  await page.getByRole('button', { name: 'Expansion catalogue' }).click();
+  await expectNoSeriousViolations(page, 'expansion-catalogue');
   await page.getByRole('button', { name: 'Approvals' }).click();
   await expectNoSeriousViolations(page, 'approvals');
   await page.getByRole('button', { name: 'Exceptions' }).click();
@@ -149,3 +151,4 @@ test('dark theme keeps contrast on the review screen', async ({ page }) => {
   await page.getByRole('button', { name: 'Review changes' }).click();
   await expectNoSeriousViolations(page, 'review-dark');
 });
+
