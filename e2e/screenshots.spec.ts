@@ -252,7 +252,9 @@ test.describe("operations shell", () => {
 
     await searchBox.fill("fixture-quota");
     await page.getByRole("button", { name: "Search live prices" }).click();
-    await expect(page.getByText("Provider quota is exhausted")).toBeVisible();
+    await expect(
+      page.getByText("Approved search allowance is exhausted"),
+    ).toBeVisible();
     await shot(page, "35-competitor-search-quota");
 
     await page.getByRole("button", { name: "Source registry" }).click();
