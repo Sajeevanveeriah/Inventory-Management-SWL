@@ -19,9 +19,13 @@ export function createPlatformService(options?: {
   const location = options?.location ?? window.location;
   const staticDemo =
     options?.staticDemo ?? import.meta.env.VITE_STATIC_DEMO === "true";
+  const liveSearchApiOrigin = import.meta.env.VITE_LIVE_SEARCH_API_ORIGIN;
   return detectPlatformKind(location) === "desktop"
     ? createDesktopPlatformService(options?.invoke)
-    : createWebPlatformService(undefined, { sessionOnly: staticDemo });
+    : createWebPlatformService(undefined, {
+        sessionOnly: staticDemo,
+        liveSearchApiOrigin,
+      });
 }
 
 export type * from "./contracts";
