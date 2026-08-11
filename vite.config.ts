@@ -5,15 +5,42 @@ import react from "@vitejs/plugin-react";
  * Content Security Policy for the production build only.
  *
  * Invariant change (authorised by the repository owner, August 2026): the
- * application is no longer no-network. The browser may call ITS OWN ORIGIN
- * ONLY (`connect-src 'self'`), which is the small bundled Node server that
- * performs live competitor searches through a licensed provider and owns
- * persistence. No third-party origin is ever reachable from the page.
+ * application is no longer no-network. Local deployments call their own
+ * origin; GitHub Pages may also call one exact HTTPS live-search API origin.
+ * The provider credential remains in the backend and no retailer origin is
+ * reachable from the page.
  *
  * The policy is not applied in dev because Vite's HMR client requires inline
  * scripts and a WebSocket connection.
  */
-const productionCsp = () =>
+function canonicalLiveSearchApiOrigin(): string | null {
+  const value = process.env.VITE_LIVE_SEARCH_API_ORIGIN;
+  if (!value) {
+    if (process.env.VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN === "true") {
+      throw new Error(
+        "VITE_LIVE_SEARCH_API_ORIGIN is required for this production build.",
+      );
+    }
+    return null;
+  }
+  const parsed = new URL(value);
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.pathname !== "/" ||
+    parsed.search !== "" ||
+    parsed.hash !== "" ||
+    parsed.origin !== value
+  ) {
+    throw new Error(
+      "VITE_LIVE_SEARCH_API_ORIGIN must be a canonical HTTPS origin.",
+    );
+  }
+  return parsed.origin;
+}
+
+const productionCsp = (liveSearchApiOrigin: string | null) =>
   [
     "default-src 'none'",
     "script-src 'self'",
@@ -22,9 +49,9 @@ const productionCsp = () =>
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
-    // Own origin only: the browser demonstration API lives on the same origin.
-    // The desktop bundle receives its single effective policy from Tauri.
-    "connect-src 'self'",
+    // GitHub Pages remains the frontend. Only the exact protected API origin
+    // may be added; the desktop bundle receives its policy from Tauri.
+    `connect-src 'self'${liveSearchApiOrigin ? ` ${liveSearchApiOrigin}` : ""}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -48,7 +75,7 @@ export default defineConfig(({ mode }) => ({
         }
         return html.replace(
           "<!-- %PRODUCTION_CSP% -->",
-          `<meta http-equiv="Content-Security-Policy" content="${productionCsp()}" />`,
+          `<meta http-equiv="Content-Security-Policy" content="${productionCsp(canonicalLiveSearchApiOrigin())}" />`,
         );
       },
     },
