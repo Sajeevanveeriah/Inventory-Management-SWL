@@ -56,6 +56,35 @@ Complete every item before shipping a build of SWL Pricing and Inventory Control
 - [ ] Unrelated-file, traversal, overwrite, undeclared-command, process and origin tests fail safely
 - [ ] Test-only WebDriver dependencies and endpoints are absent from production output
 
+## Mandatory live-provider evidence gates
+
+Synthetic responses prove only deterministic behaviour. Do not describe a release as having
+gathered real competitor results until both of these operator-approved, budgeted smokes pass.
+Never record the SerpAPI key, SWL bearer token or Redis credential in evidence.
+
+- [ ] GitHub Pages is loaded from its real Pages URL and sends search traffic only to the exact
+      configured API-only HTTPS origin
+- [ ] A valid per-user SWL web access token is entered for the current tab and is absent from URL,
+      browser storage, logs, screenshots and exported files
+- [ ] With an explicitly approved reservation for two provider requests, Pages completes one
+      Shopping discovery, the operator selects the exact product, and Immersive Product returns
+      direct merchant-store observations
+- [ ] The configured budget period equals the current `YYYY-MM` in `Australia/Melbourne`; stale and
+      future periods fail before Redis reservation or provider work, and the new-month ceiling has
+      separate operator approval
+- [ ] The sanitised Pages record includes query, selected product title/brand/product ID, retrieval
+      time, application/provider cache indicators, merchant domains and item/shipping/tax/total
+      components; every merchant link is opened and checked against the displayed seller/product
+- [ ] The installed desktop stores and validates the provider credential through Windows Credential
+      Manager, then completes the same two-stage smoke within a separately approved two-request
+      reservation
+- [ ] The sanitised desktop record includes the same provenance and component fields, and confirms
+      there was no localhost listener or dependency on the Vercel API
+- [ ] Mismatched pack, used/refurbished, out-of-stock, financing-only, contradictory price-component
+      or unknown-total offers are visibly excluded and never enter the band
+- [ ] The final hand-off states the exact observed scope and does not claim all competitors,
+      exhaustive coverage, landed cost, verified GST or freshness beyond the provider evidence
+
 ## Installed Windows 10/11 verification
 
 - [ ] Install offline in a clean standard-user profile and launch from the Start Menu
@@ -72,10 +101,12 @@ Complete every item before shipping a build of SWL Pricing and Inventory Control
 - [ ] Keyboard-only pass: complete the demo workflow without a mouse
 - [ ] Zoom to 200%: no clipped controls or unreachable actions
 - [ ] Dark theme spot-check on review + checklist screens
-- [ ] Production preview with browser devtools **Network** tab open through a full workflow:
-      zero external requests (only the local origin)
+- [ ] Production preview with browser devtools **Network** tab open through the offline workflow:
+      zero external requests; run the separately approved desktop live-provider smoke under the
+      scoped SerpAPI egress evidence gate above
 - [ ] Browser console: no business values logged
-- [ ] "Clear session data" and previewed, phrase-confirmed application-data erasure behave as described
+- [ ] "Clear active workflow" leaves operational records, configuration and credentials intact;
+      previewed, phrase-confirmed application-data erasure behaves as described
 - [ ] Close, reopen, force-close and restart Windows; verify exact stored counts and history
 - [ ] Repeat the genuine lower-version upgrade interactively on disposable Windows 10/11 after
       backup; verify no data loss (hosted Server 2025 evidence is necessary but not a substitute)
