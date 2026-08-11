@@ -2,7 +2,11 @@ import type { FileRole } from './table';
 
 /** Conceptual target fields the operator maps source columns onto. */
 export type SupplierFieldKey =
-  'supplierCode' | 'supplierDescription' | 'supplierCost' | 'supplierBarcode';
+  | 'supplierCode'
+  | 'supplierDescription'
+  | 'supplierCost'
+  | 'supplierBarcode'
+  | 'supplierCategory';
 export type S8FieldKey =
   | 'itemNumber'
   | 'itemDescription'
@@ -57,6 +61,14 @@ export const SUPPLIER_FIELDS: FieldDefinition[] = [
     required: false,
     help: 'The supplier’s barcode (EAN/UPC). Carried through to new ServiceM8 items and used for secondary match suggestions. Never used for automatic matching on its own.',
     suggestPatterns: [/\b(barcode|ean|upc|gtin)\b/i],
+  },
+  {
+    key: 'supplierCategory',
+    role: 'supplier',
+    label: 'Category',
+    required: false,
+    help: 'The supplier catalogue category. Retained for expansion planning but never imports a new item without explicit operator approval.',
+    suggestPatterns: [/^category$/i, /\b(product[\s_-]*)?category\b/i],
   },
 ];
 
@@ -138,3 +150,4 @@ export const SERVICEM8_FIELDS: FieldDefinition[] = [
 export function fieldsForRole(role: FileRole): FieldDefinition[] {
   return role === 'supplier' ? SUPPLIER_FIELDS : SERVICEM8_FIELDS;
 }
+
