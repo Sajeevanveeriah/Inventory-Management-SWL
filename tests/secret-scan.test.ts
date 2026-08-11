@@ -59,4 +59,24 @@ describe("secret scanner placeholder handling", () => {
     expect(result.stderr).toContain("matches assigned provider credential");
     expect(result.stderr).not.toContain(syntheticValue);
   });
+
+  it("can exclude the owner-retained private environment file without weakening example-file scanning", () => {
+    const directory = temporaryRepository();
+    const privateValue = "syntheticPrivateToken123456";
+    writeFileSync(join(directory, ".env"), `SERPAPI_KEY=${privateValue}\n`);
+    writeFileSync(
+      join(directory, ".env.example"),
+      "SERPAPI_KEY=replace_with_serpapi_key\n",
+    );
+    execFileSync("git", ["add", ".env", ".env.example"], { cwd: directory });
+
+    const output = execFileSync(
+      process.execPath,
+      [scanner, "--scope=current", "--exclude-private-env"],
+      { cwd: directory, encoding: "utf8" },
+    );
+
+    expect(output).toContain("Secret scan passed for current");
+    expect(output).not.toContain(privateValue);
+  });
 });
