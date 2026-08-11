@@ -33,6 +33,8 @@ export interface SupplierRecord {
   /** Canonical 2-decimal amount, present only when the cost parsed cleanly. */
   cost: string | null;
   barcode: string;
+  /** Supplier catalogue grouping, retained for future range expansion. */
+  category?: string;
   /** True when the supplier declined to publish a price for this item. */
   priceOnApplication: boolean;
   issues: RowIssue[];
@@ -93,6 +95,7 @@ export function extractSupplierRecords(
     const description = cell(row, mapping.supplierDescription).trim();
     const costRaw = cell(row, mapping.supplierCost).trim();
     const barcode = cell(row, mapping.supplierBarcode).trim();
+    const category = cell(row, mapping.supplierCategory).trim();
 
     if (code === '') {
       issues.push({
@@ -145,6 +148,7 @@ export function extractSupplierRecords(
       costRaw,
       cost,
       barcode,
+      category,
       priceOnApplication,
       issues,
     };
@@ -250,3 +254,4 @@ export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8
     };
   });
 }
+
