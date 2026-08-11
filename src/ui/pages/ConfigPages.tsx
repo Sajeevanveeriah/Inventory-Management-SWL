@@ -111,7 +111,7 @@ export function RecoveryPanel({
     setMessage(
       `Restored and verified ${result.value.filename} after creating a pre-restore backup.`,
     );
-    announce("Backup restored and active session data cleared.");
+    announce("Backup restored and active workflow cleared.");
   };
 
   return (
