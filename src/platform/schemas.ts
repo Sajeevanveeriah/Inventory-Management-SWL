@@ -23,6 +23,7 @@ export const SUPPLIER_MAPPING_KEYS = [
   'supplierDescription',
   'supplierCost',
   'supplierBarcode',
+  'supplierCategory',
 ] as const;
 export const SERVICEM8_MAPPING_KEYS = [
   'itemNumber',
@@ -378,3 +379,4 @@ export const BeginExportSchema = z
     conflict: z.literal(false),
   })
   .strict();
+
