@@ -56,14 +56,7 @@ jobs:
           VITE_BASE: /Inventory-Management-SWL/
           # Pages has no Node process; approved demo records are session-only.
           VITE_STATIC_DEMO: "true"
-          # Exact API-only Vercel origin. The frontend remains on GitHub Pages.
-          VITE_LIVE_SEARCH_API_ORIGIN: https://swl-competitor-api-sajeevan-veeriahs-projects.vercel.app
-          # Fail closed instead of publishing a manual-only Pages bundle.
-          VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN: "true"
       - run: npm run check:pages
-        env:
-          VITE_LIVE_SEARCH_API_ORIGIN: https://swl-competitor-api-sajeevan-veeriahs-projects.vercel.app
-          VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN: "true"
       # actions/configure-pages v6.0.0
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
       # actions/upload-pages-artifact v5.0.0
