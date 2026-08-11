@@ -19,31 +19,6 @@ const index = readFileSync(indexPath, "utf8");
 if (!index.includes("Content-Security-Policy")) {
   throw new Error("The Pages index is missing the production CSP.");
 }
-const configuredApiOrigin = process.env.VITE_LIVE_SEARCH_API_ORIGIN ?? "";
-if (
-  process.env.VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN === "true" &&
-  configuredApiOrigin === ""
-) {
-  throw new Error(
-    "VITE_LIVE_SEARCH_API_ORIGIN is required for this Pages build.",
-  );
-}
-if (configuredApiOrigin) {
-  const parsed = new globalThis.URL(configuredApiOrigin);
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.origin !== configuredApiOrigin ||
-    parsed.pathname !== "/" ||
-    parsed.search !== "" ||
-    parsed.hash !== "" ||
-    parsed.username !== "" ||
-    parsed.password !== ""
-  ) {
-    throw new Error(
-      "The configured live-search API origin is not canonical HTTPS.",
-    );
-  }
-}
 const cspContent =
   index.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ??
   "";
@@ -51,9 +26,7 @@ const connectDirective = cspContent
   .split(";")
   .map((directive) => directive.trim())
   .find((directive) => directive.startsWith("connect-src "));
-const expectedConnectDirective = `connect-src 'self'${
-  configuredApiOrigin ? ` ${configuredApiOrigin}` : ""
-}`;
+const expectedConnectDirective = "connect-src 'self'";
 if (connectDirective !== expectedConnectDirective) {
   throw new Error(
     `The Pages CSP connect boundary is invalid: ${connectDirective ?? "missing"}`,
