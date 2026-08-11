@@ -2,7 +2,6 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createFixtureProvider } from "./search/fixtureProvider.mjs";
 import { createSerpApiProvider } from "./search/serpapiProvider.mjs";
 import {
   createPaidCallBudgetFromEnvironment,
@@ -28,7 +27,6 @@ import {
  * Environment:
  *   PORT                 listen port (default 8787)
  *   SWL_DATA_DIR         persistence directory (default server/data)
- *   SWL_SEARCH_PROVIDER  "serpapi" (default) or "fixture" (offline testing)
  *   SERPAPI_KEY          SerpAPI key; never sufficient by itself to authorise a call.
  *   SWL_PAID_CALLS_ENABLED                 exact "true" opt-in; default false
  *   SWL_PROVIDER_COST_CEILING_CENTS        positive integer total process budget
@@ -50,9 +48,19 @@ const argValues = (name) =>
 
 const port = Number(argValue("--port") ?? process.env.PORT ?? 8787);
 const dataDir = process.env.SWL_DATA_DIR ?? join(HERE, "data");
-const useFixture =
-  args.includes("--fixture") || process.env.SWL_SEARCH_PROVIDER === "fixture";
-const provider = useFixture ? createFixtureProvider() : createSerpApiProvider();
+if (
+  args.includes("--fixture") ||
+  process.env.SWL_SEARCH_PROVIDER === "fixture"
+) {
+  throw new Error(
+    "Fixture search is unavailable from the production server entry point.",
+  );
+}
+const testProviderFactory =
+  globalThis.__SWL_TEST_ONLY_SEARCH_PROVIDER_FACTORY__;
+delete globalThis.__SWL_TEST_ONLY_SEARCH_PROVIDER_FACTORY__;
+const fixtureMode = typeof testProviderFactory === "function";
+const provider = fixtureMode ? testProviderFactory() : createSerpApiProvider();
 const paidCallBudget = createPaidCallBudgetFromEnvironment(process.env);
 const searchService = createSearchService({ provider, paidCallBudget });
 const store = createStore(dataDir);
@@ -102,6 +110,7 @@ for (const candidate of argValues("--trusted-origin")) {
   TRUSTED_WEB_ORIGINS.add(parsed.origin);
 }
 const JSON_MUTATION_ROUTES = new Set([
+  "POST /api/competitor-search",
   "POST /api/publish-approved-changes",
   "POST /api/references",
   "PUT /api/sources",
@@ -193,14 +202,14 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       ok: true,
       provider: provider.name,
-      liveSearchConfigured: provider.configured && !useFixture,
-      fixtureMode: useFixture,
-      paidCallsEnabled: !useFixture && paidPolicy.state === "enabled",
+      liveSearchConfigured: provider.configured && !fixtureMode,
+      fixtureMode,
+      paidCallsEnabled: !fixtureMode && paidPolicy.state === "enabled",
       costCeilingAud: centsToAmount(paidPolicy.ceilingCents),
       costCeilingCents: paidPolicy.ceilingCents,
       costPerCallCents: paidPolicy.perCallCents,
       spentCents: paidPolicy.reservedCents,
-      paidPolicyState: useFixture ? "fixture" : paidPolicy.state,
+      paidPolicyState: fixtureMode ? "fixture" : paidPolicy.state,
     });
   }
   if (route === "GET /api/providers") {
@@ -210,8 +219,33 @@ async function handleApi(req, res, url) {
       [provider, ...optionalProviderRegistry()].map(publicProviderStatus),
     );
   }
-  if (route === "GET /api/competitor-search") {
-    const outcome = await searchService.search(url.searchParams.get("q") ?? "");
+  if (route === "POST /api/competitor-search") {
+    const body = await readBody(req);
+    const keys =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? Object.keys(body).sort()
+        : [];
+    const expected =
+      body?.candidateToken === undefined
+        ? ["query"]
+        : ["candidateToken", "query"];
+    if (
+      keys.length !== expected.length ||
+      keys.some((key, index) => key !== expected[index]) ||
+      typeof body.query !== "string" ||
+      body.query !== body.query.trim() ||
+      body.query.length === 0 ||
+      body.query.length > 512 ||
+      (body.candidateToken !== undefined &&
+        (typeof body.candidateToken !== "string" ||
+          body.candidateToken.length === 0 ||
+          body.candidateToken.length > 8192))
+    ) {
+      return sendJson(res, 422, {
+        error: "The search request is outside the supported range.",
+      });
+    }
+    const outcome = await searchService.search(body.query, body.candidateToken);
     return sendJson(res, 200, outcome);
   }
   if (route === "GET /api/items") return sendJson(res, 200, store.listItems());
