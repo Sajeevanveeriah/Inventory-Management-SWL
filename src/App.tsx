@@ -408,11 +408,9 @@ export default function App() {
           <span className="local-badge">
             {platform.kind === "desktop"
               ? "Desktop · native local services"
-              : platform.capabilities.sessionAccessToken
-                ? "GitHub Pages · protected live API"
-                : platform.capabilities.liveSearch
-                  ? "Web demonstration · own-origin API"
-                  : "Static web · session only"}
+              : platform.capabilities.liveSearch
+                ? "Web demonstration · own-origin service"
+                : "Static web · session only"}
           </span>
           <nav aria-label="Primary">
             {NAV_GROUPS.map(([group, routes]) => (
