@@ -73,11 +73,9 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
           Business files are processed locally in memory.{" "}
           {platform.kind === "desktop"
             ? "The Windows application stores authorised operational records in its local database and performs optional search through its native, allowlisted provider integration."
-            : platform.capabilities.sessionAccessToken
-              ? "GitHub Pages keeps authorised operational records in this tab only and uses a separate protected API only for an explicit live search."
-              : platform.capabilities.liveSearch
-                ? "The server-backed web demonstration stores authorised demonstration records through this application's Node service."
-                : "Static Pages has no Node server or provider integration and keeps authorised fictional demonstration records only for this browser session."}{" "}
+            : platform.capabilities.liveSearch
+              ? "The server-backed web demonstration stores authorised demonstration records through this application's Node service."
+              : "Static Pages has no Node server or provider integration and keeps authorised fictional demonstration records only for this browser session."}{" "}
           There is no analytics or telemetry.
         </p>
         <h3>Memory-only business inputs</h3>
@@ -98,11 +96,9 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
           selection, an opaque product token.{" "}
           {platform.kind === "desktop"
             ? "The desktop application sends those search fields through the native Rust service to its exact allowlisted HTTPS provider."
-            : platform.capabilities.sessionAccessToken
-              ? "GitHub Pages sends them only to the exact protected API origin. Its request also carries the revocable SWL access token as transport authentication; that token remains in this tab's memory, while provider and Redis secrets remain server-side."
-              : platform.capabilities.liveSearch
-                ? "The server-backed web demonstration sends those search fields through this application's Node service."
-                : "Static Pages cannot make a provider request; manual evidence remains available."}{" "}
+            : platform.capabilities.liveSearch
+              ? "The server-backed web demonstration sends those search fields through this application's Node service."
+              : "Static Pages cannot make a provider request; manual evidence remains available."}{" "}
           Supplier cost, sell price, private notes, customer data and full
           imported rows are never included.
         </p>
