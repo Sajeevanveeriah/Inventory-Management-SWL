@@ -36,11 +36,16 @@ jobs:
         run: |
           pages_index="$RUNNER_TEMP/pages-public.index"
           GIT_INDEX_FILE="$pages_index" git read-tree HEAD
-          GIT_INDEX_FILE="$pages_index" git rm --cached --quiet --ignore-unmatch .env
-          rm -f -- .env
+          GIT_INDEX_FILE="$pages_index" git rm --cached --quiet --ignore-unmatch \
+            .env .env.local .env.production .env.production.local
+          rm -f -- .env .env.local .env.production .env.production.local
           echo "GIT_INDEX_FILE=$pages_index" >> "$GITHUB_ENV"
           test ! -e .env
-          test "$(GIT_INDEX_FILE="$pages_index" git ls-files -- .env)" = ""
+          test ! -e .env.local
+          test ! -e .env.production
+          test ! -e .env.production.local
+          test "$(GIT_INDEX_FILE="$pages_index" git ls-files -- \
+            .env .env.local .env.production .env.production.local)" = ""
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -51,6 +56,14 @@ jobs:
           VITE_BASE: /Inventory-Management-SWL/
           # Pages has no Node process; approved demo records are session-only.
           VITE_STATIC_DEMO: "true"
+          # Exact API-only Vercel origin. The frontend remains on GitHub Pages.
+          VITE_LIVE_SEARCH_API_ORIGIN: ${{ vars.VITE_LIVE_SEARCH_API_ORIGIN }}
+          # Fail closed instead of publishing a manual-only Pages bundle.
+          VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN: "true"
+      - run: npm run check:pages
+        env:
+          VITE_LIVE_SEARCH_API_ORIGIN: ${{ vars.VITE_LIVE_SEARCH_API_ORIGIN }}
+          VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN: "true"
       # actions/configure-pages v6.0.0
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
       # actions/upload-pages-artifact v5.0.0
