@@ -73,9 +73,11 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
           Business files are processed locally in memory.{" "}
           {platform.kind === "desktop"
             ? "The Windows application stores authorised operational records in its local database and performs optional search through its native, allowlisted provider integration."
-            : platform.capabilities.liveSearch
-              ? "The server-backed web demonstration stores authorised demonstration records through this application's Node service."
-              : "Static Pages has no Node server or provider integration and keeps authorised fictional demonstration records only for this browser session."}{" "}
+            : platform.capabilities.sessionAccessToken
+              ? "GitHub Pages keeps authorised operational records in this tab only and uses a separate protected API only for an explicit live search."
+              : platform.capabilities.liveSearch
+                ? "The server-backed web demonstration stores authorised demonstration records through this application's Node service."
+                : "Static Pages has no Node server or provider integration and keeps authorised fictional demonstration records only for this browser session."}{" "}
           There is no analytics or telemetry.
         </p>
         <h3>Memory-only business inputs</h3>
@@ -92,13 +94,15 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
         </ul>
         <h3>Optional network search</h3>
         <p className="small">
-          Only the product text you type may leave the computer after an
-          explicit search.{" "}
+          An explicit search sends the product query you type and, after exact
+          selection, an opaque product token.{" "}
           {platform.kind === "desktop"
-            ? "The desktop application sends it through the native Rust service to its exact allowlisted HTTPS provider."
-            : platform.capabilities.liveSearch
-              ? "The server-backed web demonstration sends it through this application's Node service."
-              : "Static Pages cannot make a provider request; manual evidence remains available."}{" "}
+            ? "The desktop application sends those search fields through the native Rust service to its exact allowlisted HTTPS provider."
+            : platform.capabilities.sessionAccessToken
+              ? "GitHub Pages sends them only to the exact protected API origin. Its request also carries the revocable SWL access token as transport authentication; that token remains in this tab's memory, while provider and Redis secrets remain server-side."
+              : platform.capabilities.liveSearch
+                ? "The server-backed web demonstration sends those search fields through this application's Node service."
+                : "Static Pages cannot make a provider request; manual evidence remains available."}{" "}
           Supplier cost, sell price, private notes, customer data and full
           imported rows are never included.
         </p>
@@ -120,16 +124,25 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
           </li>
           <li>Settings — markup %, tax-handling selection, theme</li>
         </ul>
+        <p className="small">
+          Clearing the active workflow removes imported files, mappings and
+          review decisions from the current run. It does not erase catalogue,
+          approval/history, competitor references, source state, configuration
+          or provider credentials and access tokens.
+        </p>
         <div className="btn-row" style={{ marginTop: "0.8rem" }}>
           <button
             type="button"
             className="btn"
             onClick={() => {
               dispatch({ type: "clear-session" });
+              actions.announce(
+                "Active workflow cleared. Operational records, configuration and provider credentials or access tokens were not erased.",
+              );
               close();
             }}
           >
-            Clear session data
+            Clear active workflow
           </button>
           <button
             type="button"
