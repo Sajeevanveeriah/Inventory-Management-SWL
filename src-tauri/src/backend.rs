@@ -286,7 +286,7 @@ struct ManualCompetitorEvidence {
 #[serde(untagged)]
 enum CompetitorEvidence {
     Live(Box<LiveCompetitorEvidence>),
-    Manual(ManualCompetitorEvidence),
+    Manual(Box<ManualCompetitorEvidence>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -577,9 +577,8 @@ impl TryFrom<SearchResultWire> for SearchResult {
                 || value.comparison_eligible.is_some()
                 || value.exclusion_reasons.is_some()
             {
-                return Err(
-                    "A live competitor observation used a partial result contract.".to_string(),
-                );
+                return Err("A live competitor observation used a partial result contract."
+                    .to_string());
             }
             return Ok(Self {
                 search_query: value.search_query,
@@ -641,9 +640,11 @@ impl TryFrom<SearchResultWire> for SearchResult {
             total_price_aud: value.total_price_aud,
             comparison_price_cents: value.comparison_price_cents,
             comparison_price_aud: value.comparison_price_aud,
-            price_basis: value.price_basis.ok_or_else(|| {
-                "A live competitor observation omitted its price basis.".to_string()
-            })?,
+            price_basis: value
+                .price_basis
+                .ok_or_else(|| {
+                    "A live competitor observation omitted its price basis.".to_string()
+                })?,
             original_price_text: value.original_price_text.ok_or_else(|| {
                 "A live competitor observation omitted its original price.".to_string()
             })?,
@@ -653,15 +654,17 @@ impl TryFrom<SearchResultWire> for SearchResult {
             currency: value.currency,
             gst_basis: value.gst_basis,
             pack_size: value.pack_size,
-            condition: value.condition.ok_or_else(|| {
-                "A live competitor observation omitted its condition.".to_string()
-            })?,
+            condition: value
+                .condition
+                .ok_or_else(|| "A live competitor observation omitted its condition.".to_string())?,
             availability: value.availability.ok_or_else(|| {
                 "A live competitor observation omitted its availability.".to_string()
             })?,
-            financing: value.financing.ok_or_else(|| {
-                "A live competitor observation omitted financing status.".to_string()
-            })?,
+            financing: value
+                .financing
+                .ok_or_else(|| {
+                    "A live competitor observation omitted financing status.".to_string()
+                })?,
             comparison_eligible: value.comparison_eligible.ok_or_else(|| {
                 "A live competitor observation omitted comparison eligibility.".to_string()
             })?,
@@ -1288,8 +1291,9 @@ fn validate_live_competitor_evidence(evidence: &LiveCompetitorEvidence) -> Resul
         return Err("Competitor currency basis is invalid.".to_string());
     }
     if parse_aud_cents(&evidence.original_price_text) != Some(evidence.item_price_cents)
-        || currency_basis(&evidence.original_price_text)
-            .is_some_and(|basis| basis != evidence.currency_basis.as_str())
+        || currency_basis(&evidence.original_price_text).is_some_and(|basis| {
+            basis != evidence.currency_basis.as_str()
+        })
     {
         return Err("Competitor original price fields do not agree.".to_string());
     }
@@ -1346,7 +1350,9 @@ fn validate_live_competitor_evidence(evidence: &LiveCompetitorEvidence) -> Resul
     {
         return Err("Competitor exclusion is invalid.".to_string());
     }
-    if (evidence.financing && evidence.total_price_cents.is_none() && evidence.comparison_eligible)
+    if (evidence.financing
+        && evidence.total_price_cents.is_none()
+        && evidence.comparison_eligible)
         || (evidence.condition == "used" && evidence.comparison_eligible)
         || (evidence.availability == "out-of-stock" && evidence.comparison_eligible)
     {
@@ -5132,11 +5138,7 @@ fn search_band(results: &[SearchResult]) -> Option<SearchBand> {
 }
 
 fn parse_aud_cents(value: &str) -> Option<i64> {
-    let trimmed = value
-        .trim()
-        .strip_prefix('+')
-        .unwrap_or(value.trim())
-        .trim();
+    let trimmed = value.trim().strip_prefix('+').unwrap_or(value.trim()).trim();
     let uppercase = trimmed.to_ascii_uppercase();
     let numeric = if uppercase.starts_with("AUD") || uppercase.starts_with("AU$") {
         &trimmed[3..]
@@ -5144,7 +5146,11 @@ fn parse_aud_cents(value: &str) -> Option<i64> {
         &trimmed[2..]
     } else if uppercase.starts_with('$') {
         &trimmed[1..]
-    } else if trimmed.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+    } else if trimmed
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_digit)
+    {
         trimmed
     } else {
         return None;
@@ -5274,7 +5280,10 @@ fn normalise_au_location(value: Option<&str>) -> Option<String> {
     if validate_text(value, "Provider location", 256, false).is_err() {
         return None;
     }
-    let parts = value.split(',').map(str::trim).collect::<Vec<_>>();
+    let parts = value
+        .split(',')
+        .map(str::trim)
+        .collect::<Vec<_>>();
     if parts.len() < 3
         || parts.iter().any(|part| part.is_empty())
         || !parts
@@ -5309,7 +5318,12 @@ fn provider_request_parameters(
 ) -> Result<Vec<(String, String)>, String> {
     validate_text(credential, "Provider credential", 1_024, false)?;
     if let Some(token) = candidate_token {
-        validate_text(token, "Candidate token", MAX_CANDIDATE_TOKEN_BYTES, false)?;
+        validate_text(
+            token,
+            "Candidate token",
+            MAX_CANDIDATE_TOKEN_BYTES,
+            false,
+        )?;
         return Ok(vec![
             ("engine".to_string(), "google_immersive_product".to_string()),
             ("page_token".to_string(), token.to_string()),
@@ -5424,9 +5438,14 @@ fn normalised_words(value: &str) -> String {
 fn condition_from_text(value: &str) -> &'static str {
     let words = normalised_words(value);
     let padded = format!(" {words} ");
-    if [" used ", " refurbished ", " pre owned ", " second hand "]
-        .iter()
-        .any(|term| padded.contains(term))
+    if [
+        " used ",
+        " refurbished ",
+        " pre owned ",
+        " second hand ",
+    ]
+    .iter()
+    .any(|term| padded.contains(term))
     {
         "used"
     } else if padded.contains(" new ") {
@@ -5451,13 +5470,21 @@ fn normalise_https_url(value: &str) -> Option<Url> {
 
 fn is_host_or_subdomain(host: &str, parent: &str) -> bool {
     let host = host.trim_end_matches('.');
-    host.eq_ignore_ascii_case(parent) || host.to_ascii_lowercase().ends_with(&format!(".{parent}"))
+    host.eq_ignore_ascii_case(parent)
+        || host
+            .to_ascii_lowercase()
+            .ends_with(&format!(".{parent}"))
 }
 
 fn google_product_url(value: &str) -> Option<String> {
     let mut url = normalise_https_url(value)?;
-    let host = url.host_str()?.trim_end_matches('.').to_ascii_lowercase();
-    if !is_host_or_subdomain(&host, "google.com") && !is_host_or_subdomain(&host, "google.com.au") {
+    let host = url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if !is_host_or_subdomain(&host, "google.com")
+        && !is_host_or_subdomain(&host, "google.com.au")
+    {
         return None;
     }
     url.set_host(Some(&host)).ok()?;
@@ -5466,7 +5493,10 @@ fn google_product_url(value: &str) -> Option<String> {
 
 fn direct_merchant_url(value: &str) -> Option<(String, String)> {
     let mut url = normalise_https_url(value)?;
-    let host = url.host_str()?.trim_end_matches('.').to_ascii_lowercase();
+    let host = url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     if [
         "serpapi.com",
         "google.com",
@@ -5635,7 +5665,8 @@ fn validate_offer_response_parameters(payload: &Value, token: &str) -> Result<()
         .get("search_parameters")
         .and_then(Value::as_object)
         .ok_or_else(|| "The immersive response parameters were invalid.".to_string())?;
-    if parameters.get("engine").and_then(Value::as_str) != Some("google_immersive_product")
+    if parameters.get("engine").and_then(Value::as_str)
+        != Some("google_immersive_product")
         || parameters.get("page_token").and_then(Value::as_str) != Some(token)
     {
         return Err("The immersive response selection was invalid.".to_string());
@@ -5773,10 +5804,17 @@ fn normalise_offer(
         .ok()
         .flatten()?;
     let details = bounded_offer_details(store)?;
-    let shipping_cents = component_to_cents(store, "shipping_extracted", "shipping", true).ok()?;
-    let estimated_tax_cents =
-        component_to_cents(store, "extracted_estimated_tax", "estimated_tax", false).ok()?;
-    let total_price_cents = component_to_cents(store, "extracted_total", "total", false).ok()?;
+    let shipping_cents =
+        component_to_cents(store, "shipping_extracted", "shipping", true).ok()?;
+    let estimated_tax_cents = component_to_cents(
+        store,
+        "extracted_estimated_tax",
+        "estimated_tax",
+        false,
+    )
+    .ok()?;
+    let total_price_cents =
+        component_to_cents(store, "extracted_total", "total", false).ok()?;
     let condition = offer_condition(store, candidate, &details);
     let availability = offer_availability(store, &details);
     let financing = offer_is_financing(store);
@@ -5795,8 +5833,7 @@ fn normalise_offer(
         && shipping_cents.is_some()
         && matches!(estimated_tax_cents, None | Some(0))
     {
-        proposed_comparison = item_price_cents
-            .checked_add(shipping_cents?)
+        proposed_comparison = item_price_cents.checked_add(shipping_cents?)
             .filter(|total| *total <= 1_000_000_000);
         if proposed_comparison.is_some() {
             proposed_basis = "item_plus_shipping";
@@ -5929,8 +5966,8 @@ fn parse_immersive_offers(
     query: &str,
     candidate: Option<&ProductCandidate>,
 ) -> Result<SearchOutcome, String> {
-    let candidate =
-        candidate.ok_or_else(|| "The selected candidate was unavailable.".to_string())?;
+    let candidate = candidate
+        .ok_or_else(|| "The selected candidate was unavailable.".to_string())?;
     validate_offer_response_parameters(payload, &candidate.token)?;
     let product = payload
         .get("product_results")
@@ -6118,7 +6155,8 @@ fn require_remembered_search_candidate(
     query: &str,
     token: &str,
 ) -> Result<ProductCandidate, String> {
-    remembered_search_candidate(state, query, token)?.ok_or_else(|| "selection_expired".to_string())
+    remembered_search_candidate(state, query, token)?
+        .ok_or_else(|| "selection_expired".to_string())
 }
 
 #[tauri::command]
@@ -6146,7 +6184,13 @@ async fn search_competitors(
     }
     let candidate_token = candidate_token.filter(|token| !token.is_empty());
     if candidate_token.as_deref().is_some_and(|token| {
-        validate_text(token, "Candidate token", MAX_CANDIDATE_TOKEN_BYTES, false).is_err()
+        validate_text(
+            token,
+            "Candidate token",
+            MAX_CANDIDATE_TOKEN_BYTES,
+            false,
+        )
+        .is_err()
     }) {
         return Ok(empty_search(
             "invalid_query",
@@ -6209,8 +6253,12 @@ async fn search_competitors(
         }
         Err(error) => return Err(error),
     };
-    let parameters =
-        provider_request_parameters(&query, candidate_token.as_deref(), &credential, &location)?;
+    let parameters = provider_request_parameters(
+        &query,
+        candidate_token.as_deref(),
+        &credential,
+        &location,
+    )?;
     let client = reqwest::Client::builder()
         .redirect(redirect::Policy::none())
         .https_only(true)
@@ -8324,7 +8372,7 @@ mod tests {
     }
 
     fn sample_manual_competitor_evidence() -> CompetitorEvidence {
-        CompetitorEvidence::Manual(ManualCompetitorEvidence {
+        CompetitorEvidence::Manual(Box::new(ManualCompetitorEvidence {
             sku: "000123".to_string(),
             source_name: "Synthetic manual source".to_string(),
             approved_source: true,
@@ -8342,7 +8390,7 @@ mod tests {
             ambiguous_match: Some(false),
             url: Some("https://manual.example.invalid/products/000123".to_string()),
             pack_size: Some("each".to_string()),
-        })
+        }))
     }
 
     fn synthetic_xlsx_with_sheet(sheet_xml: &str) -> Vec<u8> {
@@ -9981,16 +10029,16 @@ mod tests {
             }]
         });
 
-        let outcome =
-            parse_shopping_discovery(&payload, "Lockwood 001", "Geelong, Victoria, Australia")
-                .unwrap();
+        let outcome = parse_shopping_discovery(
+            &payload,
+            "Lockwood 001",
+            "Geelong, Victoria, Australia",
+        )
+        .unwrap();
         assert_eq!(outcome.state, "selection_required");
         assert!(outcome.results.is_empty());
         assert!(outcome.band.is_none());
-        assert_eq!(
-            outcome.retrieved_at.as_deref(),
-            Some("2026-08-10T23:00:02Z")
-        );
+        assert_eq!(outcome.retrieved_at.as_deref(), Some("2026-08-10T23:00:02Z"));
         assert_eq!(outcome.candidates.len(), 2);
         assert_eq!(outcome.candidates[0].token, "token-main");
         assert_eq!(outcome.candidates[0].price_cents, Some(12_900));
@@ -10012,15 +10060,9 @@ mod tests {
         .unwrap()
         .into_iter()
         .collect::<HashMap<_, _>>();
-        assert_eq!(
-            discovery.get("engine").map(String::as_str),
-            Some("google_shopping")
-        );
+        assert_eq!(discovery.get("engine").map(String::as_str), Some("google_shopping"));
         assert_eq!(discovery.get("q").map(String::as_str), Some("\"LW4570\""));
-        assert_eq!(
-            discovery.get("google_domain").map(String::as_str),
-            Some("google.com.au")
-        );
+        assert_eq!(discovery.get("google_domain").map(String::as_str), Some("google.com.au"));
         assert_eq!(discovery.get("gl").map(String::as_str), Some("au"));
         assert_eq!(discovery.get("hl").map(String::as_str), Some("en"));
         assert_eq!(discovery.get("device").map(String::as_str), Some("desktop"));
@@ -10043,14 +10085,8 @@ mod tests {
             immersive.get("engine").map(String::as_str),
             Some("google_immersive_product")
         );
-        assert_eq!(
-            immersive.get("page_token").map(String::as_str),
-            Some("token-main")
-        );
-        assert_eq!(
-            immersive.get("more_stores").map(String::as_str),
-            Some("true")
-        );
+        assert_eq!(immersive.get("page_token").map(String::as_str), Some("token-main"));
+        assert_eq!(immersive.get("more_stores").map(String::as_str), Some("true"));
         assert!(!immersive.contains_key("q"));
         assert!(!immersive.contains_key("num"));
     }
@@ -10172,7 +10208,8 @@ mod tests {
             Some(candidate)
         );
         assert_eq!(
-            require_remembered_search_candidate(&state, "Lockwood 002", "token-main").unwrap_err(),
+            require_remembered_search_candidate(&state, "Lockwood 002", "token-main")
+                .unwrap_err(),
             "selection_expired"
         );
         assert_eq!(
@@ -10182,7 +10219,8 @@ mod tests {
         );
         remember_search_candidates(&state, "Lockwood 001", &[]).unwrap();
         assert_eq!(
-            require_remembered_search_candidate(&state, "Lockwood 001", "token-main").unwrap_err(),
+            require_remembered_search_candidate(&state, "Lockwood 001", "token-main")
+                .unwrap_err(),
             "selection_expired"
         );
     }
@@ -10263,11 +10301,9 @@ mod tests {
             remembered_search_candidate_at(&state, "query-0", "token-000", issued_at).unwrap(),
             None
         );
-        assert!(
-            remembered_search_candidate_at(&state, "query-0", "token-001", issued_at)
-                .unwrap()
-                .is_some()
-        );
+        assert!(remembered_search_candidate_at(&state, "query-0", "token-001", issued_at)
+            .unwrap()
+            .is_some());
     }
 
     #[test]
@@ -10482,19 +10518,13 @@ mod tests {
         assert_eq!(outcome.state, "ok");
         assert!(outcome.candidates.is_empty());
         assert_eq!(outcome.results.len(), 5);
-        assert_eq!(
-            outcome.selected_product.unwrap().product_id.as_deref(),
-            Some("product-main")
-        );
+        assert_eq!(outcome.selected_product.unwrap().product_id.as_deref(), Some("product-main"));
         assert_eq!(outcome.results[0].item_price_cents, 10_000);
         assert_eq!(outcome.results[0].shipping_cents, Some(1_000));
         assert_eq!(outcome.results[0].estimated_tax_cents, Some(1_000));
         assert_eq!(outcome.results[0].total_price_cents, Some(12_000));
         assert_eq!(outcome.results[0].comparison_price_cents, Some(12_000));
-        assert_eq!(
-            outcome.results[0].search_query.as_deref(),
-            Some("Lockwood 001")
-        );
+        assert_eq!(outcome.results[0].search_query.as_deref(), Some("Lockwood 001"));
         assert_eq!(
             outcome.results[0].selected_product_title.as_deref(),
             Some("Lockwood 001 Double Cylinder Deadlatch")
@@ -10762,11 +10792,13 @@ mod tests {
         let enabled =
             set_provider_paid_calls_inner(&state, &connection, true, Some(100), Some(25)).unwrap();
         assert!(enabled.paid_calls_enabled);
-        assert!(
-            remembered_search_candidate(&state, "Synthetic lock", &candidate.token,)
-                .unwrap()
-                .is_none()
-        );
+        assert!(remembered_search_candidate(
+            &state,
+            "Synthetic lock",
+            &candidate.token,
+        )
+        .unwrap()
+        .is_none());
         assert_eq!(enabled.cost_ceiling_cents, 100);
         assert_eq!(enabled.cost_per_call_cents, 25);
         for expected in [25, 50, 75, 100] {
@@ -10798,11 +10830,13 @@ mod tests {
             store.get().unwrap().as_deref(),
             Some("replacement-secret-456")
         );
-        assert!(
-            remembered_search_candidate(&state, "Synthetic lock", &candidate.token,)
-                .unwrap()
-                .is_none()
-        );
+        assert!(remembered_search_candidate(
+            &state,
+            "Synthetic lock",
+            &candidate.token,
+        )
+        .unwrap()
+        .is_none());
         enable_test_provider_budget(&state, &connection);
         remember_search_candidates(&state, "Synthetic lock", std::slice::from_ref(&candidate))
             .unwrap();
@@ -10811,11 +10845,13 @@ mod tests {
         assert!(!removed.credential_configured);
         assert_eq!(removed.cost_ceiling_cents, 0);
         assert_eq!(removed.spent_cents, 0);
-        assert!(
-            remembered_search_candidate(&state, "Synthetic lock", &candidate.token,)
-                .unwrap()
-                .is_none()
-        );
+        assert!(remembered_search_candidate(
+            &state,
+            "Synthetic lock",
+            &candidate.token,
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]

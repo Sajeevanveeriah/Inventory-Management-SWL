@@ -71,6 +71,10 @@ jobs:
         id: cargo_lock
         shell: pwsh
         run: ./scripts/verify-cargo-lock.ps1 -DiagnosticDirectory "$env:RUNNER_TEMP/swl-diagnostics/cargo-lock"
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - name: Run Rust Clippy with warnings denied
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Install locked JavaScript dependencies
         run: |
           npm ci
@@ -147,10 +151,6 @@ jobs:
           } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/Microsoft-Edge-Evidence.json" -Encoding utf8
       - name: Run production Playwright and axe checks
         run: npm run e2e
-      - name: Check Rust formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - name: Run Rust Clippy with warnings denied
-        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Run Rust database, migration, IPC and security tests
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features
       - name: Build exact test-only desktop acceptance helpers
