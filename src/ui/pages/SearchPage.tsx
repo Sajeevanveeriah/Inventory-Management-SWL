@@ -111,6 +111,7 @@ export function SearchPage({
                 <th scope="col">Supplier code</th>
                 <th scope="col">ServiceM8 item</th>
                 <th scope="col">Description</th>
+                <th scope="col">Supplier category</th>
                 <th scope="col">Current cost</th>
                 <th scope="col">Supplier cost</th>
                 <th scope="col">Proposed sell</th>
@@ -126,6 +127,7 @@ export function SearchPage({
                   <td className="mono">{row.supplier?.code ?? '-'}</td>
                   <td className="mono">{row.s8?.itemNumber ?? '-'}</td>
                   <td>{row.supplier?.description || row.s8?.description || '-'}</td>
+                  <td>{row.supplier?.category || '-'}</td>
                   <td className="num">{row.s8?.existingCost ?? '-'}</td>
                   <td className="num">{row.supplier?.cost ?? '-'}</td>
                   <td className="num">{row.proposedSell ?? '-'}</td>
@@ -139,3 +141,4 @@ export function SearchPage({
     </Page>
   );
 }
+
