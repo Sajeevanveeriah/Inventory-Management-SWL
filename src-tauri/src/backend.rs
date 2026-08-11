@@ -33,8 +33,13 @@ const MAX_EXPORT_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_EXPORT_CHUNK_BYTES: usize = 256 * 1024;
 const MAX_BATCH_RECORDS: usize = 50_000;
 const MAX_SEARCH_QUERY_BYTES: usize = 512;
-const MAX_PROVIDER_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+const MAX_PROVIDER_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_PROVIDER_CALLS_PER_MINUTE: u32 = 10;
+const MAX_PROVIDER_ITEMS: usize = 100;
+const MAX_CANDIDATE_TOKEN_BYTES: usize = 8_192;
+const MAX_REMEMBERED_CANDIDATES: usize = 500;
+const SEARCH_CANDIDATE_TTL: Duration = Duration::from_secs(15 * 60);
+const DEFAULT_PROVIDER_LOCATION: &str = "Geelong, Victoria, Australia";
 const MAX_PENDING_OPERATIONS: usize = 32;
 const MAX_INPUT_GRANTS: usize = 8;
 const MAX_OUTPUT_GRANTS: usize = 16;
@@ -253,20 +258,7 @@ struct PublishedChange {
     price_history: PriceHistoryRecord,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LiveCompetitorEvidence {
-    title: String,
-    price_cents: i64,
-    price_aud: String,
-    currency: String,
-    gst_basis: String,
-    pack_size: Option<String>,
-    seller: String,
-    source_domain: String,
-    url: String,
-    retrieved_at: String,
-}
+type LiveCompetitorEvidence = SearchResult;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -483,19 +475,246 @@ struct ProviderStatus {
     last_validated_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(
+    rename_all = "camelCase",
+    deny_unknown_fields,
+    try_from = "SearchResultWire"
+)]
 struct SearchResult {
+    search_query: Option<String>,
+    selected_product_title: Option<String>,
+    selected_product_brand: Option<String>,
+    selected_product_id: Option<String>,
     title: String,
     price_cents: i64,
     price_aud: String,
+    item_price_cents: i64,
+    item_price_aud: String,
+    shipping_cents: Option<i64>,
+    shipping_aud: Option<String>,
+    estimated_tax_cents: Option<i64>,
+    estimated_tax_aud: Option<String>,
+    total_price_cents: Option<i64>,
+    total_price_aud: Option<String>,
+    comparison_price_cents: Option<i64>,
+    comparison_price_aud: Option<String>,
+    price_basis: String,
+    original_price_text: String,
+    currency_basis: String,
     currency: String,
     gst_basis: String,
     pack_size: Option<String>,
+    condition: String,
+    availability: String,
+    financing: bool,
+    comparison_eligible: bool,
+    exclusion_reasons: Vec<String>,
     seller: String,
     source_domain: String,
     url: String,
     retrieved_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SearchResultWire {
+    search_query: Option<String>,
+    selected_product_title: Option<String>,
+    selected_product_brand: Option<String>,
+    selected_product_id: Option<String>,
+    title: String,
+    price_cents: i64,
+    price_aud: String,
+    item_price_cents: Option<i64>,
+    item_price_aud: Option<String>,
+    shipping_cents: Option<i64>,
+    shipping_aud: Option<String>,
+    estimated_tax_cents: Option<i64>,
+    estimated_tax_aud: Option<String>,
+    total_price_cents: Option<i64>,
+    total_price_aud: Option<String>,
+    comparison_price_cents: Option<i64>,
+    comparison_price_aud: Option<String>,
+    price_basis: Option<String>,
+    original_price_text: Option<String>,
+    currency_basis: Option<String>,
+    currency: String,
+    gst_basis: String,
+    pack_size: Option<String>,
+    condition: Option<String>,
+    availability: Option<String>,
+    financing: Option<bool>,
+    comparison_eligible: Option<bool>,
+    exclusion_reasons: Option<Vec<String>>,
+    seller: String,
+    source_domain: String,
+    url: String,
+    retrieved_at: String,
+}
+
+impl TryFrom<SearchResultWire> for SearchResult {
+    type Error = String;
+
+    fn try_from(value: SearchResultWire) -> Result<Self, Self::Error> {
+        let legacy = value.item_price_cents.is_none();
+        if legacy {
+            if value.item_price_aud.is_some()
+                || value.shipping_cents.is_some()
+                || value.shipping_aud.is_some()
+                || value.estimated_tax_cents.is_some()
+                || value.estimated_tax_aud.is_some()
+                || value.total_price_cents.is_some()
+                || value.total_price_aud.is_some()
+                || value.comparison_price_cents.is_some()
+                || value.comparison_price_aud.is_some()
+                || value.price_basis.is_some()
+                || value.original_price_text.is_some()
+                || value.currency_basis.is_some()
+                || value.condition.is_some()
+                || value.availability.is_some()
+                || value.financing.is_some()
+                || value.comparison_eligible.is_some()
+                || value.exclusion_reasons.is_some()
+            {
+                return Err("A live competitor observation used a partial result contract."
+                    .to_string());
+            }
+            return Ok(Self {
+                search_query: value.search_query,
+                selected_product_title: value.selected_product_title,
+                selected_product_brand: value.selected_product_brand,
+                selected_product_id: value.selected_product_id,
+                title: value.title,
+                price_cents: value.price_cents,
+                price_aud: value.price_aud.clone(),
+                item_price_cents: value.price_cents,
+                item_price_aud: value.price_aud.clone(),
+                shipping_cents: None,
+                shipping_aud: None,
+                estimated_tax_cents: None,
+                estimated_tax_aud: None,
+                total_price_cents: None,
+                total_price_aud: None,
+                comparison_price_cents: None,
+                comparison_price_aud: None,
+                price_basis: "not_comparable".to_string(),
+                original_price_text: value.price_aud,
+                currency_basis: "inferred-au-localisation".to_string(),
+                currency: value.currency,
+                gst_basis: value.gst_basis,
+                pack_size: value.pack_size,
+                condition: "unknown".to_string(),
+                availability: "unknown".to_string(),
+                financing: false,
+                comparison_eligible: false,
+                exclusion_reasons: vec![
+                    "unknown_comparison_total".to_string(),
+                    "unverified_product_identity".to_string(),
+                ],
+                seller: value.seller,
+                source_domain: value.source_domain,
+                url: value.url,
+                retrieved_at: value.retrieved_at,
+            });
+        }
+        Ok(Self {
+            search_query: value.search_query,
+            selected_product_title: value.selected_product_title,
+            selected_product_brand: value.selected_product_brand,
+            selected_product_id: value.selected_product_id,
+            title: value.title,
+            price_cents: value.price_cents,
+            price_aud: value.price_aud,
+            item_price_cents: value.item_price_cents.ok_or_else(|| {
+                "A live competitor observation omitted its item price.".to_string()
+            })?,
+            item_price_aud: value.item_price_aud.ok_or_else(|| {
+                "A live competitor observation omitted its item price text.".to_string()
+            })?,
+            shipping_cents: value.shipping_cents,
+            shipping_aud: value.shipping_aud,
+            estimated_tax_cents: value.estimated_tax_cents,
+            estimated_tax_aud: value.estimated_tax_aud,
+            total_price_cents: value.total_price_cents,
+            total_price_aud: value.total_price_aud,
+            comparison_price_cents: value.comparison_price_cents,
+            comparison_price_aud: value.comparison_price_aud,
+            price_basis: value
+                .price_basis
+                .ok_or_else(|| {
+                    "A live competitor observation omitted its price basis.".to_string()
+                })?,
+            original_price_text: value.original_price_text.ok_or_else(|| {
+                "A live competitor observation omitted its original price.".to_string()
+            })?,
+            currency_basis: value.currency_basis.ok_or_else(|| {
+                "A live competitor observation omitted its currency basis.".to_string()
+            })?,
+            currency: value.currency,
+            gst_basis: value.gst_basis,
+            pack_size: value.pack_size,
+            condition: value
+                .condition
+                .ok_or_else(|| "A live competitor observation omitted its condition.".to_string())?,
+            availability: value.availability.ok_or_else(|| {
+                "A live competitor observation omitted its availability.".to_string()
+            })?,
+            financing: value
+                .financing
+                .ok_or_else(|| {
+                    "A live competitor observation omitted financing status.".to_string()
+                })?,
+            comparison_eligible: value.comparison_eligible.ok_or_else(|| {
+                "A live competitor observation omitted comparison eligibility.".to_string()
+            })?,
+            exclusion_reasons: value.exclusion_reasons.ok_or_else(|| {
+                "A live competitor observation omitted exclusion reasons.".to_string()
+            })?,
+            seller: value.seller,
+            source_domain: value.source_domain,
+            url: value.url,
+            retrieved_at: value.retrieved_at,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProductCandidate {
+    token: String,
+    title: String,
+    brand: Option<String>,
+    product_id: Option<String>,
+    product_url: String,
+    displayed_price: Option<String>,
+    price_cents: Option<i64>,
+    multiple_sources: bool,
+    pack_size: Option<String>,
+    condition: String,
+    position: i64,
+}
+
+#[derive(Debug, Clone)]
+struct RememberedCandidate {
+    query: String,
+    candidate: ProductCandidate,
+    issued_at: Instant,
+    sequence: u64,
+}
+
+#[derive(Default)]
+struct RememberedCandidateStore {
+    entries: HashMap<String, RememberedCandidate>,
+    next_sequence: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SelectedProduct {
+    title: String,
+    brand: Option<String>,
+    product_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -517,6 +736,10 @@ struct SearchCoverage {
     sources_with_price: usize,
     source_domains: Vec<String>,
     priced_results: usize,
+    provider_candidates: usize,
+    parsed_offers: usize,
+    comparable_offers: usize,
+    excluded_offers: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -526,6 +749,8 @@ struct SearchOutcome {
     query: String,
     query_kind: String,
     provider: String,
+    candidates: Vec<ProductCandidate>,
+    selected_product: Option<SelectedProduct>,
     results: Vec<SearchResult>,
     band: Option<SearchBand>,
     retrieved_at: Option<String>,
@@ -721,6 +946,7 @@ struct AppState {
     export_sessions: Mutex<HashMap<String, ExportSession>>,
     export_batches: Mutex<HashMap<String, ExportBatch>>,
     search_limiter: Mutex<SearchLimiter>,
+    search_candidates: Mutex<RememberedCandidateStore>,
     credential_store: Arc<dyn CredentialStore>,
 }
 
@@ -740,6 +966,7 @@ impl AppState {
             export_sessions: Mutex::new(HashMap::new()),
             export_batches: Mutex::new(HashMap::new()),
             search_limiter: Mutex::new(SearchLimiter::default()),
+            search_candidates: Mutex::new(RememberedCandidateStore::default()),
             credential_store,
         }
     }
@@ -957,13 +1184,118 @@ fn validate_evidence_money(
     Ok(cents)
 }
 
+fn validate_optional_evidence_money(
+    cents: Option<i64>,
+    amount: Option<&str>,
+    label: &str,
+) -> Result<(), String> {
+    match (cents, amount) {
+        (None, None) => Ok(()),
+        (Some(cents), Some(amount)) => {
+            validate_cents(cents, label)?;
+            if validate_evidence_money(amount, label, true)? != cents {
+                return Err(format!("{label} fields do not agree."));
+            }
+            Ok(())
+        }
+        _ => Err(format!("{label} fields do not agree.")),
+    }
+}
+
 fn validate_live_competitor_evidence(evidence: &LiveCompetitorEvidence) -> Result<(), String> {
+    let has_selection_context = evidence.search_query.is_some()
+        || evidence.selected_product_title.is_some()
+        || evidence.selected_product_brand.is_some()
+        || evidence.selected_product_id.is_some();
+    if has_selection_context {
+        validate_text(
+            evidence
+                .search_query
+                .as_deref()
+                .ok_or_else(|| "Competitor search context is incomplete.".to_string())?,
+            "Competitor search query",
+            512,
+            false,
+        )?;
+        validate_text(
+            evidence
+                .selected_product_title
+                .as_deref()
+                .ok_or_else(|| "Competitor search context is incomplete.".to_string())?,
+            "Competitor selected product title",
+            1_000,
+            false,
+        )?;
+        if let Some(brand) = evidence.selected_product_brand.as_deref() {
+            validate_text(brand, "Competitor selected product brand", 256, false)?;
+        }
+        if let Some(product_id) = evidence.selected_product_id.as_deref() {
+            validate_text(
+                product_id,
+                "Competitor selected product identifier",
+                256,
+                false,
+            )?;
+        }
+    }
     validate_text(&evidence.title, "Competitor title", 1_000, false)?;
     validate_cents(evidence.price_cents, "Competitor price")?;
     if validate_evidence_money(&evidence.price_aud, "Competitor price", true)?
         != evidence.price_cents
     {
         return Err("Competitor price fields do not agree.".to_string());
+    }
+    validate_cents(evidence.item_price_cents, "Competitor item price")?;
+    if evidence.price_cents != evidence.item_price_cents
+        || validate_evidence_money(&evidence.item_price_aud, "Competitor item price", true)?
+            != evidence.item_price_cents
+    {
+        return Err("Competitor item price fields do not agree.".to_string());
+    }
+    validate_optional_evidence_money(
+        evidence.shipping_cents,
+        evidence.shipping_aud.as_deref(),
+        "Competitor shipping",
+    )?;
+    validate_optional_evidence_money(
+        evidence.estimated_tax_cents,
+        evidence.estimated_tax_aud.as_deref(),
+        "Competitor estimated tax",
+    )?;
+    validate_optional_evidence_money(
+        evidence.total_price_cents,
+        evidence.total_price_aud.as_deref(),
+        "Competitor total price",
+    )?;
+    validate_optional_evidence_money(
+        evidence.comparison_price_cents,
+        evidence.comparison_price_aud.as_deref(),
+        "Competitor comparison price",
+    )?;
+    if !matches!(
+        evidence.price_basis.as_str(),
+        "provider_total" | "item_plus_shipping" | "not_comparable"
+    ) {
+        return Err("Competitor price basis is invalid.".to_string());
+    }
+    validate_text(
+        &evidence.original_price_text,
+        "Competitor original price",
+        64,
+        false,
+    )?;
+    if !matches!(
+        evidence.currency_basis.as_str(),
+        "explicit-aud" | "inferred-au-localisation"
+    ) {
+        return Err("Competitor currency basis is invalid.".to_string());
+    }
+    if parse_aud_cents(&evidence.original_price_text) != Some(evidence.item_price_cents)
+        || currency_basis(&evidence.original_price_text).is_some_and(|basis| {
+            basis != evidence.currency_basis.as_str()
+        })
+    {
+        return Err("Competitor original price fields do not agree.".to_string());
     }
     if evidence.currency != "AUD" {
         return Err("Competitor currency is invalid.".to_string());
@@ -976,6 +1308,55 @@ fn validate_live_competitor_evidence(evidence: &LiveCompetitorEvidence) -> Resul
     }
     if let Some(pack_size) = evidence.pack_size.as_deref() {
         validate_text(pack_size, "Competitor pack size", 256, true)?;
+    }
+    if !matches!(evidence.condition.as_str(), "new" | "used" | "unknown") {
+        return Err("Competitor condition is invalid.".to_string());
+    }
+    if !matches!(
+        evidence.availability.as_str(),
+        "in-stock" | "out-of-stock" | "unknown"
+    ) {
+        return Err("Competitor availability is invalid.".to_string());
+    }
+    if evidence.exclusion_reasons.len() > 20 {
+        return Err("Competitor exclusions are invalid.".to_string());
+    }
+    let mut exclusions = HashSet::new();
+    for reason in &evidence.exclusion_reasons {
+        validate_text(reason, "Competitor exclusion", 128, false)?;
+        if !exclusions.insert(reason) {
+            return Err("Competitor exclusions are invalid.".to_string());
+        }
+    }
+    if evidence.comparison_eligible {
+        let comparison = evidence
+            .comparison_price_cents
+            .ok_or_else(|| "Competitor comparison is invalid.".to_string())?;
+        if !evidence.exclusion_reasons.is_empty() || evidence.price_basis == "not_comparable" {
+            return Err("Competitor comparison is invalid.".to_string());
+        }
+        match evidence.price_basis.as_str() {
+            "provider_total" if evidence.total_price_cents == Some(comparison) => {}
+            "item_plus_shipping"
+                if evidence
+                    .shipping_cents
+                    .and_then(|shipping| evidence.item_price_cents.checked_add(shipping))
+                    == Some(comparison) => {}
+            _ => return Err("Competitor comparison is invalid.".to_string()),
+        }
+    } else if evidence.exclusion_reasons.is_empty()
+        || evidence.comparison_price_cents.is_some()
+        || evidence.price_basis != "not_comparable"
+    {
+        return Err("Competitor exclusion is invalid.".to_string());
+    }
+    if (evidence.financing
+        && evidence.total_price_cents.is_none()
+        && evidence.comparison_eligible)
+        || (evidence.condition == "used" && evidence.comparison_eligible)
+        || (evidence.availability == "out-of-stock" && evidence.comparison_eligible)
+    {
+        return Err("Competitor eligibility is invalid.".to_string());
     }
     validate_text(&evidence.seller, "Competitor seller", 512, false)?;
     validate_text(
@@ -990,6 +1371,18 @@ fn validate_live_competitor_evidence(evidence: &LiveCompetitorEvidence) -> Resul
         .is_some_and(|host| host.eq_ignore_ascii_case(&evidence.source_domain))
     {
         return Err("Competitor source domain does not match its URL.".to_string());
+    }
+    let source_host = source_url.host_str().unwrap_or_default();
+    if [
+        "serpapi.com",
+        "google.com",
+        "google.com.au",
+        "googleadservices.com",
+    ]
+    .iter()
+    .any(|parent| is_host_or_subdomain(source_host, parent))
+    {
+        return Err("Competitor URL is not a direct merchant URL.".to_string());
     }
     validate_timestamp(&evidence.retrieved_at)
 }
@@ -3919,6 +4312,7 @@ fn restore_backup_at(state: &AppState, preview_token: String) -> Result<BackupSu
         &pending.backup_id,
         apply_migrations_and_reset_provider_policy,
     )?;
+    clear_search_candidates(state);
     Ok(manifest.summary)
 }
 
@@ -4069,6 +4463,7 @@ fn reset_application_data_inner(
             "Credential removal failed; the database from before reset was recovered.".to_string(),
         );
     }
+    clear_search_candidates(state);
     Ok(pre_reset)
 }
 
@@ -4325,14 +4720,22 @@ fn provider_status_inner(
             },
         )
         .map_err(|_| "Provider state could not be read.".to_string())?;
+    let policy_enabled = paid_calls_enabled && credential_configured;
+    let quota_exhausted = policy_enabled
+        && (cost_ceiling_cents <= 0
+            || cost_per_call_cents <= 0
+            || cost_per_call_cents > cost_ceiling_cents
+            || spent_cents > cost_ceiling_cents - cost_per_call_cents);
     Ok(ProviderStatus {
         provider: PROVIDER_ID.to_string(),
-        state: if credential_configured {
-            "configured".to_string()
-        } else {
+        state: if !credential_configured {
             "not_configured".to_string()
+        } else if quota_exhausted {
+            "quota_exhausted".to_string()
+        } else {
+            "configured".to_string()
         },
-        paid_calls_enabled: paid_calls_enabled && credential_configured,
+        paid_calls_enabled: policy_enabled,
         cost_ceiling_aud: money_string(cost_ceiling_cents),
         cost_ceiling_cents,
         cost_per_call_cents,
@@ -4390,6 +4793,7 @@ fn store_credential(
         }
         return Err("Provider state could not be reset after credential change.".to_string());
     }
+    clear_search_candidates(state);
     provider_status_inner(state, &connection)
 }
 
@@ -4537,6 +4941,7 @@ fn remove_provider_credential_inner(
         }
         return Err("Provider credential removal could not be committed.".to_string());
     }
+    clear_search_candidates(state);
     provider_status_inner(state, connection)
 }
 
@@ -4588,6 +4993,7 @@ fn set_provider_paid_calls_inner(
             )
             .map_err(|_| "Provider call policy could not be saved.".to_string())?;
     }
+    clear_search_candidates(state);
     provider_status_inner(state, connection)
 }
 
@@ -4665,15 +5071,24 @@ fn authorise_provider_search(
 fn query_kind(query: &str) -> String {
     if query.is_empty() {
         "empty".to_string()
-    } else if query.chars().all(|character| character.is_ascii_digit()) {
+    } else if query.chars().all(|character| character.is_ascii_digit())
+        && matches!(query.len(), 8 | 12..=14)
+    {
         "barcode".to_string()
     } else if !query.contains(char::is_whitespace)
         && query.chars().any(|character| character.is_ascii_digit())
+        && query
+            .chars()
+            .any(|character| character.is_ascii_alphanumeric())
     {
         "identifier".to_string()
     } else {
         "free-text".to_string()
     }
+}
+
+fn normalise_search_query(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn empty_search(state: &str, query: &str, provider: &str, detail: &str) -> SearchOutcome {
@@ -4682,6 +5097,8 @@ fn empty_search(state: &str, query: &str, provider: &str, detail: &str) -> Searc
         query: query.to_string(),
         query_kind: query_kind(query),
         provider: provider.to_string(),
+        candidates: Vec::new(),
+        selected_product: None,
         results: Vec::new(),
         band: None,
         retrieved_at: None,
@@ -4694,7 +5111,8 @@ fn empty_search(state: &str, query: &str, provider: &str, detail: &str) -> Searc
 fn search_band(results: &[SearchResult]) -> Option<SearchBand> {
     let mut values = results
         .iter()
-        .map(|result| result.price_cents)
+        .filter(|result| result.comparison_eligible)
+        .filter_map(|result| result.comparison_price_cents)
         .collect::<Vec<_>>();
     if values.is_empty() {
         return None;
@@ -4719,100 +5137,27 @@ fn search_band(results: &[SearchResult]) -> Option<SearchBand> {
     })
 }
 
-fn successful_search(query: &str, provider: &str, mut results: Vec<SearchResult>) -> SearchOutcome {
-    results.retain(|result| validate_cents(result.price_cents, "Provider result price").is_ok());
-    if results.is_empty() {
-        return empty_search(
-            "empty",
-            query,
-            provider,
-            "The provider returned no priced results.",
-        );
-    }
-    let domains = results
-        .iter()
-        .map(|result| result.source_domain.clone())
-        .collect::<HashSet<_>>();
-    let mut source_domains = domains.into_iter().collect::<Vec<_>>();
-    source_domains.sort();
-    SearchOutcome {
-        state: "ok".to_string(),
-        query: query.to_string(),
-        query_kind: query_kind(query),
-        provider: provider.to_string(),
-        band: search_band(&results),
-        retrieved_at: Some(now_text()),
-        cached: Some(false),
-        detail: None,
-        coverage: Some(SearchCoverage {
-            provider_queried: provider.to_string(),
-            sources_with_price: source_domains.len(),
-            source_domains,
-            priced_results: results.len(),
-        }),
-        results,
-    }
-}
-
-fn fixture_search(query: &str) -> SearchOutcome {
-    match query {
-        "fixture:offline" => empty_search("offline", query, "fixture", "Offline fixture state."),
-        "fixture:timeout" => empty_search("timeout", query, "fixture", "Timeout fixture state."),
-        "fixture:quota" => {
-            empty_search("quota_exhausted", query, "fixture", "Quota fixture state.")
-        }
-        "fixture:rate-limit" => empty_search(
-            "rate_limited",
-            query,
-            "fixture",
-            "Rate-limit fixture state.",
-        ),
-        "fixture:error" => empty_search(
-            "provider_error",
-            query,
-            "fixture",
-            "Provider-error fixture state.",
-        ),
-        "fixture:empty" => empty_search("empty", query, "fixture", "Empty fixture state."),
-        _ => successful_search(
-            query,
-            "fixture",
-            vec![
-                SearchResult {
-                    title: format!("Synthetic lock result for {query}"),
-                    price_cents: 12_345,
-                    price_aud: "123.45".to_string(),
-                    currency: "AUD".to_string(),
-                    gst_basis: "unknown".to_string(),
-                    pack_size: None,
-                    seller: "Fictionville Security Supplies".to_string(),
-                    source_domain: "example.invalid".to_string(),
-                    url: "https://example.invalid/synthetic-lock-a".to_string(),
-                    retrieved_at: now_text(),
-                },
-                SearchResult {
-                    title: format!("Synthetic hardware result for {query}"),
-                    price_cents: 15_500,
-                    price_aud: "155.00".to_string(),
-                    currency: "AUD".to_string(),
-                    gst_basis: "unknown".to_string(),
-                    pack_size: None,
-                    seller: "Fictionville Hardware Direct".to_string(),
-                    source_domain: "example.invalid".to_string(),
-                    url: "https://example.invalid/synthetic-lock-b".to_string(),
-                    retrieved_at: now_text(),
-                },
-            ],
-        ),
-    }
-}
-
 fn parse_aud_cents(value: &str) -> Option<i64> {
-    let cleaned = value
-        .replace("AUD", "")
-        .replace(['$', ',', ' '], "")
-        .trim()
-        .to_string();
+    let trimmed = value.trim().strip_prefix('+').unwrap_or(value.trim()).trim();
+    let uppercase = trimmed.to_ascii_uppercase();
+    let numeric = if uppercase.starts_with("AUD") {
+        &trimmed[3..]
+    } else if uppercase.starts_with("AU$") {
+        &trimmed[3..]
+    } else if uppercase.starts_with("A$") {
+        &trimmed[2..]
+    } else if uppercase.starts_with('$') {
+        &trimmed[1..]
+    } else if trimmed
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_digit)
+    {
+        trimmed
+    } else {
+        return None;
+    };
+    let cleaned = numeric.replace(['$', ',', ' '], "").trim().to_string();
     if cleaned.is_empty() || cleaned.starts_with('-') {
         return None;
     }
@@ -4873,12 +5218,959 @@ fn provider_payload_error_state(payload: &Value) -> Option<&'static str> {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ProviderMetadata {
+    observed_at: Option<String>,
+    cache_allowed: bool,
+    stores_may_continue: bool,
+}
+
+fn provider_timestamp(value: &str) -> Option<String> {
+    if value.len() != 23 || !value.is_ascii() || !value.ends_with(" UTC") {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    if bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b' ')
+        || bytes.get(13) != Some(&b':')
+        || bytes.get(16) != Some(&b':')
+        || bytes.get(19) != Some(&b' ')
+    {
+        return None;
+    }
+    let timestamp = format!("{}T{}Z", &value[..10], &value[11..19]);
+    validate_timestamp(&timestamp).ok().map(|_| timestamp)
+}
+
+fn provider_metadata(
+    payload: &Value,
+    stores_may_continue: bool,
+) -> Result<ProviderMetadata, String> {
+    let metadata = payload
+        .get("search_metadata")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The provider metadata was invalid.".to_string())?;
+    if metadata.get("status").and_then(Value::as_str) != Some("Success") {
+        return Err("The provider search did not complete.".to_string());
+    }
+    let observed_at = metadata
+        .get("processed_at")
+        .and_then(Value::as_str)
+        .and_then(provider_timestamp)
+        .or_else(|| {
+            metadata
+                .get("created_at")
+                .and_then(Value::as_str)
+                .and_then(provider_timestamp)
+        });
+    let cache_allowed = payload
+        .get("search_parameters")
+        .and_then(Value::as_object)
+        .and_then(|parameters| parameters.get("no_cache"))
+        .and_then(Value::as_bool)
+        != Some(true);
+    Ok(ProviderMetadata {
+        observed_at,
+        cache_allowed,
+        stores_may_continue,
+    })
+}
+
+fn normalise_au_location(value: Option<&str>) -> Option<String> {
+    let value = value.unwrap_or(DEFAULT_PROVIDER_LOCATION);
+    if validate_text(value, "Provider location", 256, false).is_err() {
+        return None;
+    }
+    let parts = value
+        .split(',')
+        .map(str::trim)
+        .collect::<Vec<_>>();
+    if parts.len() < 3
+        || parts.iter().any(|part| part.is_empty())
+        || !parts
+            .last()
+            .is_some_and(|country| country.eq_ignore_ascii_case("Australia"))
+    {
+        return None;
+    }
+    Some(parts.join(", "))
+}
+
+fn configured_provider_location() -> Result<String, String> {
+    let configured = std::env::var("SERPAPI_LOCATION").ok();
+    normalise_au_location(configured.as_deref()).ok_or_else(|| {
+        "SERPAPI_LOCATION must be a bounded city, state, Australia value.".to_string()
+    })
+}
+
+fn provider_query(query: &str) -> String {
+    if matches!(query_kind(query).as_str(), "identifier" | "barcode") {
+        format!("\"{query}\"")
+    } else {
+        query.to_string()
+    }
+}
+
+fn provider_request_parameters(
+    query: &str,
+    candidate_token: Option<&str>,
+    credential: &str,
+    location: &str,
+) -> Result<Vec<(String, String)>, String> {
+    validate_text(credential, "Provider credential", 1_024, false)?;
+    if let Some(token) = candidate_token {
+        validate_text(
+            token,
+            "Candidate token",
+            MAX_CANDIDATE_TOKEN_BYTES,
+            false,
+        )?;
+        return Ok(vec![
+            ("engine".to_string(), "google_immersive_product".to_string()),
+            ("page_token".to_string(), token.to_string()),
+            ("more_stores".to_string(), "true".to_string()),
+            ("api_key".to_string(), credential.to_string()),
+        ]);
+    }
+    let location = normalise_au_location(Some(location))
+        .ok_or_else(|| "The provider location is invalid.".to_string())?;
+    Ok(vec![
+        ("engine".to_string(), "google_shopping".to_string()),
+        ("q".to_string(), provider_query(query)),
+        ("google_domain".to_string(), "google.com.au".to_string()),
+        ("gl".to_string(), "au".to_string()),
+        ("hl".to_string(), "en".to_string()),
+        ("device".to_string(), "desktop".to_string()),
+        ("location".to_string(), location),
+        ("api_key".to_string(), credential.to_string()),
+    ])
+}
+
+fn numeric_amount_to_cents(value: Option<&Value>) -> Option<i64> {
+    let amount = value?.as_f64()?;
+    if !amount.is_finite() || amount < 0.0 {
+        return None;
+    }
+    parse_aud_cents(&format!("{amount:.2}"))
+}
+
+fn component_to_cents(
+    object: &serde_json::Map<String, Value>,
+    extracted_key: &str,
+    text_key: &str,
+    allow_free: bool,
+) -> Result<Option<i64>, ()> {
+    let extracted_value = object.get(extracted_key).filter(|value| !value.is_null());
+    let text_value = object.get(text_key).filter(|value| !value.is_null());
+    let extracted_cents = numeric_amount_to_cents(extracted_value);
+    let text_cents = text_value.and_then(|value| {
+        let text = value.as_str()?.trim();
+        if allow_free
+            && matches!(
+                text.to_ascii_lowercase().as_str(),
+                "free" | "free delivery" | "free shipping"
+            )
+        {
+            Some(0)
+        } else {
+            parse_aud_cents(text)
+        }
+    });
+    if extracted_value.is_some() && text_value.is_some() {
+        return match (extracted_cents, text_cents) {
+            (Some(extracted), Some(text)) if extracted == text => Ok(Some(extracted)),
+            _ => Err(()),
+        };
+    }
+    Ok(extracted_cents.or(text_cents))
+}
+
+fn bounded_provider_text(value: Option<&Value>, maximum: usize) -> Option<&str> {
+    let text = value?.as_str()?;
+    (validate_text(text, "Provider value", maximum, false).is_ok()).then_some(text)
+}
+
+fn pack_size_from_title(title: &str) -> Option<String> {
+    let words = title
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    for window in words.windows(3) {
+        if matches!(
+            window[0].as_str(),
+            "pack" | "box" | "carton" | "bag" | "set"
+        ) && window[1] == "of"
+            && window[2]
+                .parse::<u16>()
+                .is_ok_and(|count| (1..=9_999).contains(&count))
+        {
+            return Some(format!("pack of {}", window[2]));
+        }
+    }
+    for window in words.windows(2) {
+        if window[0]
+            .parse::<u16>()
+            .is_ok_and(|count| (1..=9_999).contains(&count))
+            && matches!(window[1].as_str(), "pack" | "pk")
+        {
+            return Some(format!("pack of {}", window[0]));
+        }
+    }
+    None
+}
+
+fn normalised_words(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn condition_from_text(value: &str) -> &'static str {
+    let words = normalised_words(value);
+    let padded = format!(" {words} ");
+    if [
+        " used ",
+        " refurbished ",
+        " pre owned ",
+        " second hand ",
+    ]
+    .iter()
+    .any(|term| padded.contains(term))
+    {
+        "used"
+    } else if padded.contains(" new ") {
+        "new"
+    } else {
+        "unknown"
+    }
+}
+
+fn normalise_https_url(value: &str) -> Option<Url> {
+    if validate_text(value, "Provider URL", 2_048, false).is_err() {
+        return None;
+    }
+    let url = Url::parse(value).ok()?;
+    (url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.port_or_known_default() == Some(443)
+        && url.username().is_empty()
+        && url.password().is_none())
+    .then_some(url)
+}
+
+fn is_host_or_subdomain(host: &str, parent: &str) -> bool {
+    let host = host.trim_end_matches('.');
+    host.eq_ignore_ascii_case(parent)
+        || host
+            .to_ascii_lowercase()
+            .ends_with(&format!(".{parent}"))
+}
+
+fn google_product_url(value: &str) -> Option<String> {
+    let mut url = normalise_https_url(value)?;
+    let host = url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if !is_host_or_subdomain(&host, "google.com")
+        && !is_host_or_subdomain(&host, "google.com.au")
+    {
+        return None;
+    }
+    url.set_host(Some(&host)).ok()?;
+    Some(url.to_string())
+}
+
+fn direct_merchant_url(value: &str) -> Option<(String, String)> {
+    let mut url = normalise_https_url(value)?;
+    let host = url
+        .host_str()?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if [
+        "serpapi.com",
+        "google.com",
+        "google.com.au",
+        "googleadservices.com",
+    ]
+    .iter()
+    .any(|parent| is_host_or_subdomain(&host, parent))
+    {
+        return None;
+    }
+    url.set_host(Some(&host)).ok()?;
+    url.set_fragment(None);
+    Some((url.to_string(), host))
+}
+
+fn currency_basis(value: &str) -> Option<&'static str> {
+    let trimmed = value.trim().to_ascii_uppercase();
+    if trimmed.starts_with("AUD") || trimmed.starts_with("AU$") || trimmed.starts_with("A$") {
+        Some("explicit-aud")
+    } else if trimmed.starts_with('$') {
+        Some("inferred-au-localisation")
+    } else {
+        None
+    }
+}
+
+fn checked_provider_array<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<&'a [Value], String> {
+    let Some(value) = object.get(key) else {
+        return Ok(&[]);
+    };
+    let array = value
+        .as_array()
+        .ok_or_else(|| "The provider result collection was invalid.".to_string())?;
+    if array.len() > MAX_PROVIDER_ITEMS {
+        return Err("The provider result count exceeded the safe limit.".to_string());
+    }
+    Ok(array)
+}
+
+fn shopping_rows(payload: &Value) -> Result<Vec<&Value>, String> {
+    let body = payload
+        .as_object()
+        .ok_or_else(|| "The provider response shape was invalid.".to_string())?;
+    let mut rows = Vec::new();
+    rows.extend(checked_provider_array(body, "shopping_results")?);
+    rows.extend(checked_provider_array(body, "inline_shopping_results")?);
+    for category in checked_provider_array(body, "categorized_shopping_results")? {
+        let category = category
+            .as_object()
+            .ok_or_else(|| "The categorised provider results were invalid.".to_string())?;
+        rows.extend(checked_provider_array(category, "shopping_results")?);
+        if rows.len() > MAX_PROVIDER_ITEMS {
+            return Err("The provider result count exceeded the safe limit.".to_string());
+        }
+    }
+    if rows.len() > MAX_PROVIDER_ITEMS {
+        return Err("The provider result count exceeded the safe limit.".to_string());
+    }
+    Ok(rows)
+}
+
+fn normalise_candidate(value: &Value) -> Option<ProductCandidate> {
+    let item = value.as_object()?;
+    let title = bounded_provider_text(item.get("title"), 1_000)?;
+    let token = bounded_provider_text(
+        item.get("immersive_product_page_token"),
+        MAX_CANDIDATE_TOKEN_BYTES,
+    )?;
+    let product_url = google_product_url(bounded_provider_text(item.get("product_link"), 2_048)?)?;
+    let position = item.get("position")?.as_i64()?;
+    if !(0..=10_000).contains(&position) {
+        return None;
+    }
+    let displayed_price = bounded_provider_text(item.get("price"), 64).map(str::to_string);
+    let price_cents = component_to_cents(item, "extracted_price", "price", false)
+        .ok()
+        .flatten();
+    let condition = if bounded_provider_text(item.get("second_hand_condition"), 256).is_some() {
+        "used"
+    } else {
+        condition_from_text(title)
+    };
+    Some(ProductCandidate {
+        token: token.to_string(),
+        title: title.to_string(),
+        brand: bounded_provider_text(item.get("brand"), 256).map(str::to_string),
+        product_id: bounded_provider_text(item.get("product_id"), 256).map(str::to_string),
+        product_url,
+        displayed_price,
+        price_cents,
+        multiple_sources: item.get("multiple_sources").and_then(Value::as_bool) == Some(true),
+        pack_size: pack_size_from_title(title),
+        condition: condition.to_string(),
+        position,
+    })
+}
+
+fn provider_detail(metadata: &ProviderMetadata, prefix: &str) -> String {
+    let mut notes = Vec::new();
+    if !prefix.is_empty() {
+        notes.push(prefix.to_string());
+    }
+    if metadata.stores_may_continue {
+        notes.push(
+            "SerpAPI reports additional store pages beyond this bounded response.".to_string(),
+        );
+    }
+    if metadata.cache_allowed {
+        notes.push(
+            "SerpAPI may serve an identical request from its provider cache for up to one hour."
+                .to_string(),
+        );
+    }
+    notes.join(" ")
+}
+
+fn validate_discovery_response_parameters(
+    payload: &Value,
+    expected_location: &str,
+    expected_query: &str,
+) -> Result<(), String> {
+    let parameters = payload
+        .get("search_parameters")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The shopping response parameters were invalid.".to_string())?;
+    if parameters.get("engine").and_then(Value::as_str) != Some("google_shopping") {
+        return Err("The shopping response engine was invalid.".to_string());
+    }
+    for (key, expected) in [
+        ("google_domain", "google.com.au"),
+        ("gl", "au"),
+        ("hl", "en"),
+        ("device", "desktop"),
+        ("location", expected_location),
+    ] {
+        if parameters.contains_key(key)
+            && parameters.get(key).and_then(Value::as_str) != Some(expected)
+        {
+            return Err("The shopping response localisation was invalid.".to_string());
+        }
+    }
+    if let Some(echoed_query) = parameters.get("q") {
+        let echoed_query = echoed_query
+            .as_str()
+            .ok_or_else(|| "The shopping response query was invalid.".to_string())?;
+        let canonical = |value: &str| {
+            value
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase()
+        };
+        if canonical(echoed_query) != canonical(expected_query) {
+            return Err("The shopping response query was invalid.".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_offer_response_parameters(payload: &Value, token: &str) -> Result<(), String> {
+    let parameters = payload
+        .get("search_parameters")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The immersive response parameters were invalid.".to_string())?;
+    if parameters.get("engine").and_then(Value::as_str)
+        != Some("google_immersive_product")
+        || parameters.get("page_token").and_then(Value::as_str) != Some(token)
+    {
+        return Err("The immersive response selection was invalid.".to_string());
+    }
+    Ok(())
+}
+
+fn parse_shopping_discovery(
+    payload: &Value,
+    query: &str,
+    expected_location: &str,
+) -> Result<SearchOutcome, String> {
+    validate_discovery_response_parameters(payload, expected_location, &provider_query(query))?;
+    let metadata = provider_metadata(payload, false)?;
+    let retrieved_at = metadata.observed_at.clone().unwrap_or_else(now_text);
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+    for row in shopping_rows(payload)? {
+        let Some(candidate) = normalise_candidate(row) else {
+            continue;
+        };
+        if seen.insert(candidate.token.clone()) {
+            candidates.push(candidate);
+        }
+    }
+    let state = if candidates.is_empty() {
+        "empty"
+    } else {
+        "selection_required"
+    };
+    let prefix = if candidates.is_empty() {
+        "No selectable product cluster was returned by this bounded search; this does not establish that the product is unavailable."
+    } else {
+        "Choose the exact product candidate before comparing merchant offers. This candidate list is bounded and is not exhaustive."
+    };
+    Ok(SearchOutcome {
+        state: state.to_string(),
+        query: query.to_string(),
+        query_kind: query_kind(query),
+        provider: PROVIDER_ID.to_string(),
+        coverage: Some(SearchCoverage {
+            provider_queried: PROVIDER_ID.to_string(),
+            sources_with_price: 0,
+            source_domains: Vec::new(),
+            priced_results: 0,
+            provider_candidates: candidates.len(),
+            parsed_offers: 0,
+            comparable_offers: 0,
+            excluded_offers: 0,
+        }),
+        candidates,
+        selected_product: None,
+        results: Vec::new(),
+        band: None,
+        retrieved_at: Some(retrieved_at),
+        cached: Some(false),
+        detail: Some(provider_detail(&metadata, prefix)),
+    })
+}
+
+fn bounded_offer_details(store: &serde_json::Map<String, Value>) -> Option<Vec<String>> {
+    let Some(value) = store.get("details_and_offers") else {
+        return Some(Vec::new());
+    };
+    let details = value.as_array()?;
+    if details.len() > 50 {
+        return None;
+    }
+    details
+        .iter()
+        .map(|detail| bounded_provider_text(Some(detail), 512).map(str::to_string))
+        .collect()
+}
+
+fn offer_condition(
+    store: &serde_json::Map<String, Value>,
+    candidate: Option<&ProductCandidate>,
+    details: &[String],
+) -> String {
+    if candidate.is_some_and(|candidate| candidate.condition == "used") {
+        return "used".to_string();
+    }
+    for key in ["condition", "second_hand_condition"] {
+        if let Some(value) = bounded_provider_text(store.get(key), 256) {
+            let condition = condition_from_text(value);
+            if condition != "unknown" {
+                return condition.to_string();
+            }
+        }
+    }
+    let title = bounded_provider_text(store.get("title"), 1_000).unwrap_or_default();
+    condition_from_text(&format!("{title} {}", details.join(" "))).to_string()
+}
+
+fn offer_availability(store: &serde_json::Map<String, Value>, details: &[String]) -> String {
+    let explicit = bounded_provider_text(store.get("availability"), 256).unwrap_or_default();
+    let combined = normalised_words(&format!("{explicit} {}", details.join(" ")));
+    if ["out of stock", "sold out", "unavailable"]
+        .iter()
+        .any(|term| combined.contains(term))
+    {
+        "out-of-stock".to_string()
+    } else if ["in stock", "available online"]
+        .iter()
+        .any(|term| combined.contains(term))
+    {
+        "in-stock".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn offer_is_financing(store: &serde_json::Map<String, Value>) -> bool {
+    store
+        .get("monthly_payment_duration")
+        .and_then(Value::as_i64)
+        .is_some_and(|months| (1..=1_200).contains(&months))
+        || bounded_provider_text(store.get("installments_description"), 512).is_some()
+        || bounded_provider_text(store.get("down_payment"), 64).is_some()
+}
+
+fn normalise_offer(
+    value: &Value,
+    candidate: Option<&ProductCandidate>,
+    retrieved_at: &str,
+) -> Option<SearchResult> {
+    let store = value.as_object()?;
+    let seller = bounded_provider_text(store.get("name"), 512)?;
+    let title = bounded_provider_text(store.get("title"), 1_000)?;
+    let (url, source_domain) =
+        direct_merchant_url(bounded_provider_text(store.get("link"), 2_048)?)?;
+    let original_price_text = bounded_provider_text(store.get("price"), 64)?;
+    let currency_basis = currency_basis(original_price_text)?;
+    let item_price_cents = component_to_cents(store, "extracted_price", "price", false)
+        .ok()
+        .flatten()?;
+    let details = bounded_offer_details(store)?;
+    let shipping_cents =
+        component_to_cents(store, "shipping_extracted", "shipping", true).ok()?;
+    let estimated_tax_cents = component_to_cents(
+        store,
+        "extracted_estimated_tax",
+        "estimated_tax",
+        false,
+    )
+    .ok()?;
+    let total_price_cents =
+        component_to_cents(store, "extracted_total", "total", false).ok()?;
+    let condition = offer_condition(store, candidate, &details);
+    let availability = offer_availability(store, &details);
+    let financing = offer_is_financing(store);
+    let pack_size = pack_size_from_title(title);
+    let pack_mismatch = candidate.is_some_and(|selected| {
+        (selected.pack_size.is_some() || pack_size.is_some())
+            && selected.pack_size.as_deref() != pack_size.as_deref()
+    });
+    let mut exclusion_reasons = Vec::new();
+    let mut proposed_comparison = None;
+    let mut proposed_basis = "not_comparable";
+    if let Some(total) = total_price_cents {
+        proposed_comparison = Some(total);
+        proposed_basis = "provider_total";
+    } else if !financing
+        && shipping_cents.is_some()
+        && matches!(estimated_tax_cents, None | Some(0))
+    {
+        proposed_comparison = item_price_cents.checked_add(shipping_cents?)
+            .filter(|total| *total <= 1_000_000_000);
+        if proposed_comparison.is_some() {
+            proposed_basis = "item_plus_shipping";
+        }
+    }
+    if financing && total_price_cents.is_none() {
+        exclusion_reasons.push("financing_without_full_total".to_string());
+    }
+    if condition == "used" {
+        exclusion_reasons.push("used_or_second_hand".to_string());
+    }
+    if pack_mismatch {
+        exclusion_reasons.push("pack_mismatch".to_string());
+    }
+    if availability == "out-of-stock" {
+        exclusion_reasons.push("out_of_stock".to_string());
+    }
+    if proposed_comparison.is_none() {
+        exclusion_reasons.push("unknown_comparison_total".to_string());
+    }
+    let comparison_eligible = exclusion_reasons.is_empty();
+    let comparison_price_cents = comparison_eligible.then_some(proposed_comparison).flatten();
+    let price_basis = if comparison_eligible {
+        proposed_basis
+    } else {
+        "not_comparable"
+    };
+    Some(SearchResult {
+        search_query: None,
+        selected_product_title: None,
+        selected_product_brand: None,
+        selected_product_id: None,
+        title: title.to_string(),
+        price_cents: item_price_cents,
+        price_aud: money_string(item_price_cents),
+        item_price_cents,
+        item_price_aud: money_string(item_price_cents),
+        shipping_cents,
+        shipping_aud: shipping_cents.map(money_string),
+        estimated_tax_cents,
+        estimated_tax_aud: estimated_tax_cents.map(money_string),
+        total_price_cents,
+        total_price_aud: total_price_cents.map(money_string),
+        comparison_price_cents,
+        comparison_price_aud: comparison_price_cents.map(money_string),
+        price_basis: price_basis.to_string(),
+        original_price_text: original_price_text.to_string(),
+        currency_basis: currency_basis.to_string(),
+        currency: "AUD".to_string(),
+        gst_basis: "unknown".to_string(),
+        pack_size,
+        condition,
+        availability,
+        financing,
+        comparison_eligible,
+        exclusion_reasons,
+        seller: seller.to_string(),
+        source_domain,
+        url,
+        retrieved_at: retrieved_at.to_string(),
+    })
+}
+
+fn canonical_offer_url(value: &str) -> String {
+    let Ok(mut parsed) = Url::parse(value) else {
+        return value.to_string();
+    };
+    let mut retained = parsed
+        .query_pairs()
+        .filter(|(key, _)| {
+            let lower = key.to_ascii_lowercase();
+            !lower.starts_with("utm_")
+                && !matches!(
+                    lower.as_str(),
+                    "dclid" | "fbclid" | "gclid" | "msclkid" | "_ga"
+                )
+        })
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect::<Vec<_>>();
+    retained.sort();
+    {
+        let mut query = parsed.query_pairs_mut();
+        query.clear();
+        query.extend_pairs(retained.iter().map(|(key, value)| (key, value)));
+    }
+    if retained.is_empty() {
+        parsed.set_query(None);
+    }
+    parsed.set_fragment(None);
+    parsed.to_string()
+}
+
+fn offer_dedupe_key(offer: &SearchResult) -> Result<String, String> {
+    let evidence_price_basis = if offer.total_price_cents.is_some() {
+        "provider_total"
+    } else if !offer.financing
+        && offer.shipping_cents.is_some()
+        && matches!(offer.estimated_tax_cents, None | Some(0))
+        && offer
+            .shipping_cents
+            .and_then(|shipping| offer.item_price_cents.checked_add(shipping))
+            .is_some_and(|total| total <= 1_000_000_000)
+    {
+        "item_plus_shipping"
+    } else {
+        "not_comparable"
+    };
+    serde_json::to_string(&json!([
+        offer.source_domain.as_str(),
+        canonical_offer_url(&offer.url),
+        offer
+            .title
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_ascii_lowercase(),
+        offer.pack_size.as_deref(),
+        offer.condition.as_str(),
+        offer.item_price_cents,
+        offer.shipping_cents,
+        offer.estimated_tax_cents,
+        offer.total_price_cents,
+        evidence_price_basis,
+    ]))
+    .map_err(|_| "The provider offer could not be deduplicated.".to_string())
+}
+
+fn parse_immersive_offers(
+    payload: &Value,
+    query: &str,
+    candidate: Option<&ProductCandidate>,
+) -> Result<SearchOutcome, String> {
+    let candidate = candidate
+        .ok_or_else(|| "The selected candidate was unavailable.".to_string())?;
+    validate_offer_response_parameters(payload, &candidate.token)?;
+    let product = payload
+        .get("product_results")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The immersive product result was invalid.".to_string())?;
+    let stores = checked_provider_array(product, "stores")?;
+    let next_page_token = product.get("stores_next_page_token");
+    if next_page_token.is_some()
+        && bounded_provider_text(next_page_token, MAX_CANDIDATE_TOKEN_BYTES).is_none()
+    {
+        return Err("The stores continuation token was invalid.".to_string());
+    }
+    let metadata = provider_metadata(payload, next_page_token.is_some())?;
+    let retrieved_at = metadata.observed_at.clone().unwrap_or_else(now_text);
+    let title = bounded_provider_text(product.get("title"), 1_000)
+        .map(str::to_string)
+        .or_else(|| Some(candidate.title.clone()))
+        .ok_or_else(|| "The immersive product title was invalid.".to_string())?;
+    let selected_product = SelectedProduct {
+        title,
+        brand: bounded_provider_text(product.get("brand"), 256)
+            .map(str::to_string)
+            .or_else(|| candidate.brand.clone()),
+        product_id: candidate.product_id.clone(),
+    };
+    let mut results = Vec::new();
+    let mut exact_offers = HashMap::new();
+    for store in stores {
+        let Some(mut offer) = normalise_offer(store, Some(candidate), &retrieved_at) else {
+            continue;
+        };
+        offer.search_query = Some(query.to_string());
+        offer.selected_product_title = Some(selected_product.title.clone());
+        offer.selected_product_brand = selected_product.brand.clone();
+        offer.selected_product_id = selected_product.product_id.clone();
+        let key = offer_dedupe_key(&offer)?;
+        if let Some(index) = exact_offers.get(&key).copied() {
+            if results[index].comparison_eligible && !offer.comparison_eligible {
+                results[index] = offer;
+            }
+        } else {
+            exact_offers.insert(key, results.len());
+            results.push(offer);
+        }
+    }
+    let mut seen_domains = HashSet::new();
+    let source_domains = results
+        .iter()
+        .filter_map(|result| {
+            seen_domains
+                .insert(result.source_domain.clone())
+                .then(|| result.source_domain.clone())
+        })
+        .collect::<Vec<_>>();
+    let comparable_offers = results
+        .iter()
+        .filter(|result| result.comparison_eligible)
+        .count();
+    let no_comparable = comparable_offers == 0;
+    let detail = provider_detail(
+        &metadata,
+        if results.is_empty() {
+            "No direct merchant offers matching the supported contract were returned. This does not establish that no merchant offers exist."
+        } else if no_comparable {
+            "Direct merchant offers were found, but none had an eligible comparison total. This bounded result is not exhaustive."
+        } else {
+            "This comparison covers only the returned direct merchant offers. It is not exhaustive."
+        },
+    );
+    Ok(SearchOutcome {
+        state: if no_comparable {
+            "no_comparable_offers"
+        } else {
+            "ok"
+        }
+        .to_string(),
+        query: query.to_string(),
+        query_kind: query_kind(query),
+        provider: PROVIDER_ID.to_string(),
+        candidates: Vec::new(),
+        selected_product: Some(selected_product),
+        band: search_band(&results),
+        retrieved_at: Some(retrieved_at),
+        cached: Some(false),
+        detail: Some(detail),
+        coverage: Some(SearchCoverage {
+            provider_queried: PROVIDER_ID.to_string(),
+            sources_with_price: source_domains.len(),
+            source_domains,
+            priced_results: comparable_offers,
+            provider_candidates: 0,
+            parsed_offers: results.len(),
+            comparable_offers,
+            excluded_offers: results.len().saturating_sub(comparable_offers),
+        }),
+        results,
+    })
+}
+
+fn remember_search_candidates(
+    state: &AppState,
+    query: &str,
+    candidates: &[ProductCandidate],
+) -> Result<(), String> {
+    remember_search_candidates_at(state, query, candidates, Instant::now())
+}
+
+fn remember_search_candidates_at(
+    state: &AppState,
+    query: &str,
+    candidates: &[ProductCandidate],
+    issued_at: Instant,
+) -> Result<(), String> {
+    if candidates.len() > MAX_PROVIDER_ITEMS {
+        return Err("Too many provider candidates were returned.".to_string());
+    }
+    let mut store = safe_lock(&state.search_candidates)?;
+    store.entries.retain(|_, remembered| {
+        issued_at.saturating_duration_since(remembered.issued_at) <= SEARCH_CANDIDATE_TTL
+            && remembered.query != query
+    });
+    for candidate in candidates {
+        store.entries.remove(&candidate.token);
+    }
+    while store.entries.len().saturating_add(candidates.len()) > MAX_REMEMBERED_CANDIDATES {
+        let Some(token) = store
+            .entries
+            .iter()
+            .min_by_key(|(_, remembered)| remembered.sequence)
+            .map(|(token, _)| token.clone())
+        else {
+            break;
+        };
+        store.entries.remove(&token);
+    }
+    for candidate in candidates {
+        let sequence = store.next_sequence;
+        store.next_sequence = store
+            .next_sequence
+            .checked_add(1)
+            .ok_or_else(|| "The candidate sequence was exhausted.".to_string())?;
+        store.entries.insert(
+            candidate.token.clone(),
+            RememberedCandidate {
+                query: query.to_string(),
+                candidate: candidate.clone(),
+                issued_at,
+                sequence,
+            },
+        );
+    }
+    Ok(())
+}
+
+fn remembered_search_candidate(
+    state: &AppState,
+    query: &str,
+    token: &str,
+) -> Result<Option<ProductCandidate>, String> {
+    remembered_search_candidate_at(state, query, token, Instant::now())
+}
+
+fn remembered_search_candidate_at(
+    state: &AppState,
+    query: &str,
+    token: &str,
+    now: Instant,
+) -> Result<Option<ProductCandidate>, String> {
+    let mut store = safe_lock(&state.search_candidates)?;
+    store.entries.retain(|_, remembered| {
+        now.saturating_duration_since(remembered.issued_at) <= SEARCH_CANDIDATE_TTL
+    });
+    Ok(store
+        .entries
+        .get(token)
+        .filter(|remembered| remembered.query == query)
+        .map(|remembered| remembered.candidate.clone()))
+}
+
+fn clear_search_candidates(state: &AppState) {
+    if let Ok(mut store) = state.search_candidates.lock() {
+        store.entries.clear();
+    }
+}
+
+fn require_remembered_search_candidate(
+    state: &AppState,
+    query: &str,
+    token: &str,
+) -> Result<ProductCandidate, String> {
+    remembered_search_candidate(state, query, token)?
+        .ok_or_else(|| "selection_expired".to_string())
+}
+
 #[tauri::command]
 async fn search_competitors(
     state: State<'_, AppState>,
     query: String,
+    candidate_token: Option<String>,
 ) -> Result<SearchOutcome, String> {
-    let query = query.trim().to_string();
+    let query = normalise_search_query(&query);
     if query.is_empty() {
         return Ok(empty_search(
             "invalid_query",
@@ -4895,9 +6187,49 @@ async fn search_competitors(
             "The search query is outside the supported range.",
         ));
     }
-    if query.starts_with("fixture:") {
-        return Ok(fixture_search(&query));
+    let candidate_token = candidate_token.filter(|token| !token.is_empty());
+    if candidate_token.as_deref().is_some_and(|token| {
+        validate_text(
+            token,
+            "Candidate token",
+            MAX_CANDIDATE_TOKEN_BYTES,
+            false,
+        )
+        .is_err()
+    }) {
+        return Ok(empty_search(
+            "invalid_query",
+            &query,
+            PROVIDER_ID,
+            "The candidate token is outside the supported range.",
+        ));
     }
+    let selected_candidate = match candidate_token.as_deref() {
+        Some(token) => match require_remembered_search_candidate(&state, &query, token) {
+            Ok(candidate) => Some(candidate),
+            Err(error) if error == "selection_expired" => {
+                return Ok(empty_search(
+                    "selection_expired",
+                    &query,
+                    PROVIDER_ID,
+                    "The selected product is no longer trusted for this query. Run discovery again and reselect it.",
+                ))
+            }
+            Err(error) => return Err(error),
+        },
+        None => None,
+    };
+    let location = match configured_provider_location() {
+        Ok(location) => location,
+        Err(_) => {
+            return Ok(empty_search(
+                "provider_error",
+                &query,
+                PROVIDER_ID,
+                "The configured provider location is invalid.",
+            ))
+        }
+    };
     let (credential, _search_lease) = match authorise_provider_search(&state) {
         Ok(value) => value,
         Err(error) if error == "not_configured" => {
@@ -4926,6 +6258,12 @@ async fn search_competitors(
         }
         Err(error) => return Err(error),
     };
+    let parameters = provider_request_parameters(
+        &query,
+        candidate_token.as_deref(),
+        &credential,
+        &location,
+    )?;
     let client = reqwest::Client::builder()
         .redirect(redirect::Policy::none())
         .https_only(true)
@@ -4938,14 +6276,8 @@ async fn search_competitors(
     let endpoint = allowlisted_provider_url(PROVIDER_ENDPOINT)?;
     let response = match client
         .get(endpoint)
-        .query(&[
-            ("engine", "google_shopping"),
-            ("google_domain", "google.com.au"),
-            ("gl", "au"),
-            ("hl", "en"),
-            ("q", query.as_str()),
-            ("api_key", credential.as_str()),
-        ])
+        .header(reqwest::header::ACCEPT, "application/json")
+        .query(&parameters)
         .send()
         .await
     {
@@ -5002,24 +6334,62 @@ async fn search_competitors(
             "The provider returned an error.",
         ));
     }
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_PROVIDER_RESPONSE_BYTES as u64)
+    if response.url().scheme() != "https"
+        || response.url().host_str() != Some(PROVIDER_HOST)
+        || response.url().port_or_known_default() != Some(443)
+        || response.url().path() != "/search.json"
     {
         return Ok(empty_search(
             "provider_error",
             &query,
             PROVIDER_ID,
-            "The provider response exceeded the safe size limit.",
+            "The provider response escaped the approved endpoint.",
         ));
+    }
+    let content_type_is_json = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("application/json"));
+    if !content_type_is_json {
+        return Ok(empty_search(
+            "provider_error",
+            &query,
+            PROVIDER_ID,
+            "The provider response was not JSON.",
+        ));
+    }
+    if let Some(declared_length) = response.headers().get(reqwest::header::CONTENT_LENGTH) {
+        let valid_length = declared_length
+            .to_str()
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|length| *length <= MAX_PROVIDER_RESPONSE_BYTES as u64);
+        if valid_length.is_none() {
+            return Ok(empty_search(
+                "provider_error",
+                &query,
+                PROVIDER_ID,
+                "The provider response declared an invalid or excessive size.",
+            ));
+        }
     }
     let mut response = response;
     let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| "The provider response could not be read.".to_string())?
-    {
+    loop {
+        let chunk = match response.chunk().await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(_) => {
+                return Ok(empty_search(
+                    "provider_error",
+                    &query,
+                    PROVIDER_ID,
+                    "The provider response could not be read.",
+                ))
+            }
+        };
         if body.len().saturating_add(chunk.len()) > MAX_PROVIDER_RESPONSE_BYTES {
             return Ok(empty_search(
                 "provider_error",
@@ -5030,8 +6400,17 @@ async fn search_competitors(
         }
         body.extend_from_slice(&chunk);
     }
-    let payload: Value = serde_json::from_slice(&body)
-        .map_err(|_| "The provider response was invalid.".to_string())?;
+    let payload: Value = match serde_json::from_slice(&body) {
+        Ok(payload) => payload,
+        Err(_) => {
+            return Ok(empty_search(
+                "provider_error",
+                &query,
+                PROVIDER_ID,
+                "The provider response was invalid.",
+            ))
+        }
+    };
     if let Some(state) = provider_payload_error_state(&payload) {
         let detail = if state == "quota_exhausted" {
             "The provider quota is unavailable."
@@ -5040,62 +6419,25 @@ async fn search_competitors(
         };
         return Ok(empty_search(state, &query, PROVIDER_ID, detail));
     }
-    let mut results = Vec::new();
-    for item in payload
-        .get("shopping_results")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .take(100)
-    {
-        let Some(title) = item.get("title").and_then(Value::as_str) else {
-            continue;
-        };
-        let Some(price) = item
-            .get("price")
-            .and_then(Value::as_str)
-            .and_then(parse_aud_cents)
-        else {
-            continue;
-        };
-        let Some(link) = item.get("link").and_then(Value::as_str) else {
-            continue;
-        };
-        let Ok(url) = Url::parse(link) else {
-            continue;
-        };
-        if url.scheme() != "https"
-            || url.host_str().is_none()
-            || !url.username().is_empty()
-            || url.password().is_some()
-        {
-            continue;
+    let outcome = match candidate_token.as_deref() {
+        Some(_) => parse_immersive_offers(&payload, &query, selected_candidate.as_ref()),
+        None => parse_shopping_discovery(&payload, &query, &location),
+    };
+    let outcome = match outcome {
+        Ok(outcome) => outcome,
+        Err(_) => {
+            return Ok(empty_search(
+                "provider_error",
+                &query,
+                PROVIDER_ID,
+                "The provider response did not match the supported contract.",
+            ))
         }
-        let source_domain = url.host_str().unwrap_or_default().to_string();
-        let seller = item
-            .get("source")
-            .and_then(Value::as_str)
-            .unwrap_or(&source_domain)
-            .to_string();
-        if validate_text(title, "Provider result title", 1_000, false).is_err()
-            || validate_text(&seller, "Provider result seller", 512, false).is_err()
-        {
-            continue;
-        }
-        results.push(SearchResult {
-            title: title.to_string(),
-            price_cents: price,
-            price_aud: money_string(price),
-            currency: "AUD".to_string(),
-            gst_basis: "unknown".to_string(),
-            pack_size: None,
-            seller,
-            source_domain,
-            url: url.to_string(),
-            retrieved_at: now_text(),
-        });
+    };
+    if candidate_token.is_none() {
+        remember_search_candidates(&state, &query, &outcome.candidates)?;
     }
-    Ok(successful_search(&query, PROVIDER_ID, results))
+    Ok(outcome)
 }
 
 fn sanitise_filename(requested: &str) -> String {
@@ -6999,12 +8341,34 @@ mod tests {
 
     fn sample_live_competitor_evidence() -> CompetitorEvidence {
         CompetitorEvidence::Live(LiveCompetitorEvidence {
+            search_query: None,
+            selected_product_title: None,
+            selected_product_brand: None,
+            selected_product_id: None,
             title: "Synthetic keyed-alike lock".to_string(),
             price_cents: 12_345,
             price_aud: "123.45".to_string(),
+            item_price_cents: 12_345,
+            item_price_aud: "123.45".to_string(),
+            shipping_cents: Some(0),
+            shipping_aud: Some("0.00".to_string()),
+            estimated_tax_cents: None,
+            estimated_tax_aud: None,
+            total_price_cents: Some(12_345),
+            total_price_aud: Some("123.45".to_string()),
+            comparison_price_cents: Some(12_345),
+            comparison_price_aud: Some("123.45".to_string()),
+            price_basis: "provider_total".to_string(),
+            original_price_text: "A$123.45".to_string(),
+            currency_basis: "explicit-aud".to_string(),
             currency: "AUD".to_string(),
             gst_basis: "unknown".to_string(),
             pack_size: Some("each".to_string()),
+            condition: "new".to_string(),
+            availability: "in-stock".to_string(),
+            financing: false,
+            comparison_eligible: true,
+            exclusion_reasons: Vec::new(),
             seller: "Synthetic competitor".to_string(),
             source_domain: "example.invalid".to_string(),
             url: "https://example.invalid/products/synthetic-lock".to_string(),
@@ -8618,16 +9982,683 @@ mod tests {
     }
 
     #[test]
-    fn fixture_search_covers_distinct_provider_states_without_network() {
-        assert_eq!(fixture_search("fixture:offline").state, "offline");
-        assert_eq!(fixture_search("fixture:timeout").state, "timeout");
-        assert_eq!(fixture_search("fixture:quota").state, "quota_exhausted");
-        assert_eq!(fixture_search("fixture:rate-limit").state, "rate_limited");
-        assert_eq!(fixture_search("fixture:error").state, "provider_error");
-        assert_eq!(fixture_search("fixture:empty").state, "empty");
-        let result = fixture_search("001234");
-        assert_eq!(result.state, "ok");
-        assert_eq!(result.results.len(), 2);
+    fn shopping_discovery_returns_only_token_bearing_product_clusters() {
+        let payload = json!({
+            "search_metadata": {
+                "status": "Success",
+                "created_at": "2026-08-10 23:00:00 UTC",
+                "processed_at": "2026-08-10 23:00:02 UTC"
+            },
+            "search_parameters": {
+                "engine": "google_shopping",
+                "location": "Geelong, Victoria, Australia"
+            },
+            "shopping_results": [{
+                "position": 1,
+                "title": "Lockwood 001 Double Cylinder Deadlatch",
+                "product_id": "product-main",
+                "product_link": "https://www.google.com.au/shopping/product/product-main?gl=au",
+                "immersive_product_page_token": "token-main",
+                "multiple_sources": true,
+                "price": "A$129.00",
+                "extracted_price": 129.0
+            }],
+            "inline_shopping_results": [{
+                "position": 2,
+                "block_position": "top",
+                "title": "Inline merchant advertisement",
+                "price": "$135.50",
+                "extracted_price": 135.5,
+                "link": "https://inline-merchant.example.test/products/lock"
+            }],
+            "categorized_shopping_results": [{
+                "title": "Related locks",
+                "shopping_results": [{
+                    "position": 3,
+                    "title": "Used Lockwood 001 Double Cylinder Deadlatch",
+                    "product_id": "product-used",
+                    "product_link": "https://www.google.com.au/shopping/product/product-used?gl=au",
+                    "immersive_product_page_token": "token-used",
+                    "price": "$80.00",
+                    "extracted_price": 80.0,
+                    "second_hand_condition": "Used"
+                }, {
+                    "position": 4,
+                    "title": "Duplicate Lockwood cluster",
+                    "product_id": "product-main",
+                    "product_link": "https://www.google.com.au/shopping/product/product-main?gl=au",
+                    "immersive_product_page_token": "token-main",
+                    "price": "$129.00",
+                    "extracted_price": 129.0
+                }]
+            }]
+        });
+
+        let outcome = parse_shopping_discovery(
+            &payload,
+            "Lockwood 001",
+            "Geelong, Victoria, Australia",
+        )
+        .unwrap();
+        assert_eq!(outcome.state, "selection_required");
+        assert!(outcome.results.is_empty());
+        assert!(outcome.band.is_none());
+        assert_eq!(outcome.retrieved_at.as_deref(), Some("2026-08-10T23:00:02Z"));
+        assert_eq!(outcome.candidates.len(), 2);
+        assert_eq!(outcome.candidates[0].token, "token-main");
+        assert_eq!(outcome.candidates[0].price_cents, Some(12_900));
+        assert_eq!(outcome.candidates[1].condition, "used");
+        let coverage = outcome.coverage.unwrap();
+        assert_eq!(coverage.provider_candidates, 2);
+        assert_eq!(coverage.parsed_offers, 0);
+        assert_eq!(coverage.comparable_offers, 0);
+    }
+
+    #[test]
+    fn provider_parameters_are_localised_and_stage_specific() {
+        let discovery = provider_request_parameters(
+            "LW4570",
+            None,
+            "synthetic-key",
+            "Geelong, Victoria, Australia",
+        )
+        .unwrap()
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        assert_eq!(discovery.get("engine").map(String::as_str), Some("google_shopping"));
+        assert_eq!(discovery.get("q").map(String::as_str), Some("\"LW4570\""));
+        assert_eq!(discovery.get("google_domain").map(String::as_str), Some("google.com.au"));
+        assert_eq!(discovery.get("gl").map(String::as_str), Some("au"));
+        assert_eq!(discovery.get("hl").map(String::as_str), Some("en"));
+        assert_eq!(discovery.get("device").map(String::as_str), Some("desktop"));
+        assert_eq!(
+            discovery.get("location").map(String::as_str),
+            Some("Geelong, Victoria, Australia")
+        );
+        assert!(!discovery.contains_key("num"));
+
+        let immersive = provider_request_parameters(
+            "LW4570",
+            Some("token-main"),
+            "synthetic-key",
+            "Geelong, Victoria, Australia",
+        )
+        .unwrap()
+        .into_iter()
+        .collect::<HashMap<_, _>>();
+        assert_eq!(
+            immersive.get("engine").map(String::as_str),
+            Some("google_immersive_product")
+        );
+        assert_eq!(immersive.get("page_token").map(String::as_str), Some("token-main"));
+        assert_eq!(immersive.get("more_stores").map(String::as_str), Some("true"));
+        assert!(!immersive.contains_key("q"));
+        assert!(!immersive.contains_key("num"));
+    }
+
+    #[test]
+    fn provider_response_parameters_bind_stage_localisation_and_selection() {
+        assert!(validate_discovery_response_parameters(
+            &json!({
+                "search_parameters": {
+                    "engine": "google_shopping",
+                    "google_domain": "google.com.au",
+                    "gl": "au",
+                    "hl": "en",
+                    "device": "desktop",
+                    "location": "Geelong, Victoria, Australia",
+                    "q": "Synthetic lock"
+                }
+            }),
+            "Geelong, Victoria, Australia",
+            "synthetic lock",
+        )
+        .is_ok());
+        assert!(validate_discovery_response_parameters(
+            &json!({
+                "search_parameters": { "engine": "google_shopping", "gl": "us" }
+            }),
+            "Geelong, Victoria, Australia",
+            "synthetic lock",
+        )
+        .is_err());
+        assert!(validate_discovery_response_parameters(
+            &json!({
+                "search_parameters": { "engine": "google_immersive_product" }
+            }),
+            "Geelong, Victoria, Australia",
+            "synthetic lock",
+        )
+        .is_err());
+        assert!(validate_discovery_response_parameters(
+            &json!({
+                "search_parameters": {
+                    "engine": "google_shopping",
+                    "q": "different lock"
+                }
+            }),
+            "Geelong, Victoria, Australia",
+            "synthetic lock",
+        )
+        .is_err());
+        assert!(validate_offer_response_parameters(
+            &json!({
+                "search_parameters": {
+                    "engine": "google_immersive_product",
+                    "page_token": "token-main"
+                }
+            }),
+            "token-main",
+        )
+        .is_ok());
+        assert!(validate_offer_response_parameters(
+            &json!({
+                "search_parameters": {
+                    "engine": "google_immersive_product",
+                    "page_token": "token-other"
+                }
+            }),
+            "token-main",
+        )
+        .is_err());
+        assert!(validate_offer_response_parameters(
+            &json!({
+                "search_parameters": {
+                    "engine": "google_shopping",
+                    "page_token": "token-main"
+                }
+            }),
+            "token-main",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn merchant_offer_links_reject_provider_intermediaries_and_strip_fragments() {
+        assert!(direct_merchant_url("https://www.google.com./shopping/product/1").is_none());
+        assert!(direct_merchant_url("https://serpapi.com/search.json").is_none());
+        assert!(direct_merchant_url("https://click.googleadservices.com/pagead/aclk").is_none());
+        let (url, domain) =
+            direct_merchant_url("https://Merchant.Example.Test/product?id=1#tracking").unwrap();
+        assert_eq!(domain, "merchant.example.test");
+        assert_eq!(url, "https://merchant.example.test/product?id=1");
+    }
+
+    #[test]
+    fn candidate_tokens_are_bound_to_the_normalised_discovery_query() {
+        let directory = TestDirectory::new();
+        let state = AppState::new(
+            directory.0.clone(),
+            Arc::new(MemoryCredentialStore::default()),
+        );
+        let candidate = ProductCandidate {
+            token: "token-main".to_string(),
+            title: "Lockwood 001 Double Cylinder Deadlatch".to_string(),
+            brand: Some("Lockwood".to_string()),
+            product_id: Some("product-main".to_string()),
+            product_url: "https://www.google.com.au/shopping/product/product-main?gl=au"
+                .to_string(),
+            displayed_price: Some("A$129.00".to_string()),
+            price_cents: Some(12_900),
+            multiple_sources: true,
+            pack_size: Some("pack of 2".to_string()),
+            condition: "new".to_string(),
+            position: 1,
+        };
+        let query = normalise_search_query("  Lockwood   001  ");
+        remember_search_candidates(&state, &query, std::slice::from_ref(&candidate)).unwrap();
+        assert_eq!(query, "Lockwood 001");
+        assert_eq!(
+            remembered_search_candidate(&state, "Lockwood 001", "token-main").unwrap(),
+            Some(candidate)
+        );
+        assert_eq!(
+            require_remembered_search_candidate(&state, "Lockwood 002", "token-main")
+                .unwrap_err(),
+            "selection_expired"
+        );
+        assert_eq!(
+            require_remembered_search_candidate(&state, "Lockwood 001", "untrusted-token")
+                .unwrap_err(),
+            "selection_expired"
+        );
+        remember_search_candidates(&state, "Lockwood 001", &[]).unwrap();
+        assert_eq!(
+            require_remembered_search_candidate(&state, "Lockwood 001", "token-main")
+                .unwrap_err(),
+            "selection_expired"
+        );
+    }
+
+    #[test]
+    fn remembered_candidates_expire_and_fifo_eviction_is_deterministic() {
+        let directory = TestDirectory::new();
+        let state = AppState::new(
+            directory.0.clone(),
+            Arc::new(MemoryCredentialStore::default()),
+        );
+        let candidate = |token: String, position: i64| ProductCandidate {
+            token,
+            title: "Synthetic lock".to_string(),
+            brand: None,
+            product_id: None,
+            product_url: "https://www.google.com.au/shopping/product/synthetic".to_string(),
+            displayed_price: None,
+            price_cents: None,
+            multiple_sources: false,
+            pack_size: None,
+            condition: "unknown".to_string(),
+            position,
+        };
+        let issued_at = Instant::now();
+        let expiring = candidate("expiring-token".to_string(), 1);
+        remember_search_candidates_at(
+            &state,
+            "expiring query",
+            std::slice::from_ref(&expiring),
+            issued_at,
+        )
+        .unwrap();
+        assert_eq!(
+            remembered_search_candidate_at(
+                &state,
+                "expiring query",
+                "expiring-token",
+                issued_at + SEARCH_CANDIDATE_TTL,
+            )
+            .unwrap(),
+            Some(expiring)
+        );
+        assert_eq!(
+            remembered_search_candidate_at(
+                &state,
+                "expiring query",
+                "expiring-token",
+                issued_at + SEARCH_CANDIDATE_TTL + Duration::from_secs(1),
+            )
+            .unwrap(),
+            None
+        );
+
+        for batch in 0..5 {
+            let candidates = (0..100)
+                .map(|index| {
+                    let number = batch * 100 + index;
+                    candidate(format!("token-{number:03}"), index)
+                })
+                .collect::<Vec<_>>();
+            remember_search_candidates_at(
+                &state,
+                &format!("query-{batch}"),
+                &candidates,
+                issued_at,
+            )
+            .unwrap();
+        }
+        remember_search_candidates_at(
+            &state,
+            "query-new",
+            &[candidate("token-new".to_string(), 1)],
+            issued_at,
+        )
+        .unwrap();
+        assert_eq!(
+            remembered_search_candidate_at(&state, "query-0", "token-000", issued_at).unwrap(),
+            None
+        );
+        assert!(remembered_search_candidate_at(&state, "query-0", "token-001", issued_at)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn trusted_candidate_pack_and_condition_exclude_incompatible_offers() {
+        let selected = ProductCandidate {
+            token: "token-pack".to_string(),
+            title: "Synthetic lock pack of 2".to_string(),
+            brand: None,
+            product_id: Some("product-pack".to_string()),
+            product_url: "https://www.google.com.au/shopping/product/product-pack".to_string(),
+            displayed_price: Some("A$80.00".to_string()),
+            price_cents: Some(8_000),
+            multiple_sources: true,
+            pack_size: Some("pack of 2".to_string()),
+            condition: "used".to_string(),
+            position: 1,
+        };
+        let offer = json!({
+            "name": "Merchant",
+            "link": "https://merchant.example.test/product",
+            "title": "Synthetic lock pack of 3",
+            "details_and_offers": ["In stock", "Free delivery"],
+            "price": "A$75.00",
+            "extracted_price": 75.0,
+            "shipping": "Free",
+            "shipping_extracted": 0.0,
+            "total": "A$75.00",
+            "extracted_total": 75.0
+        });
+        let result = normalise_offer(&offer, Some(&selected), "2026-08-10T23:00:00Z").unwrap();
+        assert!(!result.comparison_eligible);
+        assert_eq!(result.comparison_price_cents, None);
+        assert_eq!(result.price_basis, "not_comparable");
+        assert_eq!(
+            result.exclusion_reasons,
+            vec![
+                "used_or_second_hand".to_string(),
+                "pack_mismatch".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn explicit_offer_pack_is_excluded_when_selected_pack_is_unstated() {
+        let selected = ProductCandidate {
+            token: "token-unit".to_string(),
+            title: "Synthetic lock".to_string(),
+            brand: None,
+            product_id: None,
+            product_url: "https://www.google.com.au/shopping/product/synthetic".to_string(),
+            displayed_price: Some("A$75.00".to_string()),
+            price_cents: Some(7_500),
+            multiple_sources: false,
+            pack_size: None,
+            condition: "new".to_string(),
+            position: 1,
+        };
+        let offer = json!({
+            "name": "Merchant",
+            "link": "https://merchant.example.test/product",
+            "title": "Synthetic lock 2 Pack",
+            "details_and_offers": ["In stock", "Free delivery"],
+            "price": "A$75.00",
+            "extracted_price": 75.0,
+            "shipping": "Free",
+            "shipping_extracted": 0.0,
+            "total": "A$75.00",
+            "extracted_total": 75.0
+        });
+        let result = normalise_offer(&offer, Some(&selected), "2026-08-10T23:00:00Z").unwrap();
+        assert!(!result.comparison_eligible);
+        assert_eq!(result.comparison_price_cents, None);
+        assert_eq!(result.exclusion_reasons, vec!["pack_mismatch".to_string()]);
+    }
+
+    #[test]
+    fn conflicting_numeric_and_displayed_components_drop_the_offer() {
+        let base = json!({
+            "name": "Merchant",
+            "link": "https://merchant.example.test/product",
+            "title": "Synthetic lock",
+            "details_and_offers": ["In stock"],
+            "price": "A$100.00",
+            "extracted_price": 100.0,
+            "shipping": "+ A$10.00",
+            "shipping_extracted": 10.0,
+            "estimated_tax": "+ A$10.00",
+            "extracted_estimated_tax": 10.0,
+            "total": "A$120.00",
+            "extracted_total": 120.0
+        });
+        for key in [
+            "extracted_price",
+            "shipping_extracted",
+            "extracted_estimated_tax",
+            "extracted_total",
+        ] {
+            let mut conflicting = base.clone();
+            conflicting[key] = json!(1.0);
+            assert!(normalise_offer(&conflicting, None, "2026-08-10T23:00:00Z").is_none());
+        }
+    }
+
+    #[test]
+    fn immersive_stores_preserve_components_and_band_only_comparable_totals() {
+        let selected = ProductCandidate {
+            token: "token-main".to_string(),
+            title: "Lockwood 001 Double Cylinder Deadlatch".to_string(),
+            brand: None,
+            product_id: Some("product-main".to_string()),
+            product_url: "https://www.google.com.au/shopping/product/product-main?gl=au"
+                .to_string(),
+            displayed_price: Some("A$129.00".to_string()),
+            price_cents: Some(12_900),
+            multiple_sources: true,
+            pack_size: None,
+            condition: "unknown".to_string(),
+            position: 1,
+        };
+        let payload = json!({
+            "search_metadata": {
+                "status": "Success",
+                "created_at": "2026-08-10 23:05:00 UTC",
+                "processed_at": "2026-08-10 23:05:03 UTC"
+            },
+            "search_parameters": {
+                "engine": "google_immersive_product",
+                "page_token": "token-main"
+            },
+            "product_results": {
+                "title": "Lockwood 001 Double Cylinder Deadlatch",
+                "brand": "Lockwood",
+                "stores": [{
+                    "name": "Merchant One",
+                    "link": "https://merchant-one.example.test/products/lockwood-001",
+                    "title": "Lockwood 001 Double Cylinder Deadlatch",
+                    "details_and_offers": ["In stock online"],
+                    "price": "A$100.00",
+                    "extracted_price": 100.0,
+                    "estimated_tax": "+ A$10.00",
+                    "extracted_estimated_tax": 10.0,
+                    "shipping": "+ A$10.00",
+                    "shipping_extracted": 10.0,
+                    "total": "A$120.00",
+                    "extracted_total": 120.0
+                }, {
+                    "name": "Merchant One",
+                    "link": "https://merchant-one.example.test/products/lockwood-001?utm_source=shopping&gclid=synthetic",
+                    "title": "Lockwood 001 Double Cylinder Deadlatch",
+                    "details_and_offers": ["In stock online"],
+                    "price": "A$100.00",
+                    "extracted_price": 100.0,
+                    "estimated_tax": "+ A$10.00",
+                    "extracted_estimated_tax": 10.0,
+                    "shipping": "+ A$10.00",
+                    "shipping_extracted": 10.0,
+                    "total": "A$120.00",
+                    "extracted_total": 120.0
+                }, {
+                    "name": "Merchant Two",
+                    "link": "https://merchant-two.example.test/products/lockwood-001",
+                    "title": "Lockwood 001 Double Cylinder Deadlatch",
+                    "details_and_offers": ["In stock", "Free delivery"],
+                    "price": "$105.00",
+                    "extracted_price": 105.0,
+                    "shipping": "Free",
+                    "shipping_extracted": 0.0
+                }, {
+                    "name": "Finance Merchant",
+                    "link": "https://finance.example.test/products/lockwood-001",
+                    "title": "Lockwood 001 Double Cylinder Deadlatch, 12 monthly payments",
+                    "details_and_offers": ["In stock", "Free delivery"],
+                    "price": "$10.00",
+                    "extracted_price": 10.0,
+                    "monthly_payment_duration": 12,
+                    "installments_description": "12 monthly payments",
+                    "shipping": "Free",
+                    "shipping_extracted": 0.0
+                }, {
+                    "name": "Used Merchant",
+                    "link": "https://used.example.test/products/lockwood-001",
+                    "title": "Used Lockwood 001 Double Cylinder Deadlatch",
+                    "details_and_offers": ["In stock", "Free delivery"],
+                    "price": "$70.00",
+                    "extracted_price": 70.0,
+                    "shipping": "Free",
+                    "shipping_extracted": 0.0,
+                    "total": "$70.00",
+                    "extracted_total": 70.0
+                }, {
+                    "name": "Unknown Delivery Merchant",
+                    "link": "https://unknown.example.test/products/lockwood-001",
+                    "title": "Lockwood 001 Double Cylinder Deadlatch",
+                    "price": "$99.00",
+                    "extracted_price": 99.0
+                }, {
+                    "name": "Google cluster",
+                    "link": "https://www.google.com/shopping/product/product-main",
+                    "title": "Lockwood 001 Double Cylinder Deadlatch",
+                    "price": "$90.00",
+                    "extracted_price": 90.0,
+                    "shipping": "Free",
+                    "shipping_extracted": 0.0,
+                    "total": "$90.00",
+                    "extracted_total": 90.0
+                }],
+                "stores_next_page_token": "synthetic-next-page"
+            }
+        });
+
+        let outcome = parse_immersive_offers(&payload, "Lockwood 001", Some(&selected)).unwrap();
+        assert_eq!(outcome.state, "ok");
+        assert!(outcome.candidates.is_empty());
+        assert_eq!(outcome.results.len(), 5);
+        assert_eq!(outcome.selected_product.unwrap().product_id.as_deref(), Some("product-main"));
+        assert_eq!(outcome.results[0].item_price_cents, 10_000);
+        assert_eq!(outcome.results[0].shipping_cents, Some(1_000));
+        assert_eq!(outcome.results[0].estimated_tax_cents, Some(1_000));
+        assert_eq!(outcome.results[0].total_price_cents, Some(12_000));
+        assert_eq!(outcome.results[0].comparison_price_cents, Some(12_000));
+        assert_eq!(outcome.results[0].search_query.as_deref(), Some("Lockwood 001"));
+        assert_eq!(
+            outcome.results[0].selected_product_title.as_deref(),
+            Some("Lockwood 001 Double Cylinder Deadlatch")
+        );
+        assert_eq!(
+            outcome.results[0].selected_product_brand.as_deref(),
+            Some("Lockwood")
+        );
+        assert_eq!(
+            outcome.results[0].selected_product_id.as_deref(),
+            Some("product-main")
+        );
+        assert_eq!(outcome.results[1].price_basis, "item_plus_shipping");
+        assert_eq!(outcome.results[1].comparison_price_cents, Some(10_500));
+        assert_eq!(
+            outcome.results[2].exclusion_reasons,
+            vec![
+                "financing_without_full_total".to_string(),
+                "unknown_comparison_total".to_string()
+            ]
+        );
+        assert_eq!(
+            outcome.results[3].exclusion_reasons,
+            vec!["used_or_second_hand".to_string()]
+        );
+        assert_eq!(
+            outcome.results[4].exclusion_reasons,
+            vec!["unknown_comparison_total".to_string()]
+        );
+        let band = outcome.band.unwrap();
+        assert_eq!(band.lowest_cents, 10_500);
+        assert_eq!(band.median_cents, 11_250);
+        assert_eq!(band.highest_cents, 12_000);
+        assert_eq!(band.priced_results, 2);
+        let coverage = outcome.coverage.unwrap();
+        assert_eq!(coverage.parsed_offers, 5);
+        assert_eq!(coverage.comparable_offers, 2);
+        assert_eq!(coverage.excluded_offers, 3);
+        assert!(outcome.detail.unwrap().contains("not exhaustive"));
+    }
+
+    #[test]
+    fn immersive_stage_reports_no_comparable_offers_without_a_band() {
+        let selected = ProductCandidate {
+            token: "token-no-total".to_string(),
+            title: "Synthetic lock".to_string(),
+            brand: None,
+            product_id: None,
+            product_url: "https://www.google.com.au/shopping/product/synthetic".to_string(),
+            displayed_price: Some("A$99.00".to_string()),
+            price_cents: Some(9_900),
+            multiple_sources: false,
+            pack_size: None,
+            condition: "new".to_string(),
+            position: 1,
+        };
+        let payload = json!({
+            "search_metadata": {
+                "status": "Success",
+                "processed_at": "2026-08-10 23:10:00 UTC"
+            },
+            "search_parameters": {
+                "engine": "google_immersive_product",
+                "page_token": "token-no-total",
+                "no_cache": true
+            },
+            "product_results": {
+                "title": "Synthetic lock",
+                "stores": [{
+                    "name": "Merchant",
+                    "link": "https://merchant.example.test/synthetic-lock",
+                    "title": "Synthetic lock",
+                    "price": "A$99.00",
+                    "extracted_price": 99.0
+                }]
+            }
+        });
+        let outcome = parse_immersive_offers(&payload, "Synthetic lock", Some(&selected)).unwrap();
+        assert_eq!(outcome.state, "no_comparable_offers");
+        assert!(outcome.band.is_none());
+        assert_eq!(outcome.results.len(), 1);
+        assert_eq!(
+            outcome.results[0].exclusion_reasons,
+            vec!["unknown_comparison_total".to_string()]
+        );
+        let coverage = outcome.coverage.unwrap();
+        assert_eq!(coverage.parsed_offers, 1);
+        assert_eq!(coverage.comparable_offers, 0);
+        assert_eq!(coverage.excluded_offers, 1);
+        assert!(!outcome.detail.unwrap().contains("provider cache"));
+    }
+
+    #[test]
+    fn immersive_stage_distinguishes_zero_parsed_offers_from_excluded_offers() {
+        let selected = ProductCandidate {
+            token: "token-empty".to_string(),
+            title: "Synthetic lock".to_string(),
+            brand: None,
+            product_id: None,
+            product_url: "https://www.google.com.au/shopping/product/synthetic".to_string(),
+            displayed_price: None,
+            price_cents: None,
+            multiple_sources: false,
+            pack_size: None,
+            condition: "new".to_string(),
+            position: 1,
+        };
+        let payload = json!({
+            "search_metadata": {
+                "status": "Success",
+                "processed_at": "2026-08-10 23:10:00 UTC"
+            },
+            "search_parameters": {
+                "engine": "google_immersive_product",
+                "page_token": "token-empty"
+            },
+            "product_results": {
+                "title": "Synthetic lock",
+                "stores": []
+            }
+        });
+        let outcome = parse_immersive_offers(&payload, "Synthetic lock", Some(&selected)).unwrap();
+        assert_eq!(outcome.state, "no_comparable_offers");
+        assert!(outcome.results.is_empty());
+        assert!(outcome.band.is_none());
+        assert_eq!(outcome.coverage.unwrap().parsed_offers, 0);
+        let detail = outcome.detail.unwrap();
+        assert!(detail.contains("No direct merchant offers"));
+        assert!(!detail.contains("offers were found"));
     }
 
     #[test]
@@ -8657,32 +10688,55 @@ mod tests {
         assert_eq!(parse_aud_cents("999999999999999.99"), None);
         assert_eq!(parse_aud_cents("-1.00"), None);
 
-        let results = vec![
-            SearchResult {
-                title: "Synthetic high A".to_string(),
-                price_cents: 999_999_999,
-                price_aud: "9999999.99".to_string(),
-                currency: "AUD".to_string(),
-                gst_basis: "unknown".to_string(),
-                pack_size: None,
-                seller: "Fixture".to_string(),
-                source_domain: "fixture.invalid".to_string(),
-                url: "https://fixture.invalid/a".to_string(),
-                retrieved_at: "2026-08-09T00:00:00Z".to_string(),
-            },
-            SearchResult {
-                title: "Synthetic high B".to_string(),
-                price_cents: 1_000_000_000,
-                price_aud: "10000000.00".to_string(),
-                currency: "AUD".to_string(),
-                gst_basis: "unknown".to_string(),
-                pack_size: None,
-                seller: "Fixture".to_string(),
-                source_domain: "fixture.invalid".to_string(),
-                url: "https://fixture.invalid/b".to_string(),
-                retrieved_at: "2026-08-09T00:00:00Z".to_string(),
-            },
-        ];
+        let first = SearchResult {
+            search_query: None,
+            selected_product_title: None,
+            selected_product_brand: None,
+            selected_product_id: None,
+            title: "Synthetic high A".to_string(),
+            price_cents: 999_999_999,
+            price_aud: "9999999.99".to_string(),
+            item_price_cents: 999_999_999,
+            item_price_aud: "9999999.99".to_string(),
+            shipping_cents: Some(0),
+            shipping_aud: Some("0.00".to_string()),
+            estimated_tax_cents: None,
+            estimated_tax_aud: None,
+            total_price_cents: Some(999_999_999),
+            total_price_aud: Some("9999999.99".to_string()),
+            comparison_price_cents: Some(999_999_999),
+            comparison_price_aud: Some("9999999.99".to_string()),
+            price_basis: "provider_total".to_string(),
+            original_price_text: "A$9999999.99".to_string(),
+            currency_basis: "explicit-aud".to_string(),
+            currency: "AUD".to_string(),
+            gst_basis: "unknown".to_string(),
+            pack_size: None,
+            condition: "new".to_string(),
+            availability: "in-stock".to_string(),
+            financing: false,
+            comparison_eligible: true,
+            exclusion_reasons: Vec::new(),
+            seller: "Fixture".to_string(),
+            source_domain: "fixture.invalid".to_string(),
+            url: "https://fixture.invalid/a".to_string(),
+            retrieved_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        let second = SearchResult {
+            title: "Synthetic high B".to_string(),
+            price_cents: 1_000_000_000,
+            price_aud: "10000000.00".to_string(),
+            item_price_cents: 1_000_000_000,
+            item_price_aud: "10000000.00".to_string(),
+            total_price_cents: Some(1_000_000_000),
+            total_price_aud: Some("10000000.00".to_string()),
+            comparison_price_cents: Some(1_000_000_000),
+            comparison_price_aud: Some("10000000.00".to_string()),
+            original_price_text: "A$10000000.00".to_string(),
+            url: "https://fixture.invalid/b".to_string(),
+            ..first.clone()
+        };
+        let results = vec![first, second];
         let band = search_band(&results).unwrap();
         assert_eq!(band.median_cents, 1_000_000_000);
     }
@@ -8707,6 +10761,19 @@ mod tests {
         let directory = migrated_database();
         let store = Arc::new(MemoryCredentialStore::default());
         let state = AppState::new(directory.0.clone(), store.clone());
+        let candidate = ProductCandidate {
+            token: "policy-token".to_string(),
+            title: "Synthetic lock".to_string(),
+            brand: None,
+            product_id: None,
+            product_url: "https://www.google.com.au/shopping/product/synthetic".to_string(),
+            displayed_price: None,
+            price_cents: None,
+            multiple_sources: false,
+            pack_size: None,
+            condition: "unknown".to_string(),
+            position: 1,
+        };
         let mut connection = open_connection(&state.database_path).unwrap();
         let initial = provider_status_inner(&state, &connection).unwrap();
         assert!(!initial.paid_calls_enabled);
@@ -8725,9 +10792,18 @@ mod tests {
         assert!(
             set_provider_paid_calls_inner(&state, &connection, true, Some(0), Some(1)).is_err()
         );
+        remember_search_candidates(&state, "Synthetic lock", std::slice::from_ref(&candidate))
+            .unwrap();
         let enabled =
             set_provider_paid_calls_inner(&state, &connection, true, Some(100), Some(25)).unwrap();
         assert!(enabled.paid_calls_enabled);
+        assert!(remembered_search_candidate(
+            &state,
+            "Synthetic lock",
+            &candidate.token,
+        )
+        .unwrap()
+        .is_none());
         assert_eq!(enabled.cost_ceiling_cents, 100);
         assert_eq!(enabled.cost_per_call_cents, 25);
         for expected in [25, 50, 75, 100] {
@@ -8743,6 +10819,11 @@ mod tests {
             reserve_provider_call(&connection).unwrap_err(),
             "quota_exhausted"
         );
+        let exhausted = provider_status_inner(&state, &connection).unwrap();
+        assert_eq!(exhausted.state, "quota_exhausted");
+        assert!(exhausted.paid_calls_enabled);
+        remember_search_candidates(&state, "Synthetic lock", std::slice::from_ref(&candidate))
+            .unwrap();
         let replaced =
             store_credential(&state, "replacement-secret-456".to_string(), true).unwrap();
         assert!(!replaced.paid_calls_enabled);
@@ -8754,12 +10835,28 @@ mod tests {
             store.get().unwrap().as_deref(),
             Some("replacement-secret-456")
         );
+        assert!(remembered_search_candidate(
+            &state,
+            "Synthetic lock",
+            &candidate.token,
+        )
+        .unwrap()
+        .is_none());
         enable_test_provider_budget(&state, &connection);
+        remember_search_candidates(&state, "Synthetic lock", std::slice::from_ref(&candidate))
+            .unwrap();
         let removed = remove_provider_credential_inner(&state, &mut connection).unwrap();
         assert!(!removed.paid_calls_enabled);
         assert!(!removed.credential_configured);
         assert_eq!(removed.cost_ceiling_cents, 0);
         assert_eq!(removed.spent_cents, 0);
+        assert!(remembered_search_candidate(
+            &state,
+            "Synthetic lock",
+            &candidate.token,
+        )
+        .unwrap()
+        .is_none());
     }
 
     #[test]
@@ -9514,6 +11611,38 @@ mod tests {
     fn competitor_evidence_is_typed_bounded_and_credential_free() {
         assert!(validate_competitor_evidence(&sample_live_competitor_evidence()).is_ok());
         assert!(validate_competitor_evidence(&sample_manual_competitor_evidence()).is_ok());
+        let current_live = sample_live_competitor_evidence();
+        let round_trip = serde_json::from_value::<CompetitorEvidence>(
+            serde_json::to_value(&current_live).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(round_trip, current_live);
+
+        let mut contextual = sample_live_competitor_evidence();
+        let CompetitorEvidence::Live(value) = &mut contextual else {
+            unreachable!();
+        };
+        value.search_query = Some("Lockwood 001".to_string());
+        value.selected_product_title = Some("Lockwood 001 Deadlatch".to_string());
+        value.selected_product_brand = Some("Lockwood".to_string());
+        value.selected_product_id = Some("product-main".to_string());
+        assert!(validate_competitor_evidence(&contextual).is_ok());
+        let contextual_json = serde_json::to_value(&contextual).unwrap();
+        assert_eq!(
+            contextual_json.get("searchQuery"),
+            Some(&json!("Lockwood 001"))
+        );
+        assert_eq!(
+            contextual_json.get("selectedProductTitle"),
+            Some(&json!("Lockwood 001 Deadlatch"))
+        );
+
+        let mut partial_context = sample_live_competitor_evidence();
+        let CompetitorEvidence::Live(value) = &mut partial_context else {
+            unreachable!();
+        };
+        value.selected_product_id = Some("product-main".to_string());
+        assert!(validate_competitor_evidence(&partial_context).is_err());
 
         let mut inconsistent_price = sample_live_competitor_evidence();
         let CompetitorEvidence::Live(value) = &mut inconsistent_price else {
@@ -9535,6 +11664,42 @@ mod tests {
         };
         value.title = "x".repeat(1_001);
         assert!(validate_competitor_evidence(&oversized).is_err());
+    }
+
+    #[test]
+    fn legacy_live_references_upgrade_to_explicitly_non_comparable_evidence() {
+        let legacy = json!({
+            "title": "Synthetic legacy evidence",
+            "priceCents": 12345,
+            "priceAud": "123.45",
+            "currency": "AUD",
+            "gstBasis": "unknown",
+            "packSize": null,
+            "seller": "Synthetic seller",
+            "sourceDomain": "example.invalid",
+            "url": "https://example.invalid/item",
+            "retrievedAt": "2026-08-09T00:00:00Z"
+        });
+        let evidence = serde_json::from_value::<CompetitorEvidence>(legacy).unwrap();
+        let CompetitorEvidence::Live(evidence) = evidence else {
+            panic!("legacy live evidence must retain its type");
+        };
+        assert_eq!(evidence.item_price_cents, 12_345);
+        assert_eq!(evidence.shipping_cents, None);
+        assert_eq!(evidence.total_price_cents, None);
+        assert!(!evidence.comparison_eligible);
+        assert_eq!(evidence.price_basis, "not_comparable");
+        assert_eq!(
+            evidence.exclusion_reasons,
+            vec![
+                "unknown_comparison_total".to_string(),
+                "unverified_product_identity".to_string()
+            ]
+        );
+        assert!(validate_live_competitor_evidence(&evidence).is_ok());
+        let upgraded = serde_json::to_value(&evidence).unwrap();
+        assert_eq!(upgraded.get("itemPriceCents"), Some(&json!(12_345)));
+        assert_eq!(upgraded.get("comparisonEligible"), Some(&json!(false)));
     }
 
     #[test]
