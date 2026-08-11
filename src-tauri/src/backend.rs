@@ -5959,7 +5959,7 @@ fn parse_immersive_offers(
         product_id: candidate.product_id.clone(),
     };
     let mut results: Vec<SearchResult> = Vec::new();
-    let mut exact_offers = HashMap::new();
+    let mut exact_offers: HashMap<String, usize> = HashMap::new();
     for store in stores {
         let Some(mut offer) = normalise_offer(store, Some(candidate), &retrieved_at) else {
             continue;
