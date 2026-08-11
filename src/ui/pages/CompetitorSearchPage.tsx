@@ -143,17 +143,13 @@ function stateCopy(
   state: LiveSearchState,
   platformKind: "desktop" | "web",
   liveSearchSupported: boolean,
-  sessionAccessToken: boolean,
 ): SearchStateCopy | undefined {
   if (!liveSearchSupported) {
     return {
-      title: sessionAccessToken
-        ? "A valid SWL web API token is required"
-        : "Live provider search is unavailable in Static Pages",
+      title: "Live provider search is unavailable in Static Pages",
       tone: "info",
-      detail: sessionAccessToken
-        ? "The protected API is configured, but this tab is not authorised. Enter the revocable token issued to you; manual evidence remains available."
-        : "Static Pages has no Node service and makes no provider request. Manual evidence and the core comparison workflow remain available.",
+      detail:
+        "Static Pages has no Node service and makes no provider request. Manual evidence and the core comparison workflow remain available.",
     };
   }
   const copy: Partial<Record<LiveSearchState, SearchStateCopy>> = {
@@ -570,14 +566,6 @@ export function CompetitorsPage() {
     const result = await platform.search.query(q, candidateToken);
     if (seq !== requestSeq.current) return;
     setOutcome(result);
-    if (
-      platform.capabilities.sessionAccessToken === true &&
-      result.state === "not_configured"
-    ) {
-      setHealth(null);
-      const status = await platform.search.status();
-      setProviderStatus(status.ok ? status.value : null);
-    }
     setLoading(false);
     actions.announce(
       result.state === "selection_required"
@@ -632,15 +620,9 @@ export function CompetitorsPage() {
   const updateCredential = async (replace: boolean) => {
     const input = credentialInput.current;
     const secret = input?.value ?? "";
-    const isSessionToken = platform.capabilities.sessionAccessToken === true;
-    if (
-      (isSessionToken && !/^[A-Za-z0-9_-]{43,256}$/u.test(secret)) ||
-      (!isSessionToken && (secret.length < 8 || secret.length > 1024))
-    ) {
+    if (secret.length < 8 || secret.length > 1024) {
       actions.announce(
-        isSessionToken
-          ? "Enter the complete SWL web API access token issued to you."
-          : "Enter a provider credential between 8 and 1024 characters.",
+        "Enter a provider credential between 8 and 1024 characters.",
       );
       return;
     }
@@ -650,16 +632,10 @@ export function CompetitorsPage() {
       : await platform.search.configureCredential(secret);
     if (result.ok) {
       setProviderStatus(result.value);
-      if (isSessionToken) {
-        const healthResult = await platform.health();
-        setHealth(healthResult.ok ? healthResult.value : null);
-      }
     }
     actions.announce(
       result.ok
-        ? isSessionToken
-          ? "SWL web API access token accepted for this tab only."
-          : "Provider credential stored in Windows protected storage."
+        ? "Provider credential stored in Windows protected storage."
         : result.error.message,
     );
   };
@@ -669,9 +645,7 @@ export function CompetitorsPage() {
     if (result.ok) setProviderStatus(result.value);
     actions.announce(
       result.ok
-        ? platform.capabilities.sessionAccessToken
-          ? "SWL web API access token validation completed."
-          : "Provider credential validation completed."
+        ? "Provider credential validation completed."
         : result.error.message,
     );
   };
@@ -680,14 +654,9 @@ export function CompetitorsPage() {
     const result = await platform.search.removeCredential();
     if (result.ok) {
       setProviderStatus(result.value);
-      if (platform.capabilities.sessionAccessToken) setHealth(null);
     }
     actions.announce(
-      result.ok
-        ? platform.capabilities.sessionAccessToken
-          ? "SWL web API access token cleared from this tab."
-          : "Provider credential removed."
-        : result.error.message,
+      result.ok ? "Provider credential removed." : result.error.message,
     );
   };
 
@@ -827,13 +796,7 @@ export function CompetitorsPage() {
   };
 
   const failureCopy =
-    outcome &&
-    stateCopy(
-      outcome.state,
-      platform.kind,
-      liveSearchAvailable,
-      platform.capabilities.sessionAccessToken === true,
-    );
+    outcome && stateCopy(outcome.state, platform.kind, liveSearchAvailable);
 
   return (
     <Page
@@ -873,13 +836,9 @@ export function CompetitorsPage() {
           </form>
         ) : (
           <p>
-            {platform.capabilities.sessionAccessToken
-              ? !liveSearchSourceEnabled
-                ? "The licensed live API source is disabled in Source registry. Enable it before searching."
-                : "Enter your SWL web API access token below to enable live competitor search for this tab."
-              : !liveSearchSourceEnabled
-                ? "The licensed live API source is disabled in Source registry. Enable it before searching."
-                : "Live provider search is unavailable. Use the manual evidence form below with an operator-verified HTTPS source."}
+            {!liveSearchSourceEnabled
+              ? "The licensed live API source is disabled in Source registry. Enable it before searching."
+              : "Live provider search is unavailable. Use the manual evidence form below with an operator-verified HTTPS source."}
           </p>
         )}
         <p className="hint" role="status">
@@ -890,11 +849,9 @@ export function CompetitorsPage() {
               : health === null
                 ? platform.kind === "desktop"
                   ? "Native search is unavailable or offline. Manual entry works now."
-                  : platform.capabilities.sessionAccessToken
-                    ? "The protected web API needs a valid session access token. Manual entry works now."
-                    : platform.capabilities.liveSearch
-                      ? "The optional web search service is unavailable. Manual entry works now."
-                      : "Static Pages has no live provider service. Manual entry works now."
+                  : platform.capabilities.liveSearch
+                    ? "The optional web search service is unavailable. Manual entry works now."
+                    : "Static Pages has no live provider service. Manual entry works now."
                 : health.fixtureMode
                   ? "Live search is disabled because the configured service is not a live provider."
                   : !health.liveSearchConfigured
@@ -908,62 +865,10 @@ export function CompetitorsPage() {
                       : health.liveSearchConfigured
                         ? platform.kind === "desktop"
                           ? "Live search ready: native provider, Australian region, AUD and rate limited."
-                          : "Live search ready: protected API, configured Australian location, AUD, rate limited and cache controlled."
+                          : "Live search ready: own-origin service, configured Australian location, AUD, rate limited and cache controlled."
                         : "Live search is not configured. Manual entry works now."}
         </p>
       </section>
-
-      {platform.capabilities.sessionAccessToken && (
-        <section className="card" aria-labelledby="web-access-token-title">
-          <h2 id="web-access-token-title">SWL web API access</h2>
-          <p className="hint">
-            This revocable access token protects the SerpAPI quota. It is held
-            only in this tab&apos;s memory and is never written to GitHub Pages,
-            browser storage, exports or logs. It is not the SerpAPI key.
-          </p>
-          <label>
-            SWL web API access token
-            <input
-              ref={credentialInput}
-              type="password"
-              autoComplete="off"
-              minLength={43}
-              maxLength={256}
-            />
-          </label>
-          <div className="btn-row">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() =>
-                void updateCredential(
-                  providerStatus?.credentialConfigured === true,
-                )
-              }
-            >
-              {providerStatus?.credentialConfigured
-                ? "Replace token for this tab"
-                : "Use token for this tab"}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={!providerStatus?.credentialConfigured}
-              onClick={() => void validateCredential()}
-            >
-              Validate token
-            </button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={!providerStatus?.credentialConfigured}
-              onClick={() => void removeCredential()}
-            >
-              Clear token from this tab
-            </button>
-          </div>
-        </section>
-      )}
 
       {platform.capabilities.protectedCredentials && (
         <section className="card" aria-labelledby="provider-credential-title">
@@ -1050,11 +955,9 @@ export function CompetitorsPage() {
               {platform.kind === "desktop"
                 ? "The native service"
                 : "The web search service"}{" "}
-              is resolving the protected request. The web service may return an
-              authorised cache entry or call SerpAPI; the native service calls
-              SerpAPI directly. Product discovery and merchant-offer retrieval
-              remain separate so a Shopping product tile is never mislabelled as
-              a competitor offer.
+              is resolving the request. Product discovery and merchant-offer
+              retrieval remain separate so a Shopping product tile is never
+              mislabelled as a competitor offer.
             </p>
           </div>
         </section>
@@ -1074,9 +977,7 @@ export function CompetitorsPage() {
               ? "Search by part number, barcode or description. First select the exact product candidate; the application then retrieves direct merchant offers and compares only offers with a supported total-price basis. GST remains unverified unless evidence establishes it."
               : !liveSearchSourceEnabled
                 ? "Enable the licensed live API source in Source registry before searching. No provider request is made while it is disabled."
-                : platform.capabilities.sessionAccessToken
-                  ? "Enter the revocable SWL web API access token issued to you for this tab. Operational records stay session-only; the SerpAPI key and cost controls remain in the protected API."
-                  : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
+                : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
           }
         />
       )}
@@ -1500,11 +1401,9 @@ export function SourcesPage() {
           <dd>
             {platform.kind === "desktop"
               ? "Performed by the native Rust service through an exact allowlisted licensed shopping-search API. Native requests are rate limited and do not claim a response cache."
-              : platform.capabilities.sessionAccessToken
-                ? "Performed by the protected API-only service through SerpAPI after per-user authentication and Redis-backed rate, cache, single-flight and budget controls. The provider key never enters GitHub Pages."
-                : platform.capabilities.liveSearch
-                  ? "Performed by the Node web service through a licensed shopping-search API. Requests are rate limited, cached and identify the client honestly."
-                  : "Static Pages has no Node service and performs no live provider retrieval."}{" "}
+              : platform.capabilities.liveSearch
+                ? "Performed by the Node web service through a licensed shopping-search API. Requests are rate limited, cached and identify the client honestly."
+                : "Static Pages has no Node service and performs no live provider retrieval."}{" "}
             Retailer websites are never scraped directly; robots.txt, site
             terms, rate limits and bot protections are never circumvented.
           </dd>
