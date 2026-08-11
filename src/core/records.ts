@@ -1,13 +1,13 @@
-import type { ColumnMapping } from './mapping';
-import type { ParsedTable } from './table';
-import { sourceRowNumber } from './table';
-import { normalizeIdentifier } from './normalize';
-import { parseMoney } from './money';
-import { isFormulaLike } from './sanitize';
-import { isScientificNotation, parseIncludesTaxes } from './servicem8Format';
+import type { ColumnMapping } from "./mapping";
+import type { ParsedTable } from "./table";
+import { sourceRowNumber } from "./table";
+import { normalizeIdentifier } from "./normalize";
+import { parseMoney } from "./money";
+import { isFormulaLike } from "./sanitize";
+import { isScientificNotation, parseIncludesTaxes } from "./servicem8Format";
 
 export interface RowIssue {
-  severity: 'error' | 'warning';
+  severity: "error" | "warning";
   field: string;
   message: string;
 }
@@ -17,7 +17,8 @@ export interface RowIssue {
  * not malformed data — they are a deliberate "ask us" marker — so they get
  * their own explanation instead of a generic parse failure.
  */
-const PRICE_ON_APPLICATION = /^(p\.?\s*o\.?\s*a\.?|price\s+on\s+application|poa)$/i;
+const PRICE_ON_APPLICATION =
+  /^(p\.?\s*o\.?\s*a\.?|price\s+on\s+application|poa)$/i;
 
 export function isPriceOnApplication(raw: string): boolean {
   return PRICE_ON_APPLICATION.test(raw.trim());
@@ -61,24 +62,32 @@ export interface S8Record {
 }
 
 function cell(row: string[], col: number | undefined): string {
-  if (col === undefined) return '';
-  return row[col] ?? '';
+  if (col === undefined) return "";
+  return row[col] ?? "";
 }
 
-function flagFormulaLike(issues: RowIssue[], field: string, value: string): void {
+function flagFormulaLike(
+  issues: RowIssue[],
+  field: string,
+  value: string,
+): void {
   if (isFormulaLike(value)) {
     issues.push({
-      severity: 'warning',
+      severity: "warning",
       field,
       message: `Value begins with a formula character and will be neutralised in any generated spreadsheet: “${value.slice(0, 30)}”`,
     });
   }
 }
 
-function flagScientificNotation(issues: RowIssue[], field: string, value: string): void {
+function flagScientificNotation(
+  issues: RowIssue[],
+  field: string,
+  value: string,
+): void {
   if (isScientificNotation(value)) {
     issues.push({
-      severity: 'warning',
+      severity: "warning",
       field,
       message: `“${value.trim()}” is scientific notation, not an identifier. A spreadsheet has damaged this value while the file was opened and re-saved, and the original digits cannot be recovered. Re-export the file without opening it in Excel, or format the column as text before saving.`,
     });
@@ -97,11 +106,11 @@ export function extractSupplierRecords(
     const barcode = cell(row, mapping.supplierBarcode).trim();
     const category = cell(row, mapping.supplierCategory).trim();
 
-    if (code === '') {
+    if (code === "") {
       issues.push({
-        severity: 'error',
-        field: 'Supplier item code',
-        message: 'Supplier item code is missing.',
+        severity: "error",
+        field: "Supplier item code",
+        message: "Supplier item code is missing.",
       });
     }
 
@@ -109,10 +118,10 @@ export function extractSupplierRecords(
     let cost: string | null = null;
     if (priceOnApplication) {
       issues.push({
-        severity: 'error',
-        field: 'Supplier cost',
+        severity: "error",
+        field: "Supplier cost",
         message:
-          'The supplier lists this item as price on application, so there is no cost to mark up. Obtain a quoted cost and price this item by hand.',
+          "The supplier lists this item as price on application, so there is no cost to mark up. Obtain a quoted cost and price this item by hand.",
       });
     } else {
       const parsed = parseMoney(costRaw);
@@ -120,24 +129,25 @@ export function extractSupplierRecords(
         cost = parsed.amount;
         if (parsed.wasRounded) {
           issues.push({
-            severity: 'warning',
-            field: 'Supplier cost',
+            severity: "warning",
+            field: "Supplier cost",
             message: `Cost “${costRaw}” has more than 2 decimal places and was rounded half-up to ${parsed.amount}.`,
           });
         }
       } else {
         issues.push({
-          severity: 'error',
-          field: 'Supplier cost',
+          severity: "error",
+          field: "Supplier cost",
           message: `Supplier cost is invalid: ${parsed.error}.`,
         });
       }
     }
 
-    flagFormulaLike(issues, 'Supplier item code', code);
-    flagFormulaLike(issues, 'Supplier description', description);
-    flagScientificNotation(issues, 'Supplier item code', code);
-    if (barcode !== '') flagScientificNotation(issues, 'Supplier barcode', barcode);
+    flagFormulaLike(issues, "Supplier item code", code);
+    flagFormulaLike(issues, "Supplier description", description);
+    flagScientificNotation(issues, "Supplier item code", code);
+    if (barcode !== "")
+      flagScientificNotation(issues, "Supplier barcode", barcode);
 
     return {
       rowIndex,
@@ -155,7 +165,10 @@ export function extractSupplierRecords(
   });
 }
 
-export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8Record[] {
+export function extractS8Records(
+  table: ParsedTable,
+  mapping: ColumnMapping,
+): S8Record[] {
   return table.rows.map((row, rowIndex) => {
     const issues: RowIssue[] = [];
     const itemNumber = cell(row, mapping.itemNumber).trim();
@@ -168,25 +181,25 @@ export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8
     const itemIsInventoriedRaw = cell(row, mapping.itemIsInventoried);
     const barcodeRaw = cell(row, mapping.barcode);
 
-    if (itemNumber === '') {
+    if (itemNumber === "") {
       issues.push({
-        severity: 'error',
-        field: 'Item Number',
-        message: 'ServiceM8 item number is missing.',
+        severity: "error",
+        field: "Item Number",
+        message: "ServiceM8 item number is missing.",
       });
     }
 
     // Purchase Cost is routinely zero or absent in genuine ServiceM8 exports,
     // so it is informational only and never blocks a row.
     let existingCost: string | null = null;
-    if (existingCostRaw !== '') {
+    if (existingCostRaw !== "") {
       const costParsed = parseMoney(existingCostRaw);
       if (costParsed.ok) {
         existingCost = costParsed.amount;
       } else {
         issues.push({
-          severity: 'warning',
-          field: 'Purchase Cost',
+          severity: "warning",
+          field: "Purchase Cost",
           message: `Existing purchase cost could not be read (${costParsed.error}) and is shown as blank.`,
         });
       }
@@ -195,11 +208,12 @@ export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8
     // Price is the value this application compares against and replaces, so an
     // unreadable Price blocks the row.
     let existingSell: string | null = null;
-    if (existingSellRaw === '') {
+    if (existingSellRaw === "") {
       issues.push({
-        severity: 'error',
-        field: 'Price',
-        message: 'The ServiceM8 price is missing, so there is nothing to compare against.',
+        severity: "error",
+        field: "Price",
+        message:
+          "The ServiceM8 price is missing, so there is nothing to compare against.",
       });
     } else {
       const sellParsed = parseMoney(existingSellRaw);
@@ -207,8 +221,8 @@ export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8
         existingSell = sellParsed.amount;
       } else {
         issues.push({
-          severity: 'error',
-          field: 'Price',
+          severity: "error",
+          field: "Price",
           message: `The ServiceM8 price is invalid: ${sellParsed.error}.`,
         });
       }
@@ -220,19 +234,20 @@ export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8
     const taxFlag = parseIncludesTaxes(includesTaxesRaw);
     if (mapping.priceIncludesTaxes !== undefined && !taxFlag.recognised) {
       issues.push({
-        severity: 'error',
-        field: 'Price Includes Taxes',
+        severity: "error",
+        field: "Price Includes Taxes",
         message:
-          includesTaxesRaw === ''
-            ? 'The tax basis for this row is blank, so it cannot be determined whether the price includes GST.'
+          includesTaxesRaw === ""
+            ? "The tax basis for this row is blank, so it cannot be determined whether the price includes GST."
             : `“${includesTaxesRaw}” is not a recognised tax basis. Expected “Yes” or “No”.`,
       });
     }
 
-    flagFormulaLike(issues, 'Item Number', itemNumber);
-    flagFormulaLike(issues, 'Name', description);
-    flagScientificNotation(issues, 'Item Number', itemNumber);
-    if (barcodeRaw.trim() !== '') flagScientificNotation(issues, 'Barcode', barcodeRaw);
+    flagFormulaLike(issues, "Item Number", itemNumber);
+    flagFormulaLike(issues, "Name", description);
+    flagScientificNotation(issues, "Item Number", itemNumber);
+    if (barcodeRaw.trim() !== "")
+      flagScientificNotation(issues, "Barcode", barcodeRaw);
 
     return {
       rowIndex,
@@ -254,4 +269,3 @@ export function extractS8Records(table: ParsedTable, mapping: ColumnMapping): S8
     };
   });
 }
-
