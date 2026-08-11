@@ -56,7 +56,45 @@ function seedItem(store: ReturnType<typeof createStore>, id = "LW4570") {
 
 function syntheticObservation(overrides: Record<string, unknown> = {}) {
   return {
+    searchQuery: "LW4570",
+    selectedProductTitle: "Lockwood 4570 keyed deadlatch",
+    selectedProductBrand: "Lockwood",
+    selectedProductId: "product-lw4570",
     title: "Synthetic Lockwood 4570 deadlatch",
+    priceCents: 9_500,
+    priceAud: "95.00",
+    itemPriceCents: 9_500,
+    itemPriceAud: "95.00",
+    shippingCents: 500,
+    shippingAud: "5.00",
+    estimatedTaxCents: null,
+    estimatedTaxAud: null,
+    totalPriceCents: 10_000,
+    totalPriceAud: "100.00",
+    comparisonPriceCents: 10_000,
+    comparisonPriceAud: "100.00",
+    priceBasis: "provider_total",
+    originalPriceText: "A$95.00",
+    currencyBasis: "explicit-aud",
+    currency: "AUD",
+    gstBasis: "inc-gst",
+    packSize: null,
+    condition: "new",
+    availability: "in-stock",
+    financing: false,
+    comparisonEligible: true,
+    exclusionReasons: [],
+    seller: "Fictionville Security Supplies",
+    sourceDomain: "fictionville-security.example.com.au",
+    url: "https://fictionville-security.example.com.au/product/lw4570",
+    retrievedAt: "2026-08-09T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function syntheticLegacyObservation() {
+  return {
+    title: "Synthetic legacy Lockwood 4570 deadlatch",
     priceCents: 9_500,
     priceAud: "95.00",
     currency: "AUD",
@@ -64,9 +102,8 @@ function syntheticObservation(overrides: Record<string, unknown> = {}) {
     packSize: null,
     seller: "Fictionville Security Supplies",
     sourceDomain: "fictionville-security.example.com.au",
-    url: "https://fictionville-security.example.com.au/product/lw4570",
+    url: "https://fictionville-security.example.com.au/product/legacy-lw4570",
     retrievedAt: "2026-08-09T00:00:00.000Z",
-    ...overrides,
   };
 }
 
@@ -495,6 +532,59 @@ describe("competitor references are provably inert", () => {
       store.appendReference({ itemId: "missing", observation: {} }),
     ).toThrow(MissingCatalogueItemError);
   });
+
+  it("continues to read legacy live references while storing the structured offer contract", () => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const structured = store.appendReference({
+      itemId: "LW4570",
+      observation: syntheticObservation(),
+    });
+    const legacyStructuredObservation = {
+      ...syntheticObservation(),
+    } as Record<string, unknown>;
+    delete legacyStructuredObservation.searchQuery;
+    delete legacyStructuredObservation.selectedProductTitle;
+    delete legacyStructuredObservation.selectedProductBrand;
+    delete legacyStructuredObservation.selectedProductId;
+    const legacyStructured = store.appendReference({
+      itemId: "LW4570",
+      observation: legacyStructuredObservation,
+    });
+    const legacy = {
+      id: "legacy-reference",
+      itemId: "LW4570",
+      observation: syntheticLegacyObservation(),
+      attachedAt: "2026-08-09T01:00:00.000Z",
+    };
+    const path = join(dir, "competitor-references.jsonl");
+    writeFileSync(
+      path,
+      `${readFileSync(path, "utf8")}${JSON.stringify(legacy)}\n`,
+    );
+
+    expect(createStore(dir).listReferences()).toEqual([
+      structured,
+      legacyStructured,
+      legacy,
+    ]);
+  });
+
+  it("round-trips immutable query and selected-product provenance", () => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const observation = syntheticObservation();
+    const stored = store.appendReference({ itemId: "LW4570", observation });
+
+    expect(stored.observation).toMatchObject({
+      searchQuery: "LW4570",
+      selectedProductTitle: "Lockwood 4570 keyed deadlatch",
+      selectedProductBrand: "Lockwood",
+      selectedProductId: "product-lw4570",
+    });
+    expect(createStore(dir).listReferences("LW4570")).toEqual([stored]);
+  });
+
   it("attaching a reference leaves the catalogue item byte-identical", () => {
     const { dir, store } = tempStore();
     seedItem(store);
@@ -551,6 +641,10 @@ describe("competitor references are provably inert", () => {
     ["unsupported GST state", syntheticObservation({ gstBasis: "inferred" })],
     ["inconsistent amount", syntheticObservation({ priceAud: "95.01" })],
     ["invalid timestamp", syntheticObservation({ retrievedAt: "not-a-date" })],
+    [
+      "incomplete selected-product provenance",
+      syntheticObservation({ selectedProductId: undefined }),
+    ],
     [
       "normalised invalid calendar date",
       syntheticObservation({ retrievedAt: "2026-02-30T00:00:00.000Z" }),
