@@ -80,6 +80,8 @@ jobs:
         run: |
           $env:VITE_BASE = '/Inventory-Management-SWL/'
           $env:VITE_STATIC_DEMO = 'true'
+          $env:VITE_LIVE_SEARCH_API_ORIGIN = '${{ vars.VITE_LIVE_SEARCH_API_ORIGIN }}'
+          $env:VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN = 'true'
           npm run build
           npm run check:pages
       - name: Select Microsoft Edge for Playwright
