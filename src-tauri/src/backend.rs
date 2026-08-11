@@ -285,7 +285,7 @@ struct ManualCompetitorEvidence {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 enum CompetitorEvidence {
-    Live(LiveCompetitorEvidence),
+    Live(Box<LiveCompetitorEvidence>),
     Manual(ManualCompetitorEvidence),
 }
 
@@ -5138,9 +5138,7 @@ fn parse_aud_cents(value: &str) -> Option<i64> {
         .unwrap_or(value.trim())
         .trim();
     let uppercase = trimmed.to_ascii_uppercase();
-    let numeric = if uppercase.starts_with("AUD") {
-        &trimmed[3..]
-    } else if uppercase.starts_with("AU$") {
+    let numeric = if uppercase.starts_with("AUD") || uppercase.starts_with("AU$") {
         &trimmed[3..]
     } else if uppercase.starts_with("A$") {
         &trimmed[2..]
@@ -5981,11 +5979,8 @@ fn parse_immersive_offers(
     let mut seen_domains = HashSet::new();
     let source_domains = results
         .iter()
-        .filter_map(|result| {
-            seen_domains
-                .insert(result.source_domain.clone())
-                .then(|| result.source_domain.clone())
-        })
+        .filter(|result| seen_domains.insert(result.source_domain.clone()))
+        .map(|result| result.source_domain.clone())
         .collect::<Vec<_>>();
     let comparable_offers = results
         .iter()
@@ -8292,7 +8287,7 @@ mod tests {
     }
 
     fn sample_live_competitor_evidence() -> CompetitorEvidence {
-        CompetitorEvidence::Live(LiveCompetitorEvidence {
+        CompetitorEvidence::Live(Box::new(LiveCompetitorEvidence {
             search_query: None,
             selected_product_title: None,
             selected_product_brand: None,
@@ -8325,7 +8320,7 @@ mod tests {
             source_domain: "example.invalid".to_string(),
             url: "https://example.invalid/products/synthetic-lock".to_string(),
             retrieved_at: "2026-08-09T00:00:00Z".to_string(),
-        })
+        }))
     }
 
     fn sample_manual_competitor_evidence() -> CompetitorEvidence {
