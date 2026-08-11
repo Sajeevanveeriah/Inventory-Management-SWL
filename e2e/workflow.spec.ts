@@ -178,9 +178,9 @@ test('complete synthetic workflow: load, map, validate, review, export, verify, 
   expect(audit).toContain('Superseded fictional line');
   expect(audit).toContain('Round half up to 2 decimal places');
 
-  // --- clear session -------------------------------------------------------
+  // --- clear active workflow ----------------------------------------------
   await page.getByRole('button', { name: 'Privacy and data handling' }).click();
-  await page.getByRole('button', { name: 'Clear session data' }).click();
+  await page.getByRole('button', { name: 'Clear active workflow' }).click();
   await expect(page.getByRole('button', { name: 'Load synthetic demonstration' })).toBeVisible();
 
   // --- privacy: zero external traffic, no business data in the console ----
