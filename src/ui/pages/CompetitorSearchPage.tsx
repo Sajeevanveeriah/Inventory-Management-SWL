@@ -9,6 +9,10 @@ import {
 } from "../../core/liveSearch";
 import { formatAmount, parseMoney } from "../../core/money";
 import { priceBand, searchEvidence } from "../../core/sources";
+import {
+  createBrowserTestSearchOutcome,
+  type BrowserTestSearchScenario,
+} from "../../demo/browserTestSearch";
 import { useAppDispatch, useAppState } from "../../state/store";
 import { useActions } from "../../state/useActions";
 import { usePlatform } from "../../platform/context";
@@ -560,13 +564,15 @@ type SortKey = "price" | "seller" | "title";
 
 function ResultsTable({
   results,
-  attachEnabled,
-  onAttach,
+  resultsLabel,
+  sourceActionLabel,
+  onReview,
   onOpenSource,
 }: {
   results: LiveSearchResult[];
-  attachEnabled: boolean;
-  onAttach: (result: LiveSearchResult) => void;
+  resultsLabel: string;
+  sourceActionLabel: string;
+  onReview: (result: LiveSearchResult) => void;
   onOpenSource: (url: string) => void;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("price");
@@ -615,7 +621,7 @@ function ResultsTable({
     <div
       className="table-scroll"
       role="region"
-      aria-label="Live search results"
+      aria-label={resultsLabel}
       tabIndex={0}
     >
       <table className="data-table">
@@ -628,7 +634,7 @@ function ResultsTable({
             {header("seller", "Seller")}
             <th scope="col">Retrieved (Melbourne time)</th>
             <th scope="col">Link</th>
-            <th scope="col">Attach</th>
+            <th scope="col">Review</th>
           </tr>
         </thead>
         <tbody>
@@ -661,17 +667,16 @@ function ResultsTable({
                   className="btn btn-sm"
                   onClick={() => onOpenSource(result.url)}
                 >
-                  Open source page
+                  {sourceActionLabel}
                 </button>
               </td>
-              <td data-label="Attach">
+              <td data-label="Review">
                 <button
                   type="button"
                   className="btn btn-sm"
-                  disabled={!attachEnabled}
-                  onClick={() => onAttach(result)}
+                  onClick={() => onReview(result)}
                 >
-                  Attach as reference
+                  Review result
                 </button>
               </td>
             </tr>
@@ -697,6 +702,10 @@ export function CompetitorsPage() {
   const [submitted, setSubmitted] = useState("");
   const [loading, setLoading] = useState(false);
   const [outcome, setOutcome] = useState<LiveSearchOutcome | null>(null);
+  const [testScenario, setTestScenario] =
+    useState<BrowserTestSearchScenario>("results");
+  const [selectedResult, setSelectedResult] =
+    useState<LiveSearchResult | null>(null);
   // 'checking' means the platform probe is in flight; null means it was unavailable.
   const [health, setHealth] = useState<LiveHealth | null | "checking">(
     "checking",
@@ -710,6 +719,7 @@ export function CompetitorsPage() {
   const credentialInput = useRef<HTMLInputElement>(null);
   const [attachTarget, setAttachTarget] = useState("");
   const requestSeq = useRef(0);
+  const browserTestMode = !platform.capabilities.liveSearch;
 
   useEffect(() => {
     let cancelled = false;
@@ -734,15 +744,23 @@ export function CompetitorsPage() {
     if (q === "") return;
     const seq = ++requestSeq.current;
     setSubmitted(q);
+    setSelectedResult(null);
     setLoading(true);
-    const result = await platform.search.query(q);
+    const result = browserTestMode
+      ? await new Promise<LiveSearchOutcome>((resolve) => {
+          window.setTimeout(
+            () => resolve(createBrowserTestSearchOutcome(q, testScenario)),
+            300,
+          );
+        })
+      : await platform.search.query(q);
     if (seq !== requestSeq.current) return;
     setOutcome(result);
     setLoading(false);
     actions.announce(
       result.state === "ok"
-        ? `${result.results.length} live results for ${q}.`
-        : `Live search state: ${result.state.replace(/_/g, " ")}.`,
+        ? `${result.results.length} ${browserTestMode ? "fictional test" : "live"} results for ${q}.`
+        : `${browserTestMode ? "Test" : "Live"} search state: ${result.state.replace(/_/g, " ")}.`,
     );
   };
 
@@ -948,20 +966,24 @@ export function CompetitorsPage() {
 
   const failureCopy =
     outcome &&
-    stateCopy(outcome.state, platform.kind, platform.capabilities.liveSearch);
+    stateCopy(
+      outcome.state,
+      platform.kind,
+      platform.capabilities.liveSearch || browserTestMode,
+    );
 
   return (
     <Page
       title="Competitor search"
       primary={
-        platform.capabilities.liveSearch ? (
+        platform.capabilities.liveSearch || browserTestMode ? (
           <button
             type="button"
             className="btn btn-primary"
             disabled={query.trim() === "" || loading}
             onClick={() => void runSearch()}
           >
-            Search live prices
+            {browserTestMode ? "Run Test search" : "Search live prices"}
           </button>
         ) : undefined
       }
@@ -970,7 +992,7 @@ export function CompetitorsPage() {
         <IntelligenceWorkspace />
       )}
       <section className="card">
-        {platform.capabilities.liveSearch ? (
+        {platform.capabilities.liveSearch || browserTestMode ? (
           <form
             className="searchbar"
             onSubmit={(event) => {
@@ -988,6 +1010,24 @@ export function CompetitorsPage() {
                 placeholder="e.g. Lockwood 4570, LW4570 or 9312345678907"
               />
             </label>
+            {browserTestMode && (
+              <label>
+                Test outcome
+                <select
+                  value={testScenario}
+                  onChange={(event) =>
+                    setTestScenario(
+                      event.target.value as BrowserTestSearchScenario,
+                    )
+                  }
+                >
+                  <option value="results">Results</option>
+                  <option value="empty">No results</option>
+                  <option value="timeout">Timeout</option>
+                  <option value="provider_error">Provider error</option>
+                </select>
+              </label>
+            )}
           </form>
         ) : (
           <p>
@@ -995,9 +1035,16 @@ export function CompetitorsPage() {
             evidence form below with an operator-verified HTTPS source.
           </p>
         )}
+        {browserTestMode && (
+          <div className="callout" role="note">
+            <strong>Fictional browser Test search.</strong> Results use reserved
+            example domains and deterministic AUD prices. No internet search,
+            provider request, credential or charge is used.
+          </div>
+        )}
         <p className="hint" role="status">
-          {!platform.capabilities.liveSearch
-            ? "Static Pages has no live provider service and makes no provider request."
+          {browserTestMode
+            ? "Test mode is active in Static Pages. Choose a state and run the search to test the complete review flow."
             : health === "checking"
               ? "Checking live search availability…"
               : health === null
@@ -1086,7 +1133,7 @@ export function CompetitorsPage() {
         </section>
       )}
 
-      {loading && platform.capabilities.liveSearch && (
+      {loading && (platform.capabilities.liveSearch || browserTestMode) && (
         <section
           className="card state-loading"
           role="status"
@@ -1095,14 +1142,12 @@ export function CompetitorsPage() {
           <span className="spinner" aria-hidden="true" />
           <div>
             <h2>
-              Searching live sources for &ldquo;{submitted}&rdquo;&hellip;
+              {browserTestMode ? "Preparing fictional results" : "Searching live sources"} for &ldquo;{submitted}&rdquo;&hellip;
             </h2>
             <p className="hint">
-              {platform.kind === "desktop"
-                ? "The native service"
-                : "The web demonstration server"}{" "}
-              is querying the provider now. Results include seller, GST
-              treatment and a retrieval timestamp.
+              {browserTestMode
+                ? "The browser fixture is preparing a deterministic state. No network request is made."
+                : `${platform.kind === "desktop" ? "The native service" : "The web demonstration server"} is querying the provider now. Results include seller, GST treatment and a retrieval timestamp.`}
             </p>
           </div>
         </section>
@@ -1111,12 +1156,16 @@ export function CompetitorsPage() {
       {!loading && outcome === null && (
         <EmptyState
           title={
-            platform.capabilities.liveSearch
+            browserTestMode
+              ? "Enter any product to test competitor search"
+              : platform.capabilities.liveSearch
               ? "Type a product and search the live market"
               : "Manual competitor evidence remains available"
           }
           detail={
-            platform.capabilities.liveSearch
+            browserTestMode
+              ? "Choose the outcome to exercise results, no-results, timeout and provider-error states. Every listing is fictional and reserved for UI testing."
+              : platform.capabilities.liveSearch
               ? "One box, no search-type selector: the application works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
               : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
           }
@@ -1138,8 +1187,12 @@ export function CompetitorsPage() {
 
       {!loading && outcome?.state === "empty" && (
         <EmptyState
-          title={`No live prices found for “${submitted}”`}
-          detail="The provider answered but returned no priced listings. That is a genuine zero, not a failure. Try a broader term, or record a price you found yourself with manual entry below."
+          title={`No ${browserTestMode ? "test" : "live"} prices found for “${submitted}”`}
+          detail={
+            browserTestMode
+              ? "The fictional provider returned a deliberate empty state. Change Test outcome to Results to continue the review flow."
+              : "The provider answered but returned no priced listings. That is a genuine zero, not a failure. Try a broader term, or record a price you found yourself with manual entry below."
+          }
         />
       )}
 
@@ -1148,7 +1201,7 @@ export function CompetitorsPage() {
           <div
             className="metric-row"
             role="group"
-            aria-label="Price band across live sources"
+            aria-label={`Price band across ${browserTestMode ? "fictional test" : "live"} sources`}
           >
             <div className="metric-card">
               <span className="metric-label">Lowest</span>
@@ -1156,7 +1209,7 @@ export function CompetitorsPage() {
                 {formatAmount(outcome.band.lowest)}
               </strong>
               <span className="metric-state pill pill-ok">
-                across live sources
+                across {browserTestMode ? "fictional test" : "live"} sources
               </span>
             </div>
             <div className="metric-card">
@@ -1195,10 +1248,59 @@ export function CompetitorsPage() {
 
           <ResultsTable
             results={outcome.results}
-            attachEnabled={attachEnabled}
-            onAttach={attach}
-            onOpenSource={(url) => void openSource(url)}
+            resultsLabel={
+              browserTestMode ? "Test search results" : "Live search results"
+            }
+            sourceActionLabel={
+              browserTestMode ? "Inspect test source" : "Open source page"
+            }
+            onReview={setSelectedResult}
+            onOpenSource={(url) => {
+              if (browserTestMode) {
+                actions.announce(
+                  `Fictional source ${new URL(url).hostname}. No page was opened.`,
+                );
+              } else {
+                void openSource(url);
+              }
+            }}
           />
+
+          {selectedResult && (
+            <section className="card" aria-labelledby="search-review-title">
+              <h2 id="search-review-title">Review selected result</h2>
+              <dl className="kv">
+                <dt>Product</dt>
+                <dd>{selectedResult.title}</dd>
+                <dt>Seller</dt>
+                <dd>{selectedResult.seller}</dd>
+                <dt>Price</dt>
+                <dd>{formatAmount(selectedResult.priceAud)} AUD</dd>
+                <dt>Shipping</dt>
+                <dd>
+                  {browserTestMode
+                    ? "Included in this fictional test price"
+                    : "Check the provider source listing"}
+                </dd>
+                <dt>Source</dt>
+                <dd>{selectedResult.url}</dd>
+              </dl>
+              {browserTestMode && (
+                <p className="hint">
+                  Fictional test evidence remains quarantined and can only be
+                  attached to an exact approved catalogue item.
+                </p>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!attachEnabled}
+                onClick={() => attach(selectedResult)}
+              >
+                Attach selected result as reference
+              </button>
+            </section>
+          )}
 
           <section className="card">
             <h2>Coverage</h2>

@@ -242,11 +242,45 @@ describe('application workflow (jsdom integration)', () => {
     const user = userEvent.setup();
     const base = publicationService(true);
     const session = createWebPlatformService(undefined, { sessionOnly: true });
+    let attachedTestResult: unknown = null;
     const service: PlatformService = {
       ...base,
       capabilities: session.capabilities,
       health: session.health,
-      search: session.search,
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([
+            {
+              id: 'LW4570',
+              itemNumber: 'LW4570',
+              description: 'Synthetic approved test item',
+              costCents: 10_000,
+              sellPriceCents: 15_000,
+              gstBasis: 'inc-gst',
+              updatedAt: '2026-08-11T00:00:00.000Z',
+            },
+          ]);
+        },
+      },
+      references: {
+        ...base.references,
+        async attach(itemId, observation) {
+          attachedTestResult = observation;
+          return platformOk({
+            id: 'browser-test-reference',
+            itemId,
+            observation,
+            attachedAt: '2026-08-11T00:00:00.000Z',
+          });
+        },
+      },
+      search: {
+        ...session.search,
+        async query() {
+          throw new Error('Static browser Test search must not call the platform provider.');
+        },
+      },
     };
     window.location.hash = '#/dashboard';
     await renderApp(service);
@@ -261,9 +295,51 @@ describe('application workflow (jsdom integration)', () => {
       level: 1,
     });
     expect(screen.queryByRole('button', { name: /search live prices/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('searchbox', { name: /product name/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/does not expose a live-provider query/i)).toBeInTheDocument();
-    expect(screen.getByText(/manual competitor evidence remains available/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /run test search/i })).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent(/no internet search/i);
+
+    const searchBox = screen.getByRole('searchbox', { name: /product name/i });
+    const outcome = screen.getByRole('combobox', { name: /test outcome/i });
+    await user.type(searchBox, 'Lockwood 4570');
+    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    expect(
+      screen.getByRole('heading', { name: /preparing fictional results/i }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('region', { name: /test search results/i }),
+    ).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: /review result/i })[0]!);
+    expect(screen.getByRole('heading', { name: /review selected result/i })).toBeInTheDocument();
+    expect(screen.getByText(/included in this fictional test price/i)).toBeInTheDocument();
+    const attachButton = screen.getByRole('button', {
+      name: /attach selected result as reference/i,
+    });
+    expect(attachButton).toBeDisabled();
+    await user.type(
+      screen.getByRole('textbox', { name: /catalogue item/i }),
+      'LW4570',
+    );
+    expect(attachButton).toBeEnabled();
+    await user.click(attachButton);
+    await waitFor(() => expect(attachedTestResult).not.toBeNull());
+    expect(attachedTestResult).toMatchObject({
+      seller: 'Fictional Geelong Locks',
+      currency: 'AUD',
+      sourceDomain: 'example.com',
+    });
+    expect(screen.getAllByText(/reference price stored for LW4570/i).length).toBeGreaterThan(0);
+
+    await user.selectOptions(outcome, 'empty');
+    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    expect(await screen.findByText(/no test prices found/i)).toBeInTheDocument();
+
+    await user.selectOptions(outcome, 'timeout');
+    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    expect(await screen.findByText(/search provider timed out/i)).toBeInTheDocument();
+
+    await user.selectOptions(outcome, 'provider_error');
+    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    expect(await screen.findByText(/search provider returned an error/i)).toBeInTheDocument();
 
     window.location.hash = '#/sources';
     window.dispatchEvent(new Event('hashchange'));
