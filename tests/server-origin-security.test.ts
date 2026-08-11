@@ -51,8 +51,7 @@ async function startFixtureServer(
   const child = spawn(
     process.execPath,
     [
-      "server/index.mjs",
-      "--fixture",
+      "tests/support/fixture-server.mjs",
       "--port",
       String(port),
       ...trustedOrigins.flatMap((origin) => ["--trusted-origin", origin]),
@@ -63,7 +62,6 @@ async function startFixtureServer(
         ...process.env,
         PORT: String(port),
         SWL_DATA_DIR: dataDirectory,
-        SWL_SEARCH_PROVIDER: "fixture",
         ...(distDirectory === undefined ? {} : { SWL_DIST_DIR: distDirectory }),
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -243,8 +241,14 @@ describe("Node loopback request boundary", () => {
       (
         await apiRequest({
           port,
-          path: "/api/competitor-search?q=fixture-none",
-          headers: { "sec-fetch-site": "same-origin" },
+          path: "/api/competitor-search",
+          method: "POST",
+          headers: {
+            origin,
+            "sec-fetch-site": "same-origin",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ query: "fixture-none" }),
         })
       ).status,
     ).toBe(200);
@@ -260,8 +264,13 @@ describe("Node loopback request boundary", () => {
         (
           await apiRequest({
             port,
-            path: "/api/competitor-search?q=fixture-none",
-            headers,
+            path: "/api/competitor-search",
+            method: "POST",
+            headers: {
+              ...headers,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ query: "fixture-none" }),
           })
         ).status,
       ).toBe(403);
