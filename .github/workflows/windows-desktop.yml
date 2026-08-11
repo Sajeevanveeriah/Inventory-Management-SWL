@@ -435,6 +435,7 @@ jobs:
       - name: Drive the isolated release-profile desktop acceptance binary with outbound networking denied
         shell: pwsh
         env:
+          SWL_DESKTOP_BINARY: ${{ env.SWL_DESKTOP_ACCEPTANCE_BINARY }}
           SWL_DESKTOP_EVIDENCE_DIR: ${{ runner.temp }}\swl-diagnostics\desktop-e2e
         run: |
           $resolvedDrivers = @(Get-Command tauri-driver.exe -All -ErrorAction SilentlyContinue)

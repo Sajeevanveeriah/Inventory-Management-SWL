@@ -2,13 +2,13 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSerpApiProvider } from "./search/serpapiProvider.mjs";
 import {
   createPaidCallBudgetFromEnvironment,
   createSearchService,
 } from "./search/service.mjs";
 import { centsToAmount } from "./lib/moneyCents.mjs";
 import {
+  createProviderFromEnvironment,
   optionalProviderRegistry,
   publicProviderStatus,
 } from "./search/providerRegistry.mjs";
@@ -27,7 +27,10 @@ import {
  * Environment:
  *   PORT                 listen port (default 8787)
  *   SWL_DATA_DIR         persistence directory (default server/data)
- *   SERPAPI_KEY          SerpAPI key; never sufficient by itself to authorise a call.
+ *   SWL_SEARCH_PROVIDER  serpapi, serper or ebay (auto-selects configured free provider when omitted)
+ *   SERPAPI_KEY          SerpAPI key; never sufficient by itself to authorise a paid call.
+ *   SERPER_API_KEY       Serper Shopping key; finite free credits apply.
+ *   EBAY_CLIENT_ID / EBAY_CLIENT_SECRET  eBay Browse application credentials.
  *   SWL_PAID_CALLS_ENABLED                 exact "true" opt-in; default false
  *   SWL_PROVIDER_COST_CEILING_CENTS        positive integer total process budget
  *   SWL_PROVIDER_COST_PER_CALL_CENTS       positive integer reserved before each call
@@ -60,7 +63,9 @@ const testProviderFactory =
   globalThis.__SWL_TEST_ONLY_SEARCH_PROVIDER_FACTORY__;
 delete globalThis.__SWL_TEST_ONLY_SEARCH_PROVIDER_FACTORY__;
 const fixtureMode = typeof testProviderFactory === "function";
-const provider = fixtureMode ? testProviderFactory() : createSerpApiProvider();
+const provider = fixtureMode
+  ? testProviderFactory()
+  : createProviderFromEnvironment(process.env);
 const paidCallBudget = createPaidCallBudgetFromEnvironment(process.env);
 const searchService = createSearchService({ provider, paidCallBudget });
 const store = createStore(dataDir);
@@ -204,7 +209,11 @@ async function handleApi(req, res, url) {
       provider: provider.name,
       liveSearchConfigured: provider.configured && !fixtureMode,
       fixtureMode,
-      paidCallsEnabled: !fixtureMode && paidPolicy.state === "enabled",
+      requiresPaidCall: provider.requiresPaidCall === true,
+      paidCallsEnabled:
+        !fixtureMode &&
+        provider.requiresPaidCall === true &&
+        paidPolicy.state === "enabled",
       costCeilingAud: centsToAmount(paidPolicy.ceilingCents),
       costCeilingCents: paidPolicy.ceilingCents,
       costPerCallCents: paidPolicy.perCallCents,
@@ -213,11 +222,11 @@ async function handleApi(req, res, url) {
     });
   }
   if (route === "GET /api/providers") {
-    return sendJson(
-      res,
-      200,
-      [provider, ...optionalProviderRegistry()].map(publicProviderStatus),
+    const providers = [provider, ...optionalProviderRegistry()].filter(
+      (candidate, index, all) =>
+        all.findIndex((entry) => entry.name === candidate.name) === index,
     );
+    return sendJson(res, 200, providers.map(publicProviderStatus));
   }
   if (route === "POST /api/competitor-search") {
     const body = await readBody(req);

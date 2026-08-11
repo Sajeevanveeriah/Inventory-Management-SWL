@@ -618,6 +618,7 @@ export const LiveHealthSchema = z
     provider: z.string().max(128),
     liveSearchConfigured: z.boolean(),
     fixtureMode: z.boolean(),
+    requiresPaidCall: z.boolean().optional(),
     paidCallsEnabled: z.boolean().optional(),
     costCeilingAud: z
       .string()

@@ -292,7 +292,7 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
       {state.comparison === null && (
         <EmptyState
           title="No run in progress"
-          detail={`Import a supplier price file and the current ServiceM8 export to compare costs, review proposed prices and produce a candidate import file. Business rows stay in ${
+          detail={`Import a supplier price file and the current ServiceM8 export to compare costs, review proposed prices and produce a ready-to-import Materials & Services CSV. Business rows stay in ${
             platform.kind === "desktop"
               ? "application memory"
               : "this browser tab"
@@ -618,8 +618,8 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
       )}
       <p className="hint">
         Approval records and price versions are append-only in the active
-        platform store. Approved records are included in the candidate import
-        file once every pre-export check passes.
+        platform store. Approved records are included in the ServiceM8 import
+        CSV once every pre-export check passes.
       </p>
     </Page>
   );
@@ -743,7 +743,7 @@ export function HelpPage() {
           "Workflow: Add files, Map columns, Validate and compare, Review, Pre-export checks, Export.",
           "Pricing: selling price = supplier cost x 1.30 (markup on cost), rounded half-up to 2 decimal places, AUD.",
           "Matching: exact code, then approved alias; description similarity only ever suggests, never matches.",
-          "The ServiceM8 output is a candidate import file until validated against a genuine template.",
+          "The ServiceM8 output uses the tested Materials & Services CSV contract and includes only reviewed, valid changes.",
           "ServiceM8 and Xero are file-handoff integrations: see the Integrations page for the adapter status.",
           "On the Windows desktop application, exports can be written straight to a chosen output folder.",
           "Keyboard: press / to focus search from anywhere.",

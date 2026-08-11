@@ -523,7 +523,7 @@ export function CompetitorsPage() {
     platform.kind === "web"
       ? health !== "checking" &&
         health !== null &&
-        health.paidCallsEnabled === true
+        (health.requiresPaidCall === false || health.paidCallsEnabled === true)
       : providerStatus?.paidCallsEnabled === true && !desktopBudgetExhausted;
   const liveSearchReady =
     liveSearchAvailable &&
@@ -865,7 +865,9 @@ export function CompetitorsPage() {
                       : health.liveSearchConfigured
                         ? platform.kind === "desktop"
                           ? "Live search ready: native provider, Australian region, AUD and rate limited."
-                          : "Live search ready: own-origin service, configured Australian location, AUD, rate limited and cache controlled."
+                          : health.requiresPaidCall === false
+                            ? "Live search ready: own-origin zero-cost provider, Australian marketplace, AUD, rate limited and cache controlled."
+                            : "Live search ready: own-origin service, configured Australian location, AUD, rate limited and cache controlled."
                         : "Live search is not configured. Manual entry works now."}
         </p>
       </section>
@@ -955,9 +957,10 @@ export function CompetitorsPage() {
               {platform.kind === "desktop"
                 ? "The native service"
                 : "The web search service"}{" "}
-              is resolving the request. Product discovery and merchant-offer
-              retrieval remain separate so a Shopping product tile is never
-              mislabelled as a competitor offer.
+              is resolving the request.
+              {platform.kind === "web" && health.requiresPaidCall === false
+                ? " The selected official API returns direct marketplace offers; incomplete delivered totals remain visibly excluded."
+                : " Product discovery and merchant-offer retrieval remain separate so a Shopping product tile is never mislabelled as a competitor offer."}
             </p>
           </div>
         </section>
@@ -974,7 +977,9 @@ export function CompetitorsPage() {
           }
           detail={
             liveSearchReady
-              ? "Search by part number, barcode or description. First select the exact product candidate; the application then retrieves direct merchant offers and compares only offers with a supported total-price basis. GST remains unverified unless evidence establishes it."
+              ? platform.kind === "web" && health.requiresPaidCall === false
+                ? "Search by part number, barcode or description. The configured official API returns direct offers, and the application compares only offers with a supported delivered-price basis. GST remains unverified unless evidence establishes it."
+                : "Search by part number, barcode or description. First select the exact product candidate; the application then retrieves direct merchant offers and compares only offers with a supported total-price basis. GST remains unverified unless evidence establishes it."
               : !liveSearchSourceEnabled
                 ? "Enable the licensed live API source in Source registry before searching. No provider request is made while it is disabled."
                 : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."

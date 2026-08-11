@@ -13,7 +13,7 @@ Scopes resolve in this order: run, product, category, supplier, global, default.
 - Validation: missing, zero, negative, currency, GST, outlier, staleness, stock, condition and required-review policies.
 - Workflow and approvals: comparison automation, repeat-run controls, bulk limits, pagination, density and undo depth for reversible exclusions. Once published, approvals and their price-history versions are append-only and cannot be withdrawn through session undo controls.
 - Competitor evidence: approved local collection methods, validity, currency, GST, confidence, strategy, selection and floor behaviour.
-- Output: candidate template, report shape, summary sheet and audit detail.
+- Output: ServiceM8 Materials & Services CSV, report shape, summary sheet and audit detail.
 - Display and accessibility: theme, density, dates and timezone.
 - Privacy and retention: metadata, snapshots, retention, profile and alias retention.
 - Locked safety invariants: local business-file processing, no production writes, no scraping, ambiguous and invalid blocking, missing-item non-deletion, formula protection, leading-zero preservation, no raw-row persistence by default, approved-valid-changed-only output, floor enforcement, no arbitrary expressions and no release action. The only optional external runtime call is an explicit, budgeted competitor query through the reviewed native desktop adapter or supervised local Node adapter; it never includes imported rows, costs, sell prices, notes or customer data. Static GitHub Pages performs no provider search.
@@ -29,5 +29,8 @@ workflow; they are never converted to defaults or silently discarded.
 
 GitHub Pages contains no provider endpoint or credential. Desktop live search requires a credential
 stored in Windows Credential Manager, successful validation, a positive total ceiling, a positive
-per-call reservation and explicit paid-call enablement. The supervised local Node adapter uses the
-equivalent process-environment controls documented in `.env.example`.
+per-call reservation and explicit paid-call enablement. The supervised local Node adapter selects
+`serper`, `ebay` or `serpapi` with `SWL_SEARCH_PROVIDER`. Serper reads `SERPER_API_KEY`; eBay reads
+`EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET`; both run without the paid-call budget while remaining
+subject to provider quotas. SerpAPI retains the explicit paid-call controls documented in
+`.env.example`.

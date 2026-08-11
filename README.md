@@ -260,7 +260,7 @@ Duplicate identifiers in either file, and uncertain matches, are blocked as exce
 6. **Pre-export checks** — release checklist; export stays disabled until every blocking gate
    passes (no approved ambiguous/invalid records, no duplicate identifiers, valid prices, …).
 7. **Export** — five locally generated downloads:
-   1. **Candidate ServiceM8 import workbook** (approved, valid changes only)
+   1. **ServiceM8 Materials & Services import CSV** (approved, valid changes only)
    2. Detailed change report (all records, before/after, formulas, decisions)
    3. Exceptions workbook (ambiguous / invalid / missing)
    4. Rollback copy of the original ServiceM8 export
@@ -273,15 +273,14 @@ Filenames are deterministic and sanitised:
 value beginning with `=`, `+`, `-`, `@`, tab or carriage return is neutralised with a leading
 apostrophe and flagged.
 
-### "Candidate" import file
+### ServiceM8 import file
 
-The genuine ServiceM8 import template has not yet been supplied, so production column names are
-never invented. When a ServiceM8 export is loaded, the import workbook **adapts its header meanings
-and column order** (formula-like header text is neutralised; price-change rows re-emit the original
-row with only cost/sell replaced).
-The output is labelled a _candidate_ import file until it is validated against a real ServiceM8
-import template — see [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the
-adaptation workflow.
+The generated handoff is a CSV in ServiceM8's Materials & Services format. It uses the genuine
+nine-column contract or retains the loaded ServiceM8 export's complete compatible header row and
+extra columns. Existing rows are copied from the original export with only approved cost and sell
+values replaced. New rows use documented defaults, and the paired rollback CSV restores prior
+values for existing items in one import. See
+[docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the tested round-trip contract.
 
 ## Browser deployment shape
 
@@ -306,17 +305,21 @@ The repository also includes one small loopback Node server (`server/`) for loca
 > disappear on refresh. Operator-authored profiles, aliases and settings continue to use IndexedDB.
 > Live provider search is deliberately unavailable in this static build.
 
-### Live search API key
+### Live search provider keys
 
-Live search uses SerpAPI Google Shopping and Google Immersive Product in the Australian region
-behind a provider interface (`server/search/`). A key alone never authorises a paid call.
-The Node demonstration requires `SERPAPI_KEY`, `SWL_PAID_CALLS_ENABLED=true`, a positive integer
+The supervised Node service supports two zero-per-call-cost adapters and the existing licensed
+SerpAPI adapter behind `server/search/`. Set `SWL_SEARCH_PROVIDER=serper` with `SERPER_API_KEY`, or
+set `SWL_SEARCH_PROVIDER=ebay` with `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` and
+`EBAY_MARKETPLACE_ID=EBAY_AU`. The start scripts read these values from `.env` or the process
+environment; credentials remain server-side. Serper's finite free credits and eBay's official API
+quotas and terms still apply. Both adapters return direct AUD offers and visibly exclude results
+without a supported delivered total.
+
+For `SWL_SEARCH_PROVIDER=serpapi`, a key alone never authorises a paid call. The Node service also
+requires `SWL_PAID_CALLS_ENABLED=true`, a positive integer
 `SWL_PROVIDER_COST_CEILING_CENTS` and a positive integer
-`SWL_PROVIDER_COST_PER_CALL_CENTS`. Keep these values in the process environment and never commit
-them. Missing, partial, malformed or non-positive budget configuration fails closed as not configured.
-The local server budget reserves the declared per-call cents before every request and reports quota
-exhaustion when the ceiling is reached. Deterministic fixtures are test-only; fixture-mode health
-never exposes operator live-search controls. GitHub Pages receives no provider configuration.
+`SWL_PROVIDER_COST_PER_CALL_CENTS`. Missing, partial, malformed or non-positive configuration fails
+closed. Deterministic fixtures are test-only, and GitHub Pages receives no provider configuration.
 
 ## Development and browser demonstration
 
@@ -416,8 +419,8 @@ excludable record. A "Fictional demo data" badge is shown while active.
 1. Export the supplier price list and the ServiceM8 Materials & Services list; do **not** edit them.
 2. Load both files, map the columns, and save a supplier-specific mapping profile.
 3. Review, approve and export as above. Keep the rollback workbook and audit summary.
-4. Validate the candidate import file against a real ServiceM8 import template (or a small trial
-   import) before importing in bulk.
+4. Import the generated `servicem8-import` CSV through ServiceM8 Materials & Services. A small trial
+   import remains prudent before a large production run.
 5. Never commit any of these files to this repository.
 
 ## Architecture, testing, releases
@@ -430,8 +433,6 @@ excludable record. A "Fictional demo data" badge is shown while active.
 
 ## Current limitations
 
-- The import output is a **candidate** file until verified against a genuine ServiceM8 import
-  template; exact ServiceM8 import requirements cannot be proven without it.
 - Phase 1 has no ServiceM8 or Xero API integration (deliberate).
 - Legacy `.xls` workbooks are not supported — re-save as `.xlsx`.
 - Selecting a different worksheet re-reads the file from the in-memory copy; browsers may

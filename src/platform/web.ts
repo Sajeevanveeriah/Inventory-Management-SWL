@@ -364,6 +364,7 @@ function webProviderStatus(health: {
   provider: string;
   liveSearchConfigured: boolean;
   fixtureMode: boolean;
+  requiresPaidCall?: boolean;
   paidCallsEnabled?: boolean;
   costCeilingAud?: string;
   costCeilingCents?: number;
@@ -373,11 +374,14 @@ function webProviderStatus(health: {
   const paidCallsEnabled = health.fixtureMode
     ? false
     : health.paidCallsEnabled === true;
+  const providerCallsReady =
+    health.liveSearchConfigured &&
+    (health.requiresPaidCall === false || paidCallsEnabled);
   return {
     provider: health.provider,
     state: health.fixtureMode
       ? "fixture"
-      : health.liveSearchConfigured && paidCallsEnabled
+      : providerCallsReady
         ? "configured"
         : "not_configured",
     paidCallsEnabled,

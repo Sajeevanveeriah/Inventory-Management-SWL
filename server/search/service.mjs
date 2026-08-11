@@ -511,12 +511,12 @@ function providerDetail(providerMeta, prefix = "") {
   if (prefix) notes.push(prefix);
   if (providerMeta.storesMayContinue) {
     notes.push(
-      "SerpAPI reports additional store pages beyond this bounded response.",
+      "The provider reports additional offers beyond this bounded response.",
     );
   }
   if (providerMeta.cacheBasis === "provider_cache_allowed") {
     notes.push(
-      "SerpAPI may serve an identical request from its provider cache for up to one hour.",
+      "The provider may serve an identical request from its own cache.",
     );
   }
   return notes.join(" ");
@@ -703,7 +703,9 @@ export function createSearchService({
           results: [],
           band: null,
           detail:
-            "Live search is not configured. A provider credential plus explicit paid-call enablement, ceiling and per-call reservation are required.",
+            provider.requiresPaidCall === true
+              ? "Live search is not configured. A provider credential plus explicit paid-call enablement, ceiling and per-call reservation are required."
+              : "Live search is not configured. Configure the selected provider credentials in the local environment.",
         };
       }
       if (
@@ -781,7 +783,9 @@ export function createSearchService({
           }),
         );
         if (
-          (candidateToken === null && providerPayload.stage === "offers") ||
+          (candidateToken === null &&
+            providerPayload.stage === "offers" &&
+            provider.singleStageOffers !== true) ||
           (candidateToken !== null && providerPayload.stage === "discovery")
         ) {
           throw new ProviderRequestError("provider response stage is invalid");

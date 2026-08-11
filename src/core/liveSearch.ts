@@ -122,6 +122,7 @@ export interface LiveHealth {
   provider: string;
   liveSearchConfigured: boolean;
   fixtureMode: boolean;
+  requiresPaidCall?: boolean;
   paidCallsEnabled?: boolean;
   costCeilingAud?: string;
   costCeilingCents?: number;

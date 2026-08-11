@@ -8,11 +8,13 @@ export interface ExpansionItem {
   supplierCost: string | null;
   proposedSell: string | null;
   barcode: string;
+  scope: "out-of-scope";
 }
 
 export interface ExpansionCategory {
   name: string;
   items: ExpansionItem[];
+  scope: "out-of-scope";
 }
 
 /**
@@ -37,6 +39,7 @@ export function buildExpansionCatalogue(
       supplierCost: row.supplier.cost,
       proposedSell: row.proposedSell,
       barcode: row.supplier.barcode,
+      scope: "out-of-scope",
     });
     byCategory.set(category, items);
   }
@@ -44,6 +47,7 @@ export function buildExpansionCatalogue(
   return [...byCategory.entries()]
     .map(([name, items]) => ({
       name,
+      scope: "out-of-scope" as const,
       items: [...items].sort((a, b) =>
         a.code.localeCompare(b.code, undefined, { numeric: true }),
       ),
