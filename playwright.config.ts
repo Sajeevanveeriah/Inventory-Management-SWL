@@ -1,11 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * E2E tests run against the PRODUCTION deployment shape: the bundled Node
- * server serving dist/ AND the /api routes on one origin, with the strict
- * Content Security Policy exactly as shipped. The fixture provider gives
- * deterministic live-search results offline, and the data directory is seeded
- * so populated surfaces (dashboard charts, price history) can be exercised.
+ * E2E tests run the production web bundle with deterministic local operational
+ * data. Competitor-search tests intercept only the external API boundary with
+ * test-owned responses; production modules never import that test helper.
  */
 export default defineConfig({
   testDir: "./e2e",
