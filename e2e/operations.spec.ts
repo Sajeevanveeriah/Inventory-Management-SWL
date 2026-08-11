@@ -66,7 +66,7 @@ test('expansion catalogue separates supplier-only categories behind approval', a
   await expect(page.getByRole('heading', { name: 'Expansion catalogue', level: 1 })).toBeVisible();
   await expect(page.getByText('0 automatic additions')).toBeVisible();
   await expect(page.getByRole('region', { name: 'Expansion catalogue' })).toBeVisible();
-  await expect(page.getByText('Electronic').first()).toBeVisible();
+  await expect(page.locator('tbody').getByText('Electronic').first()).toBeVisible();
   await page.getByLabel('Search future products').fill('FIC-004');
   await expect(page.locator('tbody tr')).toHaveCount(1);
   await expect(page.locator('tbody tr').first()).toContainText('Not approved');
@@ -158,4 +158,3 @@ test('mobile 390px: search page remains usable', async ({ page }) => {
   });
   expect(overflow).toBeLessThanOrEqual(1);
 });
-
