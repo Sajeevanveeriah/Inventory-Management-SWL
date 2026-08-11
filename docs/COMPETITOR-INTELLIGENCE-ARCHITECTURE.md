@@ -72,9 +72,8 @@ The loopback Node service retains its environment policy. It requires all three 
 `SWL_PAID_CALLS_ENABLED=true`, a positive integer `SWL_PROVIDER_COST_CEILING_CENTS` and a positive
 integer `SWL_PROVIDER_COST_PER_CALL_CENTS`; partial, malformed or non-positive configuration fails
 closed. Its process-local budget likewise reserves the declared cost before a paid request. The
-offline fixture is test-only and exempt. The GitHub Pages API uses per-user opaque access tokens
-and Redis-backed global rate, cache, single-flight and pessimistic budget controls; the SerpAPI key
-never enters the static bundle. No adapter may spend, recharge, bypass access controls, CAPTCHA,
+offline fixture is test-only and exempt. GitHub Pages contains no provider client, endpoint or key
+and makes no live competitor-search request. No adapter may spend, recharge, bypass access controls, CAPTCHA,
 paywalls, robots controls, authentication, site terms or rate limits.
 
 ## Operations and recovery
@@ -98,15 +97,14 @@ The local Node server binds to loopback. It accepts only the exact configured lo
 same-origin Fetch Metadata on search and persisted evidence routes, requires the exact local
 `Origin` plus `application/json` on mutations, and rejects cross-site/no-cors calls before reading
 their body. This local boundary is not remote authentication: internet exposure would still require
-authentication, authorisation, TLS and per-user audit identity. The internet-facing API-only Vercel
-project supplies those controls with exact-origin CORS, per-user bearer authentication and Redis;
-CORS is containment, not authentication. Generic feed implementations must
+authentication, authorisation, TLS and per-user audit identity and is outside this release. Generic
+feed implementations must
 permit only configured HTTPS hosts, resolve DNS, block loopback, private and link-local addresses,
 revalidate every redirect, require JSON content type, enforce response limits and timeouts, and
 redact bearer credentials from logs.
 
-The Pages build job and Vercel deployment exclusions remove `.env` files before public artefacts are
-assembled. Any repository tracking or credential-rotation change is a separate approval-gated
+The Pages build job removes `.env` files before public artefacts are assembled. Any repository
+tracking or credential-rotation change is a separate approval-gated
 operation and is not performed by this implementation. No credential template is
 required: configure the documented environment names only in the authorised process environment.
 
