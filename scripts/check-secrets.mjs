@@ -65,6 +65,7 @@ if (!["all", "current", "history"].includes(scope)) {
 }
 const scanCurrent = scope === "all" || scope === "current";
 const scanHistory = scope === "all" || scope === "history";
+const excludePrivateEnv = process.argv.includes("--exclude-private-env");
 
 function git(args, options = {}) {
   try {
@@ -109,6 +110,12 @@ if (scanCurrent) {
   }
   for (const file of currentFiles) {
     if (!isTextPath(file)) continue;
+    if (
+      excludePrivateEnv &&
+      ENV_PATH.test(file) &&
+      !/\.env\.example$/iu.test(file)
+    )
+      continue;
     if (ENV_PATH.test(file) && !/\.env\.example$/iu.test(file)) {
       findings.push(`${file}: environment file requires credential review`);
     }
