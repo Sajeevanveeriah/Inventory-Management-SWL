@@ -61,7 +61,7 @@ FIC-012,"Fictionville Mortice Lock, 3-Lever (DEMO)",25.00,0,32.50,No,GST on Inco
 `;
 
 /** Demo alias approved "previously": supplier ALIAS-11 -> ServiceM8 FIC-011. */
-export const DEMO_ALIAS = { supplierCode: 'ALIAS-11', itemNumber: 'FIC-011' };
+export const DEMO_ALIAS = { supplierCode: "ALIAS-11", itemNumber: "FIC-011" };
 
 /** Column mapping matching DEMO_SUPPLIER_CSV. */
 export const DEMO_SUPPLIER_MAPPING = {
@@ -85,15 +85,19 @@ export const DEMO_SERVICEM8_MAPPING = {
   barcode: 8,
 } as const;
 
-export const DEMO_SUPPLIER_FILENAME = 'DEMO-fictionville-supplier-price-list.csv';
-export const DEMO_SERVICEM8_FILENAME = 'DEMO-fictionville-servicem8-export.csv';
-export const DEMO_PROFILE_NAME = 'Fictionville demo (synthetic data)';
+export const DEMO_SUPPLIER_FILENAME =
+  "DEMO-fictionville-supplier-price-list.csv";
+export const DEMO_SERVICEM8_FILENAME = "DEMO-fictionville-servicem8-export.csv";
+export const DEMO_PROFILE_NAME = "Fictionville demo (synthetic data)";
 
 export function demoSupplierFile(): File {
-  return new File([DEMO_SUPPLIER_CSV], DEMO_SUPPLIER_FILENAME, { type: 'text/csv' });
+  return new File([DEMO_SUPPLIER_CSV], DEMO_SUPPLIER_FILENAME, {
+    type: "text/csv",
+  });
 }
 
 export function demoServicem8File(): File {
-  return new File([DEMO_SERVICEM8_CSV], DEMO_SERVICEM8_FILENAME, { type: 'text/csv' });
+  return new File([DEMO_SERVICEM8_CSV], DEMO_SERVICEM8_FILENAME, {
+    type: "text/csv",
+  });
 }
-
