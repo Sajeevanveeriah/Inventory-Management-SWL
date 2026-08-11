@@ -20,7 +20,7 @@ describe("zero-cost competitor provider adapters", () => {
     let requestUrl = "";
     let requestOptions: RequestInit | undefined;
     const provider = createSerperShoppingProvider(
-      { SERPER_API_KEY: "synthetic-serper-key" },
+      { SERPER_API_KEY: "fixture-serper-key" },
       async (url: string | URL | Request, options?: RequestInit) => {
         requestUrl = String(url);
         requestOptions = options;
@@ -46,7 +46,7 @@ describe("zero-cost competitor provider adapters", () => {
 
     expect(requestUrl).toBe("https://google.serper.dev/shopping");
     expect(new Headers(requestOptions?.headers).get("x-api-key")).toBe(
-      "synthetic-serper-key",
+      "fixture-serper-key",
     );
     expect(JSON.parse(String(requestOptions?.body))).toEqual({
       q: '"LW4570"',
@@ -78,15 +78,15 @@ describe("zero-cost competitor provider adapters", () => {
     const calls: { url: string; options: RequestInit | undefined }[] = [];
     const provider = createEbayBrowseProvider(
       {
-        EBAY_CLIENT_ID: "synthetic-client-id",
-        EBAY_CLIENT_SECRET: "synthetic-client-secret",
+        EBAY_CLIENT_ID: "fixture-client-id",
+        EBAY_CLIENT_SECRET: "fixture-client-secret",
         EBAY_MARKETPLACE_ID: "EBAY_AU",
       },
       async (url: string | URL | Request, options?: RequestInit) => {
         calls.push({ url: String(url), options });
         if (String(url).includes("/identity/v1/oauth2/token")) {
           return jsonResponse({
-            access_token: "synthetic-application-token",
+            access_token: "fixture-application-token",
             expires_in: 7_200,
             token_type: "Application Access Token",
           });
@@ -117,7 +117,7 @@ describe("zero-cost competitor provider adapters", () => {
     expect(calls[0]?.url).toBe("https://api.ebay.com/identity/v1/oauth2/token");
     const tokenHeaders = new Headers(calls[0]?.options?.headers);
     expect(tokenHeaders.get("authorization")).toBe(
-      `Basic ${Buffer.from("synthetic-client-id:synthetic-client-secret").toString("base64")}`,
+      `Basic ${Buffer.from("fixture-client-id:fixture-client-secret").toString("base64")}`,
     );
     expect(String(calls[0]?.options?.body)).toContain(
       "grant_type=client_credentials",
@@ -129,7 +129,7 @@ describe("zero-cost competitor provider adapters", () => {
     expect(browseUrl.searchParams.get("q")).toBe("Lockwood 001");
     const browseHeaders = new Headers(calls[1]?.options?.headers);
     expect(browseHeaders.get("authorization")).toBe(
-      "Bearer synthetic-application-token",
+      "Bearer fixture-application-token",
     );
     expect(browseHeaders.get("x-ebay-c-marketplace-id")).toBe("EBAY_AU");
     expect(outcome).toMatchObject({
@@ -147,13 +147,13 @@ describe("zero-cost competitor provider adapters", () => {
     expect(
       createProviderFromEnvironment({
         SWL_SEARCH_PROVIDER: "serper",
-        SERPER_API_KEY: "synthetic-serper-key",
+        SERPER_API_KEY: "fixture-serper-key",
       }).name,
     ).toBe("serper-shopping-au");
     expect(
       createProviderFromEnvironment({
-        EBAY_CLIENT_ID: "synthetic-client-id",
-        EBAY_CLIENT_SECRET: "synthetic-client-secret",
+        EBAY_CLIENT_ID: "fixture-client-id",
+        EBAY_CLIENT_SECRET: "fixture-client-secret",
       }).name,
     ).toBe("ebay-browse-au");
     expect(
@@ -167,9 +167,9 @@ describe("zero-cost competitor provider adapters", () => {
     ).toThrow(/serpapi, serper or ebay/u);
 
     const status = optionalProviderRegistry({
-      SERPER_API_KEY: "synthetic-serper-key",
-      EBAY_CLIENT_ID: "synthetic-client-id",
-      EBAY_CLIENT_SECRET: "synthetic-client-secret",
+      SERPER_API_KEY: "fixture-serper-key",
+      EBAY_CLIENT_ID: "fixture-client-id",
+      EBAY_CLIENT_SECRET: "fixture-client-secret",
     });
     expect(
       status.find(
