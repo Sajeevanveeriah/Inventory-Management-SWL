@@ -78,7 +78,7 @@ jobs:
       - name: Run TypeScript, ESLint, Vitest and web production build
         run: npm run verify
       - name: Scan current tree for business data
-        run: npm run check:data-safety
+        run: node scripts/check-no-business-data.mjs --exclude-private-env
       - name: Scan the current proposed tree for secrets
         run: node scripts/check-secrets.mjs --scope=current --exclude-private-env
       - name: Build and validate GitHub Pages assets and routes
