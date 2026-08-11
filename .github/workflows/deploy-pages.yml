@@ -31,6 +31,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Isolate private environment from the public Pages build
+        shell: bash
+        run: |
+          pages_index="$RUNNER_TEMP/pages-public.index"
+          GIT_INDEX_FILE="$pages_index" git read-tree HEAD
+          GIT_INDEX_FILE="$pages_index" git rm --cached --quiet --ignore-unmatch .env
+          rm -f -- .env
+          echo "GIT_INDEX_FILE=$pages_index" >> "$GITHUB_ENV"
+          test ! -e .env
+          test "$(GIT_INDEX_FILE="$pages_index" git ls-files -- .env)" = ""
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
