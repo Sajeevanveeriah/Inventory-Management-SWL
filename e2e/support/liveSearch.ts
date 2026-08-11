@@ -132,6 +132,10 @@ export async function installLiveSearchApiMock(page: Page) {
         },
         results: [
           {
+            searchQuery: body.query,
+            selectedProductTitle: "Lockwood 4570 mortice lock",
+            selectedProductBrand: "Lockwood",
+            selectedProductId: "4570",
             title: "Lockwood 4570 mortice lock",
             priceCents: 12_000,
             priceAud: "120.00",
