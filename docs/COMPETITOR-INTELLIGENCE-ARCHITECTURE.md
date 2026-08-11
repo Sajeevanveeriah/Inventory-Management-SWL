@@ -13,7 +13,7 @@ raw evidence -> deterministic match -> basis normalisation -> seller dedupe/outl
              -> human review -> separate confirmation -> append-only price history
 ```
 
-In prose: only minimum product identifiers and variant terms enter a provider query. Supplier cost, current sell price, private notes, customer data and complete imported rows do not leave the machine. Raw evidence remains linked to its query and retrieval run. Matching, normalisation and exclusions run before the pricing policy. The policy can produce a review state with no recommendation. An operator must review, then separately confirm, any application.
+In prose: only minimum product identifiers and variant terms enter discovery; the second stage sends the opaque exact-product token. GitHub Pages also uses its memory-only bearer token to authenticate to the protected API. Supplier cost, current sell price, private notes, customer data and complete imported rows do not leave the machine. Raw evidence remains linked to its query and retrieval run. Matching, normalisation and exclusions run before the pricing policy. The policy can produce a review state with no recommendation. An operator must review, then separately confirm, any application.
 
 ## Canonical offer schema v1
 
@@ -52,7 +52,7 @@ The aggressive benchmark is the lowest non-outlier eligible delivered comparable
 
 | Provider              | Default                                      | Authentication                      | Use and boundary                                     |
 | --------------------- | -------------------------------------------- | ----------------------------------- | ---------------------------------------------------- |
-| Deterministic fixture | enabled with `SWL_SEARCH_PROVIDER=fixture`   | none                                | Offline CI and adversarial UI states                 |
+| Deterministic fixture | test-only; explicit fixture process          | none                                | Offline CI and adversarial UI states; never live UI  |
 | Local CSV/XLSX/JSON   | not implemented in this release              | future local file authority         | Future reviewed high-volume import path              |
 | SerpAPI Shopping AU   | disabled until key and explicit local budget | key plus three paid-call controls   | Licensed intermediary, finite plan quota             |
 | Serper Shopping AU    | disabled adapter                             | API key                             | Finite starting credits, never unlimited             |
@@ -68,20 +68,22 @@ budget pessimistically reserves the per-call amount before dispatch. When the re
 cannot cover that reservation, it returns the quota-exhausted state without contacting the
 provider.
 
-The Node demonstration retains its environment policy. It requires all three controls:
+The loopback Node service retains its environment policy. It requires all three controls:
 `SWL_PAID_CALLS_ENABLED=true`, a positive integer `SWL_PROVIDER_COST_CEILING_CENTS` and a positive
 integer `SWL_PROVIDER_COST_PER_CALL_CENTS`; partial, malformed or non-positive configuration fails
 closed. Its process-local budget likewise reserves the declared cost before a paid request. The
-offline fixture is exempt. No adapter may spend, recharge, bypass access controls, CAPTCHA,
+offline fixture is test-only and exempt. The GitHub Pages API uses per-user opaque access tokens
+and Redis-backed global rate, cache, single-flight and pessimistic budget controls; the SerpAPI key
+never enters the static bundle. No adapter may spend, recharge, bypass access controls, CAPTCHA,
 paywalls, robots controls, authentication, site terms or rate limits.
 
 ## Operations and recovery
 
-The current application supports explicit single-query search, deterministic fixture states and
-operator-reviewed reference attachment. Its fixture intelligence panel is clearly labelled as an
-illustrative, session-only preview: its batch and review controls do not persist a queue or apply a
-price. The following are requirements for a future unattended catalogue-wide queue, not claims
-about the current release:
+The current application supports explicit single-query live search and operator-reviewed reference
+attachment. Production search first returns product candidates; only an exact operator-selected
+candidate can trigger direct merchant-offer retrieval. Test fixtures are not reachable through the
+production UI. The following are requirements for a future unattended catalogue-wide queue, not
+claims about the current release:
 
 1. Preview eligible item count, query stages, cache hits, expected calls, quota use and worst-case paid cost.
 2. Start with fixture or authorised feeds. Pause preserves completed evidence. Resume from the persisted checkpoint. Cancel leaves successful item evidence intact.
@@ -92,17 +94,20 @@ about the current release:
 
 ## Security and deployment boundary
 
-The Node server binds to loopback. It accepts only the exact configured loopback `Host`, requires
+The local Node server binds to loopback. It accepts only the exact configured loopback `Host`, requires
 same-origin Fetch Metadata on search and persisted evidence routes, requires the exact local
 `Origin` plus `application/json` on mutations, and rejects cross-site/no-cors calls before reading
 their body. This local boundary is not remote authentication: internet exposure would still require
-authentication, authorisation, TLS and per-user audit identity. Generic feed implementations must
+authentication, authorisation, TLS and per-user audit identity. The internet-facing API-only Vercel
+project supplies those controls with exact-origin CORS, per-user bearer authentication and Redis;
+CORS is containment, not authentication. Generic feed implementations must
 permit only configured HTTPS hosts, resolve DNS, block loopback, private and link-local addresses,
 revalidate every redirect, require JSON content type, enforce response limits and timeouts, and
 redact bearer credentials from logs.
 
-The formerly tracked root `.env` was removed from tracking without rewriting history. Rotate any
-credential that may ever have appeared there. `.env` remains ignored. No credential template is
+The Pages build job and Vercel deployment exclusions remove `.env` files before public artefacts are
+assembled. Any repository tracking or credential-rotation change is a separate approval-gated
+operation and is not performed by this implementation. No credential template is
 required: configure the documented environment names only in the authorised process environment.
 
 ## Source and licence register
