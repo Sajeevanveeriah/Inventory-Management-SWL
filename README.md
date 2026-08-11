@@ -285,18 +285,12 @@ adaptation workflow.
 
 ## Browser deployment shape
 
-The public frontend remains a static GitHub Pages build. Live search is optional and uses a
-separate API-only Vercel project:
-
-- GitHub Pages contains no SerpAPI key, Redis credential, access token or cost-control secret;
-- an operator enters a revocable SWL API access token for the current tab only;
-- the Pages UI sends an authenticated JSON `POST` to the exact configured API origin;
-- the API authenticates the operator, applies Redis-backed rate, cache, single-flight and budget
-  controls, then calls SerpAPI with the server-side key;
-- product discovery and merchant-offer retrieval are separate calls. Google Shopping rows are
-  product candidates, never competitor offers;
-- the installed desktop continues to call SerpAPI through its native Rust client and Windows
-  protected credential storage. It does not use Vercel.
+The public frontend is a static GitHub Pages build with no provider integration. It contains no
+SerpAPI key, access token or cost-control secret and makes no live competitor-search request.
+Manual competitor evidence and the core comparison workflow remain available. The installed
+desktop performs optional live search through its native Rust client and Windows protected
+credential storage. Product discovery and merchant-offer retrieval remain separate calls, so
+Google Shopping product candidates are never presented as competitor offers.
 
 The repository also includes one small loopback Node server (`server/`) for local development:
 
@@ -310,8 +304,7 @@ The repository also includes one small loopback Node server (`server/`) for loca
 > **GitHub Pages remains session-only for operational records.** Approved catalogue records,
 > approvals, price history, references and source changes remain in memory for the current tab and
 > disappear on refresh. Operator-authored profiles, aliases and settings continue to use IndexedDB.
-> Live search is available only when the exact API origin is compiled into the Pages CSP and the
-> operator supplies a valid in-memory SWL API access token.
+> Live provider search is deliberately unavailable in this static build.
 
 ### Live search API key
 
@@ -322,36 +315,8 @@ The Node demonstration requires `SERPAPI_KEY`, `SWL_PAID_CALLS_ENABLED=true`, a 
 `SWL_PROVIDER_COST_PER_CALL_CENTS`. Keep these values in the process environment and never commit
 them. Missing, partial, malformed or non-positive budget configuration fails closed as not configured.
 The local server budget reserves the declared per-call cents before every request and reports quota
-exhaustion when the ceiling is reached. The Vercel API uses Redis as its global budget authority.
-Deterministic fixtures are test-only; fixture-mode health never exposes operator live-search controls.
-
-The API-only Vercel project requires these server-side variables:
-
-```text
-SERPAPI_KEY
-SERPAPI_LOCATION
-SWL_ACCESS_TOKEN_PEPPER
-SWL_REDIS_REST_URL
-SWL_REDIS_REST_TOKEN
-SWL_FRONTEND_ORIGIN
-SWL_PAID_CALLS_ENABLED
-SWL_PROVIDER_COST_CEILING_CENTS
-SWL_PROVIDER_COST_PER_CALL_CENTS
-SWL_PROVIDER_BUDGET_PERIOD
-SWL_SEARCH_PER_USER_PER_MINUTE
-SWL_SEARCH_GLOBAL_PER_MINUTE
-SWL_SEARCH_CACHE_TTL_SECONDS
-```
-
-`SWL_PROVIDER_BUDGET_PERIOD` must be the current `YYYY-MM` month in
-`Australia/Melbourne`. The API fails closed after the month changes until an operator approves a
-new ceiling and updates that value. Redis retains the completed period ledger beyond its active
-month; it does not create a fresh allowance by letting an old key expire.
-
-GitHub Pages receives only the public `VITE_LIVE_SEARCH_API_ORIGIN` repository variable. Never put
-the SerpAPI key, Redis credentials, token pepper or an operator access token in a `VITE_*` value.
-Provision each operator token out of band with `npm run provision:web-access-token -- --sub <id>
---expires <ISO timestamp> --token-file <new protected path>` after Redis and the pepper are configured.
+exhaustion when the ceiling is reached. Deterministic fixtures are test-only; fixture-mode health
+never exposes operator live-search controls. GitHub Pages receives no provider configuration.
 
 ## Development and browser demonstration
 
@@ -409,7 +374,6 @@ npm run verify         # typecheck + lint + test + build
 | zod               | Schema validation for stored configuration | MIT            |
 | idb               | Typed IndexedDB wrapper                    | ISC            |
 | @tauri-apps/api   | Imported desktop IPC API                   | MIT/Apache-2.0 |
-| @upstash/redis    | API-only global auth and cost controls     | MIT            |
 
 Desktop Rust dependencies are deliberately exact and locked in `src-tauri/Cargo.lock`:
 
