@@ -6,7 +6,11 @@ import {
   type LiveHealth,
   type LiveSearchOutcome,
 } from "../core/liveSearch";
-import { defaultSources, type CompetitorSource } from "../core/sources";
+import {
+  defaultSources,
+  withoutLegacySyntheticSources,
+  type CompetitorSource,
+} from "../core/sources";
 import { sha256Hex } from "../io/hash";
 import * as browserDb from "../storage/db";
 import type {
@@ -49,6 +53,9 @@ import {
 
 const MAX_CONFIGURATION_BYTES = 10 * 1024 * 1024;
 const RESET_CONFIRMATION = "ERASE SWL LOCAL DATA";
+// Longer than the API function's 20-second ceiling so a paid call cannot keep
+// running after the browser has already encouraged the operator to retry.
+const REQUEST_TIMEOUT_MS = 25_000;
 
 const WebCatalogueItemSchema = z.object({
   id: z.string().min(1).max(128),
@@ -81,6 +88,27 @@ const SessionApprovedChangeSchema = z
 export interface WebPlatformOptions {
   /** Static Pages has no Node process; operational records are session-only. */
   sessionOnly?: boolean;
+  /** Optional HTTPS origin for the protected live-search API used by Pages. */
+  liveSearchApiOrigin?: string;
+}
+
+function canonicalApiOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  return parsed.protocol === "https:" &&
+    parsed.username === "" &&
+    parsed.password === "" &&
+    parsed.pathname === "/" &&
+    parsed.search === "" &&
+    parsed.hash === "" &&
+    parsed.origin === value
+    ? parsed.origin
+    : null;
 }
 
 function sanitisedFetchError(error: unknown): string {
@@ -97,7 +125,10 @@ async function requestJson<T>(
   init?: RequestInit,
 ): Promise<PlatformResult<T>> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    REQUEST_TIMEOUT_MS,
+  );
   try {
     const response = await fetch(url, {
       ...init,
@@ -108,11 +139,56 @@ async function requestJson<T>(
       },
     });
     if (!response.ok) {
+      let serviceMessage = "";
+      let serviceCode = "";
+      try {
+        const errorBody: unknown = await response.json();
+        if (
+          errorBody &&
+          typeof errorBody === "object" &&
+          !Array.isArray(errorBody) &&
+          "error" in errorBody &&
+          typeof errorBody.error === "string" &&
+          errorBody.error.length <= 256 &&
+          ![...errorBody.error].some((character) => {
+            const point = character.codePointAt(0);
+            return point !== undefined && (point <= 31 || point === 127);
+          })
+        ) {
+          serviceMessage = errorBody.error;
+        }
+        if (
+          errorBody &&
+          typeof errorBody === "object" &&
+          !Array.isArray(errorBody) &&
+          "code" in errorBody &&
+          errorBody.code === "selection_expired"
+        ) {
+          serviceCode = errorBody.code;
+        }
+      } catch {
+        // Status and a fixed local message remain sufficient if no safe error body exists.
+      }
       const code: PlatformErrorCode =
-        response.status === 409 ? "conflict" : "provider_error";
+        response.status === 410 && serviceCode === "selection_expired"
+          ? "selection_expired"
+          : response.status === 401 || response.status === 403
+            ? "permission_denied"
+            : response.status === 429 && /budget/iu.test(serviceMessage)
+              ? "quota_exhausted"
+              : [400, 413, 415, 422].includes(response.status)
+                ? "invalid_input"
+                : response.status === 409
+                  ? "conflict"
+                  : response.status === 429
+                    ? "rate_limited"
+                    : response.status === 503
+                      ? "unavailable"
+                      : "provider_error";
       return platformFail(
         code,
-        `The application service rejected the request (${response.status}).`,
+        serviceMessage ||
+          `The application service rejected the request (${response.status}).`,
       );
     }
     const parsed = schema.safeParse(await response.json());
@@ -338,11 +414,45 @@ function webProviderStatus(health: {
   };
 }
 
+function webSessionTokenMissingStatus(): ProviderStatus {
+  return {
+    provider: "serpapi-google-shopping-au",
+    state: "not_configured",
+    paidCallsEnabled: false,
+    costCeilingAud: "0.00",
+    costCeilingCents: 0,
+    costPerCallCents: 0,
+    spentCents: 0,
+    credentialConfigured: false,
+    credentialHint: null,
+    lastValidatedAt: null,
+  };
+}
+
 export function createWebPlatformService(
   storage: WebConfigurationStorage = browserDb,
   options: WebPlatformOptions = {},
 ): PlatformService {
   const sessionOnly = options.sessionOnly === true;
+  const liveSearchApiOrigin = canonicalApiOrigin(options.liveSearchApiOrigin);
+  const liveSearchEnabled = !sessionOnly || liveSearchApiOrigin !== null;
+  let sessionApiAccessToken: string | null = null;
+  const liveUrl = (path: string) =>
+    liveSearchApiOrigin === null ? path : `${liveSearchApiOrigin}${path}`;
+  const liveRequestJson = <T>(
+    path: string,
+    schema: z.ZodType<T>,
+    init?: RequestInit,
+  ) =>
+    requestJson(liveUrl(path), schema, {
+      ...init,
+      headers: {
+        ...init?.headers,
+        ...(sessionApiAccessToken
+          ? { authorization: `Bearer ${sessionApiAccessToken}` }
+          : {}),
+      },
+    });
   const importPreviews = new Map<string, ConfigurationEnvelope>();
   const resetPreviews = new Map<
     string,
@@ -467,13 +577,14 @@ export function createWebPlatformService(
       nativePersistence: false,
       protectedCredentials: false,
       recovery: true,
-      liveSearch: !sessionOnly,
+      liveSearch: liveSearchEnabled,
+      sessionAccessToken: liveSearchApiOrigin !== null,
     },
     rawImportPersistence: "never",
     manualEvidencePersistence: "catalogue-reference-or-session",
 
     health: () =>
-      sessionOnly
+      !liveSearchEnabled
         ? Promise.resolve(
             platformOk({
               ok: true,
@@ -483,7 +594,7 @@ export function createWebPlatformService(
               schemaVersion: 1,
             }),
           )
-        : (requestJson("/api/health", LiveHealthSchema) as Promise<
+        : (liveRequestJson("/api/health", LiveHealthSchema) as Promise<
             PlatformResult<LiveHealth>
           >),
 
@@ -637,8 +748,15 @@ export function createWebPlatformService(
           enabled: source.enabled,
         }));
         const parsed = z.array(CompetitorSourceSchema).safeParse(sources);
+        const productionSources = parsed.success
+          ? withoutLegacySyntheticSources(parsed.data)
+          : [];
         return parsed.success
-          ? platformOk(parsed.data)
+          ? platformOk(
+              productionSources.length === 0
+                ? defaultSources()
+                : productionSources,
+            )
           : platformFail(
               "integrity_failed",
               "The source registry response is invalid.",
@@ -959,7 +1077,7 @@ export function createWebPlatformService(
     },
     search: {
       async status() {
-        if (sessionOnly) {
+        if (!liveSearchEnabled) {
           return platformOk({
             provider: "manual-only",
             state: "not_configured",
@@ -973,33 +1091,78 @@ export function createWebPlatformService(
             lastValidatedAt: null,
           });
         }
+        if (liveSearchApiOrigin !== null && sessionApiAccessToken === null) {
+          return platformOk(webSessionTokenMissingStatus());
+        }
         const health = await service.health();
         return health.ok ? platformOk(webProviderStatus(health.value)) : health;
       },
-      async query(query) {
-        if (sessionOnly) {
+      async query(query, candidateToken) {
+        if (!liveSearchEnabled) {
           return {
             state: "not_configured",
             query,
             queryKind: query.trim() ? "free-text" : "empty",
             provider: "manual-only",
+            candidates: [],
             results: [],
             band: null,
             detail:
               "The static Pages demonstration is manual-only and makes no network search request.",
           };
         }
-        const result = await requestJson(
-          `/api/competitor-search?q=${encodeURIComponent(query)}`,
+        if (liveSearchApiOrigin !== null && sessionApiAccessToken === null) {
+          return {
+            state: "not_configured",
+            query,
+            queryKind: query.trim() ? "free-text" : "empty",
+            provider: "serpapi-google-shopping-au",
+            candidates: [],
+            results: [],
+            band: null,
+            detail:
+              "Enter the revocable SWL web API access token for this tab before searching.",
+          };
+        }
+        const result = await liveRequestJson(
+          "/api/competitor-search",
           LiveSearchOutcomeSchema,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              query,
+              ...(candidateToken ? { candidateToken } : {}),
+            }),
+          },
         );
         if (result.ok) return result.value as LiveSearchOutcome;
+        if (result.error.code === "permission_denied") {
+          sessionApiAccessToken = null;
+        }
         return {
           state:
-            result.error.code === "timeout" ? "timeout" : "server_unreachable",
+            result.error.code === "timeout"
+              ? "timeout"
+              : result.error.code === "rate_limited"
+                ? "rate_limited"
+                : result.error.code === "conflict"
+                  ? "search_in_progress"
+                  : result.error.code === "selection_expired"
+                    ? "selection_expired"
+                    : result.error.code === "quota_exhausted"
+                      ? "quota_exhausted"
+                      : result.error.code === "invalid_input"
+                        ? "invalid_query"
+                        : result.error.code === "permission_denied"
+                          ? "not_configured"
+                          : result.error.code === "provider_error"
+                            ? "provider_error"
+                            : "server_unreachable",
           query,
           queryKind: query.trim() ? "free-text" : "empty",
           provider: "unknown",
+          candidates: [],
           results: [],
           band: null,
           detail: result.error.message,
@@ -1010,22 +1173,27 @@ export function createWebPlatformService(
           "unavailable",
           "Paid provider calls are configured on the web server.",
         ),
-      configureCredential: async () =>
-        platformFail(
-          "unavailable",
-          "Web provider credentials are configured on the web server.",
-        ),
+      async configureCredential(secret) {
+        if (!/^[A-Za-z0-9_-]{43,256}$/u.test(secret)) {
+          return platformFail(
+            "invalid_input",
+            "Enter the API access token issued for this application.",
+          );
+        }
+        sessionApiAccessToken = secret;
+        const status = await service.search.status();
+        if (!status.ok) sessionApiAccessToken = null;
+        return status;
+      },
       validateCredential: async () => service.search.status(),
-      replaceCredential: async () =>
-        platformFail(
-          "unavailable",
-          "Web provider credentials are configured on the web server.",
-        ),
-      removeCredential: async () =>
-        platformFail(
-          "unavailable",
-          "Web provider credentials are configured on the web server.",
-        ),
+      async replaceCredential(secret) {
+        sessionApiAccessToken = null;
+        return service.search.configureCredential(secret);
+      },
+      async removeCredential() {
+        sessionApiAccessToken = null;
+        return platformOk(webSessionTokenMissingStatus());
+      },
     },
     files: {
       async chooseInputFile() {
