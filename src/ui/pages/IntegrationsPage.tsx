@@ -17,7 +17,7 @@ const ADAPTERS: AdapterCard[] = [
     detail:
       "The export step produces a candidate Materials & Services import workbook that mirrors the exact headers of the loaded ServiceM8 export. Import it manually through ServiceM8 after checking the file.",
     boundary:
-      "No ServiceM8 API credentials are configured and no ServiceM8 API call or write is possible. Optional competitor search is a separate, explicit native HTTPS integration with its own allowlist and protected credential boundary.",
+      "No ServiceM8 API credentials are configured and no ServiceM8 API call or write is possible. Optional competitor search is a separate, explicit HTTPS integration through the active platform's native or protected-API credential boundary.",
   },
   {
     name: "Xero",
