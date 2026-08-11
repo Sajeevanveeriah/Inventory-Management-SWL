@@ -2,26 +2,33 @@
 
 ## Catalogue-wide competitor queries
 
-Only the minimum operator-entered product identifier or query may leave the machine through a
-configured provider. Supplier cost, current sell price, private notes, customer data and complete
-imported rows must not be included in provider queries. Provider retrieval is finite and
-authorised evidence collection, not exhaustive web coverage.
+Only the minimum operator-entered product identifier or query and the opaque exact-product
+selection token may leave the machine as search fields. GitHub Pages requests also carry the
+revocable SWL bearer token as transport authentication. Supplier cost, current sell price, private
+notes, customer data and complete imported rows must not be included in provider queries. Provider
+retrieval is finite and authorised evidence collection, not exhaustive web coverage.
 
-The secondary web demonstration uses the existing Node adapter on its own origin. The installed
-desktop application does not start or contain that server and does not open a loopback port.
-Optional desktop search is executed by Rust after explicit operator action, through exact
-allowlisted HTTPS hosts. The WebView cannot contact provider endpoints directly.
+The GitHub Pages frontend can use a separate protected API-only service after the operator enters a
+revocable SWL access token for the current tab. The SerpAPI key, Redis credentials, token pepper,
+budget and rate controls remain server-side. The installed desktop application does not start or
+contain that service and does not open a loopback port. Optional desktop search is executed by Rust
+after explicit operator action, through exact allowlisted HTTPS hosts. The WebView cannot contact
+provider endpoints directly.
 
-The GitHub Pages build is explicitly session-only. It makes no `/api` or live-provider request;
-operational catalogue, approval/history, reference and source records exist only in the current tab
+The GitHub Pages build is session-only for operational records. Live search calls only the exact
+API origin compiled into its CSP and only while a valid access token exists in JavaScript memory.
+The access token is not written to localStorage, sessionStorage, IndexedDB, URLs, exports or logs.
+Operational catalogue, approval/history, reference and source records exist only in the current tab
 and are discarded on refresh. Profiles, aliases and settings remain the only IndexedDB records.
 
 What still holds:
 
 - Business files (supplier and ServiceM8 exports) are parsed in the shared UI memory and their rows
   are never included in network requests. The only business text permitted to leave the machine is
-  the operator's typed competitor query: through the native Rust provider client on desktop, or
-  through the same-origin Node adapter in the web demonstration.
+  the operator's typed competitor query: through the native Rust provider client on desktop, the
+  local loopback Node adapter, or the protected API-only service used by GitHub Pages. The selected
+  product's opaque token is sent in the second stage; Pages also sends its memory-only access token
+  for API authentication.
 - There is no analytics, telemetry, remote database, external font, CDN asset, ServiceM8 API
   write or Xero API write.
 - IndexedDB in the browser is limited to operator-authored configuration: mapping profiles,
@@ -43,8 +50,9 @@ headers. Run the optional Node demonstration with synthetic data and fixture sea
 untrusted computers; do not treat it as a multi-user service. The installed desktop never starts
 or contacts this server.
 
-Secrets are never persisted in SQLite, backups or exports. Browser-demonstration keys live only
-in the server environment. Desktop credentials use Windows-protected credential storage and the
+Secrets are never persisted in SQLite, backups or exports. Browser provider and Redis credentials
+live only in the API environment; the revocable browser access token lives only in tab memory.
+Desktop credentials use Windows-protected credential storage and the
 complete value is never returned to the WebView, logs or CI artefacts. Storing a desktop
 credential does not authorise a paid request: successful validation, operator-entered positive
 total-ceiling and per-call-reservation cents, and explicit enablement are all required. The native
