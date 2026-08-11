@@ -18,6 +18,22 @@ describe('suggestMappings', () => {
     }
   });
 
+  it('suggests the optional supplier category without making it required', () => {
+    const suggestions = suggestMappings(
+      ['Product Code', 'Description', 'Item Price', 'Category'],
+      SUPPLIER_FIELDS,
+    );
+    const byField = Object.fromEntries(suggestions.map((s) => [s.field, s.columnIndex]));
+    expect(byField.supplierCategory).toBe(3);
+    expect(
+      validateMapping(
+        { supplierCode: 0, supplierDescription: 1, supplierCost: 2 },
+        SUPPLIER_FIELDS,
+        ['Product Code', 'Description', 'Item Price'],
+      ),
+    ).toHaveLength(0);
+  });
+
   it('never assigns the same column to two fields', () => {
     const suggestions = suggestMappings(['Code', 'Misc'], SUPPLIER_FIELDS);
     const cols = suggestions.map((s) => s.columnIndex);
@@ -64,3 +80,4 @@ describe('validateMapping', () => {
     expect(issues.some((i) => i.message.includes('no longer exists'))).toBe(true);
   });
 });
+
