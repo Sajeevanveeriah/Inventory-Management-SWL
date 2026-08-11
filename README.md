@@ -178,22 +178,28 @@ Configuration is represented by a versioned typed registry in `src/core/configRe
 
 ## Privacy model
 
-> **Network boundary.** The browser demonstration uses the existing Node adapter on its own
-> origin. The installed desktop application does not bundle or start that server. Optional
-> desktop search is initiated explicitly and is performed by Rust only through approved HTTPS
-> provider hosts; the WebView cannot contact provider endpoints directly.
+> **Network boundary.** The GitHub Pages build sends an authenticated, operator-initiated product
+> query and the subsequently selected opaque product token only to its exact protected API origin.
+> The optional local browser demonstration uses the Node adapter on its own origin. The installed
+> desktop application does not bundle or start that server: desktop search is performed by Rust
+> only through approved HTTPS provider hosts, and the WebView cannot contact provider endpoints
+> directly.
 
 - **Business file processing stays in the shared UI's memory.** Imported supplier and ServiceM8
-  rows are never included in network requests. Only the operator's typed competitor query may
-  leave the computer: through Rust on desktop or the same-origin Node adapter in the web demo.
+  rows are never included in network requests. An explicit search sends only the operator's typed
+  competitor query and, after exact selection, the opaque product token: through Rust on desktop,
+  the exact protected API used by GitHub Pages, or the same-origin Node adapter in the local web
+  demonstration. Pages also sends its memory-only bearer token as transport authentication.
 - No analytics, no telemetry, no remote fonts and no CDN assets.
 - The desktop CSP permits bundled resources and the Tauri IPC bridge only; the WebView cannot
-  contact provider hosts. The web demonstration CSP permits its own origin only.
+  contact provider hosts. The local web demonstration permits its own origin; the Pages CSP adds
+  only the exact protected API origin compiled into that build.
 - Uploaded files stay in memory. **Imported business rows are never persisted.**
 - The web demonstration stores operator-authored mapping profiles, approved aliases and settings
   in IndexedDB. The desktop adapter stores authorised operational records in SQLite under the
   stable per-user local-data directory. Raw imported rows remain memory-only on both platforms.
-- "Clear session data" wipes in-memory work. "Preview application data erasure…" shows an exact
+- "Clear active workflow" wipes the current imported files, mapping and review work but does not
+  erase operational records, configuration or credentials. "Preview application data erasure…" shows an exact
   scope, creates a verified backup and requires the displayed confirmation phrase before deleting
   authorised local records; uninstall remains separate and preserves application data. Desktop
   reset preserves legacy WebView IndexedDB configuration outside the native-store erasure scope so
@@ -277,36 +283,75 @@ The output is labelled a _candidate_ import file until it is validated against a
 import template — see [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the
 adaptation workflow.
 
-## Browser demonstration shape
+## Browser deployment shape
 
-The secondary browser demonstration is **the shared SPA plus one small Node server** (`server/`,
-plain Node, zero extra runtime dependencies):
+The public frontend remains a static GitHub Pages build. Live search is optional and uses a
+separate API-only Vercel project:
+
+- GitHub Pages contains no SerpAPI key, Redis credential, access token or cost-control secret;
+- an operator enters a revocable SWL API access token for the current tab only;
+- the Pages UI sends an authenticated JSON `POST` to the exact configured API origin;
+- the API authenticates the operator, applies Redis-backed rate, cache, single-flight and budget
+  controls, then calls SerpAPI with the server-side key;
+- product discovery and merchant-offer retrieval are separate calls. Google Shopping rows are
+  product candidates, never competitor offers;
+- the installed desktop continues to call SerpAPI through its native Rust client and Windows
+  protected credential storage. It does not use Vercel.
+
+The repository also includes one small loopback Node server (`server/`) for local development:
 
 - the browser calls its own origin only; the server performs outbound provider searches and
   returns normalised results;
 - the server persists catalogue items, append-only price history, approval records, competitor
   reference prices and source-registry state in a JSON/JSONL directory store (`server/data/`,
   gitignored; configurable via `SWL_DATA_DIR`);
-- in production the same server serves the built SPA from `dist/`, so everything runs as a
-  single origin.
+- it can serve the built SPA from `dist/` for supervised local use.
 
-> **GitHub Pages is a session-only demonstration surface.** Its deterministic static build never
-> calls `/api`: approved catalogue records, approvals, price history, references and source changes
-> remain in memory for the current tab and disappear on refresh. Browser downloads and the complete
-> synthetic seven-stage workflow remain available; live search reports not configured and manual
-> evidence remains usable. Operator-authored profiles, aliases and settings continue to use
-> IndexedDB. Durable operational persistence and live search require the same-origin Node adapter.
+> **GitHub Pages remains session-only for operational records.** Approved catalogue records,
+> approvals, price history, references and source changes remain in memory for the current tab and
+> disappear on refresh. Operator-authored profiles, aliases and settings continue to use IndexedDB.
+> Live search is available only when the exact API origin is compiled into the Pages CSP and the
+> operator supplies a valid in-memory SWL API access token.
 
 ### Live search API key
 
-Live search uses SerpAPI (Google Shopping, Australian region) behind a provider interface
-(`server/search/`) so the provider can be swapped. A key alone never authorises a paid call.
+Live search uses SerpAPI Google Shopping and Google Immersive Product in the Australian region
+behind a provider interface (`server/search/`). A key alone never authorises a paid call.
 The Node demonstration requires `SERPAPI_KEY`, `SWL_PAID_CALLS_ENABLED=true`, a positive integer
 `SWL_PROVIDER_COST_CEILING_CENTS` and a positive integer
 `SWL_PROVIDER_COST_PER_CALL_CENTS`. Keep these values in the process environment and never commit
 them. Missing, partial, malformed or non-positive budget configuration fails closed as not configured.
-The in-memory budget reserves the declared per-call cents before every request and reports quota
-exhaustion when the ceiling is reached. The deterministic fixture is offline and exempt.
+The local server budget reserves the declared per-call cents before every request and reports quota
+exhaustion when the ceiling is reached. The Vercel API uses Redis as its global budget authority.
+Deterministic fixtures are test-only; fixture-mode health never exposes operator live-search controls.
+
+The API-only Vercel project requires these server-side variables:
+
+```text
+SERPAPI_KEY
+SERPAPI_LOCATION
+SWL_ACCESS_TOKEN_PEPPER
+SWL_REDIS_REST_URL
+SWL_REDIS_REST_TOKEN
+SWL_FRONTEND_ORIGIN
+SWL_PAID_CALLS_ENABLED
+SWL_PROVIDER_COST_CEILING_CENTS
+SWL_PROVIDER_COST_PER_CALL_CENTS
+SWL_PROVIDER_BUDGET_PERIOD
+SWL_SEARCH_PER_USER_PER_MINUTE
+SWL_SEARCH_GLOBAL_PER_MINUTE
+SWL_SEARCH_CACHE_TTL_SECONDS
+```
+
+`SWL_PROVIDER_BUDGET_PERIOD` must be the current `YYYY-MM` month in
+`Australia/Melbourne`. The API fails closed after the month changes until an operator approves a
+new ceiling and updates that value. Redis retains the completed period ledger beyond its active
+month; it does not create a fresh allowance by letting an old key expire.
+
+GitHub Pages receives only the public `VITE_LIVE_SEARCH_API_ORIGIN` repository variable. Never put
+the SerpAPI key, Redis credentials, token pepper or an operator access token in a `VITE_*` value.
+Provision each operator token out of band with `npm run provision:web-access-token -- --sub <id>
+--expires <ISO timestamp> --token-file <new protected path>` after Redis and the pepper are configured.
 
 ## Development and browser demonstration
 
@@ -320,7 +365,7 @@ npm run seed         # seed realistic fictional sample data into server/data/
 npm run server       # serves the app AND the API on http://127.0.0.1:8787 (.env auto-loaded)
 npm run dev          # development server (proxies /api to the Node server)
 npm run build        # type-check + production build (dist/)
-npm run server:fixture  # offline deterministic fixture provider (testing/demo)
+npm run server:fixture  # offline deterministic provider for automated/local testing only
 ```
 
 The `server` scripts allow only the exact loopback Vite development and preview origins in addition
@@ -364,6 +409,7 @@ npm run verify         # typecheck + lint + test + build
 | zod               | Schema validation for stored configuration | MIT            |
 | idb               | Typed IndexedDB wrapper                    | ISC            |
 | @tauri-apps/api   | Imported desktop IPC API                   | MIT/Apache-2.0 |
+| @upstash/redis    | API-only global auth and cost controls     | MIT            |
 
 Desktop Rust dependencies are deliberately exact and locked in `src-tauri/Cargo.lock`:
 
