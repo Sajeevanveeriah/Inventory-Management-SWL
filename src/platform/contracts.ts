@@ -22,6 +22,7 @@ export type PlatformErrorCode =
   | "provider_error"
   | "quota_exhausted"
   | "rate_limited"
+  | "selection_expired"
   | "timeout"
   | "unavailable"
   | "unsupported_version";
@@ -53,6 +54,8 @@ export interface PlatformCapabilities {
   protectedCredentials: boolean;
   recovery: boolean;
   liveSearch: boolean;
+  /** Pages API token is held only in memory and is distinct from provider credentials. */
+  sessionAccessToken?: boolean;
 }
 
 export interface AliasRecord {
@@ -324,7 +327,7 @@ export interface PlatformService {
   };
   search: {
     status(): Promise<PlatformResult<ProviderStatus>>;
-    query(query: string): Promise<LiveSearchOutcome>;
+    query(query: string, candidateToken?: string): Promise<LiveSearchOutcome>;
     setPaidCallsEnabled(
       enabled: boolean,
       costCeilingCents?: number,
