@@ -17,7 +17,6 @@
     "server": "node --env-file-if-exists=.env server/index.mjs --trusted-origin http://127.0.0.1:5173 --trusted-origin http://localhost:5173 --trusted-origin http://127.0.0.1:4173 --trusted-origin http://localhost:4173",
     "server:fixture": "node --env-file-if-exists=.env tests/support/fixture-server.mjs --trusted-origin http://127.0.0.1:5173 --trusted-origin http://localhost:5173 --trusted-origin http://127.0.0.1:4173 --trusted-origin http://localhost:4173",
     "seed": "node server/seed.mjs",
-    "provision:web-access-token": "node scripts/provision-web-access-token.mjs",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -34,7 +33,6 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
-    "@upstash/redis": "1.38.2",
     "big.js": "7.0.1",
     "exceljs": "4.4.0",
     "idb": "8.0.3",
