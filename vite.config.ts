@@ -4,43 +4,14 @@ import react from "@vitejs/plugin-react";
 /**
  * Content Security Policy for the production build only.
  *
- * Invariant change (authorised by the repository owner, August 2026): the
- * application is no longer no-network. Local deployments call their own
- * origin; GitHub Pages may also call one exact HTTPS live-search API origin.
- * The provider credential remains in the backend and no retailer origin is
- * reachable from the page.
+ * Browser deployments may call only their own origin. GitHub Pages is static
+ * and has no provider integration; the desktop bundle receives its separate
+ * network policy from Tauri.
  *
  * The policy is not applied in dev because Vite's HMR client requires inline
  * scripts and a WebSocket connection.
  */
-function canonicalLiveSearchApiOrigin(): string | null {
-  const value = process.env.VITE_LIVE_SEARCH_API_ORIGIN;
-  if (!value) {
-    if (process.env.VITE_REQUIRE_LIVE_SEARCH_API_ORIGIN === "true") {
-      throw new Error(
-        "VITE_LIVE_SEARCH_API_ORIGIN is required for this production build.",
-      );
-    }
-    return null;
-  }
-  const parsed = new URL(value);
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username !== "" ||
-    parsed.password !== "" ||
-    parsed.pathname !== "/" ||
-    parsed.search !== "" ||
-    parsed.hash !== "" ||
-    parsed.origin !== value
-  ) {
-    throw new Error(
-      "VITE_LIVE_SEARCH_API_ORIGIN must be a canonical HTTPS origin.",
-    );
-  }
-  return parsed.origin;
-}
-
-const productionCsp = (liveSearchApiOrigin: string | null) =>
+const productionCsp = () =>
   [
     "default-src 'none'",
     "script-src 'self'",
@@ -49,9 +20,7 @@ const productionCsp = (liveSearchApiOrigin: string | null) =>
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
-    // GitHub Pages remains the frontend. Only the exact protected API origin
-    // may be added; the desktop bundle receives its policy from Tauri.
-    `connect-src 'self'${liveSearchApiOrigin ? ` ${liveSearchApiOrigin}` : ""}`,
+    "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",
@@ -75,7 +44,7 @@ export default defineConfig(({ mode }) => ({
         }
         return html.replace(
           "<!-- %PRODUCTION_CSP% -->",
-          `<meta http-equiv="Content-Security-Policy" content="${productionCsp(canonicalLiveSearchApiOrigin())}" />`,
+          `<meta http-equiv="Content-Security-Policy" content="${productionCsp()}" />`,
         );
       },
     },
