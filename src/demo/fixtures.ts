@@ -67,6 +67,7 @@ export const DEMO_ALIAS = { supplierCode: 'ALIAS-11', itemNumber: 'FIC-011' };
 export const DEMO_SUPPLIER_MAPPING = {
   supplierCode: 0,
   supplierDescription: 1,
+  supplierCategory: 3,
   supplierBarcode: 4,
   supplierCost: 5,
 } as const;
@@ -95,3 +96,4 @@ export function demoSupplierFile(): File {
 export function demoServicem8File(): File {
   return new File([DEMO_SERVICEM8_CSV], DEMO_SERVICEM8_FILENAME, { type: 'text/csv' });
 }
+
