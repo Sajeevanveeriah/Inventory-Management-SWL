@@ -1,15 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { APP_NAME, APP_VERSION } from './core/audit';
-import { usePlatform } from './platform/context';
-import { STEP_ORDER, STEP_TITLES, useAppDispatch, useAppState, type StepId } from './state/store';
-import { useActions } from './state/useActions';
-import { BrandLockup, BrandMark, timeOfDayGreeting } from './ui/Brand';
-import { PrivacyDialog } from './ui/PrivacyDialog';
-import { SettingsDialog } from './ui/SettingsDialog';
-import { RecoveryPanel, SettingsPage } from './ui/pages/ConfigPages';
-import { CompetitorsPage, SourcesPage } from './ui/pages/CompetitorSearchPage';
-import { ExpansionCataloguePage } from './ui/pages/ExpansionCataloguePage';
-import { IntegrationsPage } from './ui/pages/IntegrationsPage';
+import { useEffect, useRef, useState } from "react";
+import { APP_NAME, APP_VERSION } from "./core/audit";
+import { usePlatform } from "./platform/context";
+import {
+  STEP_ORDER,
+  STEP_TITLES,
+  useAppDispatch,
+  useAppState,
+  type StepId,
+} from "./state/store";
+import { useActions } from "./state/useActions";
+import { BrandLockup, BrandMark, timeOfDayGreeting } from "./ui/Brand";
+import { PrivacyDialog } from "./ui/PrivacyDialog";
+import { SettingsDialog } from "./ui/SettingsDialog";
+import { RecoveryPanel, SettingsPage } from "./ui/pages/ConfigPages";
+import { CompetitorsPage, SourcesPage } from "./ui/pages/CompetitorSearchPage";
+import { ExpansionCataloguePage } from "./ui/pages/ExpansionCataloguePage";
+import { IntegrationsPage } from "./ui/pages/IntegrationsPage";
 import {
   ApprovalsPage,
   AuditPage,
@@ -18,69 +24,73 @@ import {
   HelpPage,
   PricingRulesPage,
   RunsPage,
-} from './ui/pages/OperationsPages';
-import { Page } from './ui/pages/PageChrome';
-import { SearchPage } from './ui/pages/SearchPage';
-import { SuppliersPage } from './ui/pages/SuppliersPage';
-import { ChecklistStep } from './ui/steps/ChecklistStep';
-import { ExportStep } from './ui/steps/ExportStep';
-import { FilesStep } from './ui/steps/FilesStep';
-import { MappingStep } from './ui/steps/MappingStep';
-import { ReviewStep } from './ui/steps/ReviewStep';
-import { StartStep } from './ui/steps/StartStep';
-import { ValidateStep } from './ui/steps/ValidateStep';
+} from "./ui/pages/OperationsPages";
+import { Page } from "./ui/pages/PageChrome";
+import { SearchPage } from "./ui/pages/SearchPage";
+import { SuppliersPage } from "./ui/pages/SuppliersPage";
+import { ChecklistStep } from "./ui/steps/ChecklistStep";
+import { ExportStep } from "./ui/steps/ExportStep";
+import { FilesStep } from "./ui/steps/FilesStep";
+import { MappingStep } from "./ui/steps/MappingStep";
+import { ReviewStep } from "./ui/steps/ReviewStep";
+import { StartStep } from "./ui/steps/StartStep";
+import { ValidateStep } from "./ui/steps/ValidateStep";
 
 const ROUTES = [
-  ['#/dashboard', 'Dashboard'],
-  ['#/new-run', 'New run'],
-  ['#/runs', 'Runs'],
-  ['#/inventory', 'Inventory search'],
-  ['#/expansion', 'Expansion catalogue'],
-  ['#/suppliers', 'Suppliers'],
-  ['#/mapping-profiles', 'Mapping profiles'],
-  ['#/pricing-rules', 'Pricing rules'],
-  ['#/competitors', 'Competitor search'],
-  ['#/sources', 'Source registry'],
-  ['#/exceptions', 'Exceptions'],
-  ['#/approvals', 'Approvals'],
-  ['#/exports', 'Exports'],
-  ['#/integrations', 'Integrations'],
-  ['#/audit', 'Audit'],
-  ['#/settings', 'Configuration'],
-  ['#/help', 'Help'],
+  ["#/dashboard", "Dashboard"],
+  ["#/new-run", "New run"],
+  ["#/runs", "Runs"],
+  ["#/inventory", "Inventory search"],
+  ["#/expansion", "Expansion catalogue"],
+  ["#/suppliers", "Suppliers"],
+  ["#/mapping-profiles", "Mapping profiles"],
+  ["#/pricing-rules", "Pricing rules"],
+  ["#/competitors", "Competitor search"],
+  ["#/sources", "Source registry"],
+  ["#/exceptions", "Exceptions"],
+  ["#/approvals", "Approvals"],
+  ["#/exports", "Exports"],
+  ["#/integrations", "Integrations"],
+  ["#/audit", "Audit"],
+  ["#/settings", "Configuration"],
+  ["#/help", "Help"],
 ] as const;
 
 type Route = (typeof ROUTES)[number][0];
 
 /** Left rail grouping: section label + routes, commercial-platform style. */
 const NAV_GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<Route>]> = [
-  ['Overview', ['#/dashboard', '#/new-run', '#/runs']],
-  ['Catalogue', ['#/inventory', '#/expansion', '#/suppliers', '#/mapping-profiles']],
-  ['Pricing', ['#/pricing-rules', '#/competitors', '#/sources']],
-  ['Review', ['#/exceptions', '#/approvals', '#/exports']],
-  ['System', ['#/integrations', '#/audit', '#/settings', '#/help']],
+  ["Overview", ["#/dashboard", "#/new-run", "#/runs"]],
+  [
+    "Catalogue",
+    ["#/inventory", "#/expansion", "#/suppliers", "#/mapping-profiles"],
+  ],
+  ["Pricing", ["#/pricing-rules", "#/competitors", "#/sources"]],
+  ["Review", ["#/exceptions", "#/approvals", "#/exports"]],
+  ["System", ["#/integrations", "#/audit", "#/settings", "#/help"]],
 ];
 
 /** 16px stroke icons keyed by route. Decorative: labels carry the meaning. */
 const NAV_ICONS: Record<Route, string> = {
-  '#/dashboard': 'M2 9h4v5H2zM7 5h4v9H7zM12 2h4v12h-4z',
-  '#/new-run': 'M8 3v10M3 8h10',
-  '#/runs': 'M3 4h10M3 8h10M3 12h6',
-  '#/inventory': 'M7 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM10 10l4 4',
-  '#/expansion': 'M3 13V7l5-4 5 4v6M8 3v10M5 8h6',
-  '#/suppliers': 'M2 12V6l6-3 6 3v6l-6 3zM8 3v6M2 6l6 3 6-3',
-  '#/mapping-profiles': 'M3 3h4v4H3zM9 9h4v4H9zM7 5h4M11 5v4',
-  '#/pricing-rules': 'M8 2v12M5 5h4.5a2 2 0 1 1 0 4H6a2 2 0 1 0 0 4h5',
-  '#/competitors': 'M2 13l3-4 3 2 3-5 3 3M2 3v10h12',
-  '#/sources': 'M8 2c3 0 6 .8 6 2s-3 2-6 2-6-.8-6-2 3-2 6-2zM2 4v8c0 1.2 3 2 6 2s6-.8 6-2V4',
-  '#/exceptions': 'M8 2l6 11H2zM8 6.5v3M8 11.5v.5',
-  '#/approvals': 'M3 8.5l3.5 3.5L13 5',
-  '#/exports': 'M8 10V2M5 5l3-3 3 3M3 10v3h10v-3',
-  '#/integrations': 'M5 8H2M14 8h-3M8 5V2M8 14v-3M5.5 5.5h5v5h-5z',
-  '#/audit': 'M4 2h8v12H4zM6 5h4M6 8h4M6 11h2',
-  '#/settings':
-    'M8 5.5A2.5 2.5 0 1 1 8 10.5 2.5 2.5 0 0 1 8 5.5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4',
-  '#/help': 'M6 6a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.8M8 12v.5',
+  "#/dashboard": "M2 9h4v5H2zM7 5h4v9H7zM12 2h4v12h-4z",
+  "#/new-run": "M8 3v10M3 8h10",
+  "#/runs": "M3 4h10M3 8h10M3 12h6",
+  "#/inventory": "M7 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM10 10l4 4",
+  "#/expansion": "M3 13V7l5-4 5 4v6M8 3v10M5 8h6",
+  "#/suppliers": "M2 12V6l6-3 6 3v6l-6 3zM8 3v6M2 6l6 3 6-3",
+  "#/mapping-profiles": "M3 3h4v4H3zM9 9h4v4H9zM7 5h4M11 5v4",
+  "#/pricing-rules": "M8 2v12M5 5h4.5a2 2 0 1 1 0 4H6a2 2 0 1 0 0 4h5",
+  "#/competitors": "M2 13l3-4 3 2 3-5 3 3M2 3v10h12",
+  "#/sources":
+    "M8 2c3 0 6 .8 6 2s-3 2-6 2-6-.8-6-2 3-2 6-2zM2 4v8c0 1.2 3 2 6 2s6-.8 6-2V4",
+  "#/exceptions": "M8 2l6 11H2zM8 6.5v3M8 11.5v.5",
+  "#/approvals": "M3 8.5l3.5 3.5L13 5",
+  "#/exports": "M8 10V2M5 5l3-3 3 3M3 10v3h10v-3",
+  "#/integrations": "M5 8H2M14 8h-3M8 5V2M8 14v-3M5.5 5.5h5v5h-5z",
+  "#/audit": "M4 2h8v12H4zM6 5h4M6 8h4M6 11h2",
+  "#/settings":
+    "M8 5.5A2.5 2.5 0 1 1 8 10.5 2.5 2.5 0 0 1 8 5.5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4",
+  "#/help": "M6 6a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.8M8 12v.5",
 };
 
 function ThemeIcon({ dark }: { dark: boolean }) {
@@ -161,15 +171,21 @@ function NavIcon({ route }: { route: Route }) {
 }
 
 function currentRoute(): Route {
-  const hash = window.location.hash || '#/new-run';
-  return ROUTES.some(([route]) => route === hash) ? (hash as Route) : '#/dashboard';
+  const hash = window.location.hash || "#/new-run";
+  return ROUTES.some(([route]) => route === hash)
+    ? (hash as Route)
+    : "#/dashboard";
 }
 
-function stepEnabled(step: StepId, state: ReturnType<typeof useAppState>): boolean {
-  if (state.configurationHydration.status !== 'ready') return false;
-  const filesReady = state.supplier.table !== null && state.servicem8.table !== null;
-  if (step === 'start' || step === 'files') return true;
-  if (step === 'mapping') return filesReady;
+function stepEnabled(
+  step: StepId,
+  state: ReturnType<typeof useAppState>,
+): boolean {
+  if (state.configurationHydration.status !== "ready") return false;
+  const filesReady =
+    state.supplier.table !== null && state.servicem8.table !== null;
+  if (step === "start" || step === "files") return true;
+  if (step === "mapping") return filesReady;
   return state.comparison !== null;
 }
 
@@ -185,13 +201,13 @@ function RunWorkspace() {
             <li key={step}>
               <button
                 type="button"
-                className={i < stepIndex ? 'step-done' : ''}
-                aria-current={state.step === step ? 'step' : undefined}
+                className={i < stepIndex ? "step-done" : ""}
+                aria-current={state.step === step ? "step" : undefined}
                 disabled={!stepEnabled(step, state)}
-                onClick={() => dispatch({ type: 'go-to-step', step })}
+                onClick={() => dispatch({ type: "go-to-step", step })}
               >
                 <span className="step-index" aria-hidden="true">
-                  {i < stepIndex ? '✓' : i + 1}
+                  {i < stepIndex ? "✓" : i + 1}
                 </span>
                 {STEP_TITLES[step]}
               </button>
@@ -199,13 +215,13 @@ function RunWorkspace() {
           ))}
         </ol>
       </nav>
-      {state.step === 'start' && <StartStep />}
-      {state.step === 'files' && <FilesStep />}
-      {state.step === 'mapping' && <MappingStep />}
-      {state.step === 'validate' && <ValidateStep />}
-      {state.step === 'review' && <ReviewStep />}
-      {state.step === 'checklist' && <ChecklistStep />}
-      {state.step === 'export' && <ExportStep />}
+      {state.step === "start" && <StartStep />}
+      {state.step === "files" && <FilesStep />}
+      {state.step === "mapping" && <MappingStep />}
+      {state.step === "validate" && <ValidateStep />}
+      {state.step === "review" && <ReviewStep />}
+      {state.step === "checklist" && <ChecklistStep />}
+      {state.step === "export" && <ExportStep />}
     </Page>
   );
 }
@@ -236,15 +252,15 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const navRef = useRef<HTMLElement>(null);
-  const pageTitle = ROUTES.find(([id]) => id === route)?.[1] ?? 'Dashboard';
+  const pageTitle = ROUTES.find(([id]) => id === route)?.[1] ?? "Dashboard";
   const greeting = timeOfDayGreeting();
   const totalRecords = state.comparison?.rows.length ?? 0;
   const approvedCount = Object.values(state.review.decisions).filter(
-    (decision) => decision.state === 'approved',
+    (decision) => decision.state === "approved",
   ).length;
 
   const go = (next: Route) => {
@@ -256,9 +272,9 @@ export default function App() {
 
   useEffect(() => {
     const onHash = () => setRoute(currentRoute());
-    window.addEventListener('hashchange', onHash);
-    if (!window.location.hash) window.location.hash = '#/new-run';
-    return () => window.removeEventListener('hashchange', onHash);
+    window.addEventListener("hashchange", onHash);
+    if (!window.location.hash) window.location.hash = "#/new-run";
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   useEffect(() => {
@@ -266,13 +282,15 @@ export default function App() {
     const nav = navRef.current;
     nav?.querySelector<HTMLElement>('button[aria-current="page"]')?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         setMenuOpen(false);
         menuButtonRef.current?.focus();
         return;
       }
-      if (event.key !== 'Tab' || !nav) return;
-      const focusable = [...nav.querySelectorAll<HTMLElement>('button:not(:disabled)')];
+      if (event.key !== "Tab" || !nav) return;
+      const focusable = [
+        ...nav.querySelectorAll<HTMLElement>("button:not(:disabled)"),
+      ];
       const first = focusable.at(0);
       const last = focusable.at(-1);
       if (event.shiftKey && document.activeElement === first) {
@@ -283,8 +301,8 @@ export default function App() {
         first?.focus();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
   useEffect(() => {
@@ -294,17 +312,18 @@ export default function App() {
   // "/" focuses the global search from anywhere outside a text field.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey)
+        return;
       const target = event.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
       event.preventDefault();
       searchRef.current?.focus();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  if (state.configurationHydration.status !== 'ready') {
+  if (state.configurationHydration.status !== "ready") {
     return (
       <>
         <a className="skip-link" href="#main-content">
@@ -313,15 +332,15 @@ export default function App() {
         <main id="main-content">
           <Page
             title={
-              state.configurationHydration.status === 'loading'
-                ? 'Loading stored configuration'
-                : 'Stored configuration unavailable'
+              state.configurationHydration.status === "loading"
+                ? "Loading stored configuration"
+                : "Stored configuration unavailable"
             }
           >
-            {state.configurationHydration.status === 'loading' ? (
+            {state.configurationHydration.status === "loading" ? (
               <p role="status">
-                Verifying settings, mapping profiles, aliases and source registry before enabling
-                the workflow.
+                Verifying settings, mapping profiles, aliases and source
+                registry before enabling the workflow.
               </p>
             ) : (
               <>
@@ -329,13 +348,15 @@ export default function App() {
                   <strong>The operational workflow is blocked.</strong>
                   <p>{state.configurationHydration.error}</p>
                   <p>
-                    Defaults have not been substituted. Retry after repairing or restoring the local
-                    configuration.
+                    Defaults have not been substituted. Retry after repairing or
+                    restoring the local configuration.
                   </p>
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={() => dispatch({ type: 'configuration-hydration-retry' })}
+                    onClick={() =>
+                      dispatch({ type: "configuration-hydration-retry" })
+                    }
                   >
                     Retry verified configuration load
                   </button>
@@ -365,10 +386,10 @@ export default function App() {
         <aside
           ref={navRef}
           id="primary-navigation"
-          className={`side-nav${menuOpen ? ' nav-open' : ''}`}
+          className={`side-nav${menuOpen ? " nav-open" : ""}`}
           aria-label="Application navigation"
-          role={menuOpen ? 'dialog' : undefined}
-          aria-modal={menuOpen ? 'true' : undefined}
+          role={menuOpen ? "dialog" : undefined}
+          aria-modal={menuOpen ? "true" : undefined}
         >
           <div className="nav-brand">
             <BrandLockup productName="Pricing &amp; Inventory" />
@@ -385,9 +406,13 @@ export default function App() {
             Close
           </button>
           <span className="local-badge">
-            {platform.kind === 'desktop'
-              ? 'Desktop · native local services'
-              : 'Web demonstration · own-origin only'}
+            {platform.kind === "desktop"
+              ? "Desktop · native local services"
+              : platform.capabilities.sessionAccessToken
+                ? "GitHub Pages · protected live API"
+                : platform.capabilities.liveSearch
+                  ? "Web demonstration · own-origin API"
+                  : "Static web · session only"}
           </span>
           <nav aria-label="Primary">
             {NAV_GROUPS.map(([group, routes]) => (
@@ -401,7 +426,7 @@ export default function App() {
                     <button
                       key={id}
                       type="button"
-                      aria-current={route === id ? 'page' : undefined}
+                      aria-current={route === id ? "page" : undefined}
                       onClick={() => go(id)}
                     >
                       <NavIcon route={id} />
@@ -440,7 +465,7 @@ export default function App() {
               <span className="greeting-line">{greeting}</span>
               <span className="greeting-context">
                 {pageTitle}
-                {state.demoMode && ' · fictional demo data'}
+                {state.demoMode && " · fictional demo data"}
               </span>
             </div>
             <div className="topbar-search">
@@ -465,8 +490,11 @@ export default function App() {
                 aria-label="Search products across supplier and ServiceM8 data"
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
-                  if (route !== '#/inventory' && event.target.value.trim() !== '')
-                    go('#/inventory');
+                  if (
+                    route !== "#/inventory" &&
+                    event.target.value.trim() !== ""
+                  )
+                    go("#/inventory");
                 }}
               />
             </div>
@@ -474,13 +502,15 @@ export default function App() {
               <button
                 type="button"
                 className="icon-btn"
-                aria-pressed={state.settings.theme === 'dark'}
+                aria-pressed={state.settings.theme === "dark"}
                 aria-label={
-                  state.settings.theme === 'dark'
-                    ? 'Switch to the light theme'
-                    : 'Switch to the dark theme'
+                  state.settings.theme === "dark"
+                    ? "Switch to the light theme"
+                    : "Switch to the dark theme"
                 }
-                title={state.settings.theme === 'dark' ? 'Light theme' : 'Dark theme'}
+                title={
+                  state.settings.theme === "dark" ? "Light theme" : "Dark theme"
+                }
                 onClick={(event) => {
                   const button = event.currentTarget;
                   button.disabled = true;
@@ -488,9 +518,10 @@ export default function App() {
                     .changeSettings(
                       {
                         ...state.settings,
-                        theme: state.settings.theme === 'dark' ? 'light' : 'dark',
+                        theme:
+                          state.settings.theme === "dark" ? "light" : "dark",
                       },
-                      'Theme toggled',
+                      "Theme toggled",
                       false,
                     )
                     .finally(() => {
@@ -498,7 +529,7 @@ export default function App() {
                     });
                 }}
               >
-                <ThemeIcon dark={state.settings.theme === 'dark'} />
+                <ThemeIcon dark={state.settings.theme === "dark"} />
               </button>
               <button
                 type="button"
@@ -525,51 +556,58 @@ export default function App() {
               >
                 <BrandMark size={32} />
                 <span className="workspace-text">
-                  <span className="workspace-name">Stan Wootton Locksmiths</span>
+                  <span className="workspace-name">
+                    Stan Wootton Locksmiths
+                  </span>
                   <span className="workspace-role">
-                    {platform.kind === 'desktop' ? 'Windows desktop' : 'Browser demonstration'}
-                    {totalRecords > 0 && ` · ${totalRecords} records · ${approvedCount} approved`}
+                    {platform.kind === "desktop"
+                      ? "Windows desktop"
+                      : "Browser demonstration"}
+                    {totalRecords > 0 &&
+                      ` · ${totalRecords} records · ${approvedCount} approved`}
                   </span>
                 </span>
               </button>
             </div>
           </header>
           <main id="main-content">
-            {route === '#/dashboard' && <DashboardPage go={goRoute} />}
-            {route === '#/new-run' && <RunWorkspace />}
-            {route === '#/runs' && <RunsPage />}
-            {route === '#/inventory' && (
+            {route === "#/dashboard" && <DashboardPage go={goRoute} />}
+            {route === "#/new-run" && <RunWorkspace />}
+            {route === "#/runs" && <RunsPage />}
+            {route === "#/inventory" && (
               <SearchPage
                 query={searchQuery}
                 onQueryChange={setSearchQuery}
-                goToNewRun={() => go('#/new-run')}
+                goToNewRun={() => go("#/new-run")}
               />
             )}
-            {route === '#/expansion' && (
-              <ExpansionCataloguePage goToNewRun={() => go('#/new-run')} />
+            {route === "#/expansion" && (
+              <ExpansionCataloguePage goToNewRun={() => go("#/new-run")} />
             )}
-            {route === '#/suppliers' && <SuppliersPage />}
-            {route === '#/mapping-profiles' && <MappingProfilesPage />}
-            {route === '#/pricing-rules' && <PricingRulesPage />}
-            {route === '#/competitors' && <CompetitorsPage />}
-            {route === '#/sources' && <SourcesPage />}
-            {route === '#/exceptions' && <ExceptionsPage />}
-            {route === '#/approvals' && <ApprovalsPage go={goRoute} />}
-            {route === '#/exports' && <ExportsPage />}
-            {route === '#/integrations' && <IntegrationsPage />}
-            {route === '#/audit' && <AuditPage />}
-            {route === '#/settings' && (
+            {route === "#/suppliers" && <SuppliersPage />}
+            {route === "#/mapping-profiles" && <MappingProfilesPage />}
+            {route === "#/pricing-rules" && <PricingRulesPage />}
+            {route === "#/competitors" && <CompetitorsPage />}
+            {route === "#/sources" && <SourcesPage />}
+            {route === "#/exceptions" && <ExceptionsPage />}
+            {route === "#/approvals" && <ApprovalsPage go={goRoute} />}
+            {route === "#/exports" && <ExportsPage />}
+            {route === "#/integrations" && <IntegrationsPage />}
+            {route === "#/audit" && <AuditPage />}
+            {route === "#/settings" && (
               <SettingsPage openSettingsDialog={() => setSettingsOpen(true)} />
             )}
-            {route === '#/help' && <HelpPage />}
+            {route === "#/help" && <HelpPage />}
           </main>
           <footer className="app-footer">
             <span>
               {APP_NAME} v{APP_VERSION} · © Stan Wootton Locksmiths
             </span>
             <span>
-              {platform.kind === 'desktop' ? 'Windows desktop' : 'Browser demonstration'} ·
-              ServiceM8 Materials CSV · AUD
+              {platform.kind === "desktop"
+                ? "Windows desktop"
+                : "Browser demonstration"}{" "}
+              · ServiceM8 Materials CSV · AUD
             </span>
           </footer>
         </div>
@@ -577,9 +615,12 @@ export default function App() {
       <div aria-live="polite" role="status" className="visually-hidden">
         {state.announcement}
       </div>
-      {settingsOpen && <SettingsDialog open onClose={() => setSettingsOpen(false)} />}
-      {privacyOpen && <PrivacyDialog open onClose={() => setPrivacyOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog open onClose={() => setSettingsOpen(false)} />
+      )}
+      {privacyOpen && (
+        <PrivacyDialog open onClose={() => setPrivacyOpen(false)} />
+      )}
     </>
   );
 }
-
