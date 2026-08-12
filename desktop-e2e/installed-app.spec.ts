@@ -137,6 +137,15 @@ describe("production SWL Windows desktop binary", () => {
   it("runs all seven workflow stages offline with synthetic data", async () => {
     await browser.setWindowSize(1366, 768);
     await navigate("#/new-run");
+    // Declare the supplier's GST basis first: the release checklist blocks
+    // export until it is confirmed, exactly as the web suite does.
+    await (await buttonWithLabel("Open settings")).click();
+    await (await $('input[value="prices-ex-gst"]')).click();
+    await (await buttonWithText("Apply changes…")).click();
+    await (await buttonWithText("Confirm and apply")).click();
+    await browser.waitUntil(
+      async () => !(await $("dialog").isExisting()),
+    );
     await expect(
       $('nav[aria-label="Run workflow"] button[aria-current="step"]'),
     ).toHaveText(expect.stringContaining("Start"));
