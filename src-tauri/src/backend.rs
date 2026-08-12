@@ -5255,6 +5255,20 @@ fn successful_search(query: &str, provider: &str, mut results: Vec<SearchResult>
             "The provider returned no priced results.",
         );
     }
+    // A result outcome carries selected-product metadata and every row carries
+    // matching immutable selection provenance; the shared outcome schema
+    // rejects result rows without it.
+    let selected_product = SelectedProduct {
+        title: format!("Synthetic fixture product for {query}"),
+        brand: None,
+        product_id: None,
+    };
+    for result in &mut results {
+        result.search_query = Some(query.to_string());
+        result.selected_product_title = Some(selected_product.title.clone());
+        result.selected_product_brand = None;
+        result.selected_product_id = None;
+    }
     let domains = results
         .iter()
         .map(|result| result.source_domain.clone())
@@ -5271,7 +5285,7 @@ fn successful_search(query: &str, provider: &str, mut results: Vec<SearchResult>
         query_kind: query_kind(query),
         provider: provider.to_string(),
         candidates: Vec::new(),
-        selected_product: None,
+        selected_product: Some(selected_product),
         band: search_band(&results),
         retrieved_at: Some(now_text()),
         cached: Some(false),
@@ -10969,6 +10983,17 @@ mod tests {
         assert_eq!(fixture.state, "ok");
         assert_eq!(fixture.provider, "fixture");
         assert_eq!(fixture.results.len(), 2);
+        let product = fixture.selected_product.clone().expect("fixture product");
+        assert!(fixture.band.is_some());
+        for result in &fixture.results {
+            assert_eq!(result.search_query.as_deref(), Some("ordinary lock query"));
+            assert_eq!(
+                result.selected_product_title.as_deref(),
+                Some(product.title.as_str())
+            );
+            assert_eq!(result.selected_product_brand, None);
+            assert_eq!(result.selected_product_id, None);
+        }
 
         let store = AcceptanceFixtureCredentialStore;
         assert_eq!(store.get().unwrap(), None);

@@ -162,13 +162,13 @@ describe("production SWL Windows desktop binary", () => {
     ).toHaveText(expect.stringContaining("Review"));
     await capture("workflow-05-review-1366x768.png");
 
-    const priceChanged = await buttonWithText("Price changed (5)");
+    const priceChanged = await buttonWithText("Price changed (6)");
     await priceChanged.click();
     await (await $('input[aria-label="Select all visible rows"]')).click();
-    await (await buttonWithText("Approve selected (5)")).click();
-    await (await buttonWithText("Approve 5 record(s)")).click();
+    await (await buttonWithText("Approve selected (6)")).click();
+    await (await buttonWithText("Approve 6 record(s)")).click();
     await browser.waitUntil(
-      async () => (await $$(".badge-approved").length) === 5,
+      async () => (await $$(".badge-approved").length) === 6,
     );
 
     await (await buttonWithText("New items (2)")).click();
@@ -285,10 +285,24 @@ describe("production SWL Windows desktop binary", () => {
     await (await recovery.$('input[type="checkbox"]')).click();
     await expect(restore).toBeEnabled();
     await capture("restore-confirmed-1366x768.png");
+    const backupsBeforeRestore = await recovery.$$("option").length;
     await restore.click();
-    await expect(recovery).toHaveText(
-      expect.stringContaining("Restored and verified"),
+    // A successful restore reloads the verified configuration, which unmounts
+    // and remounts this panel, so its transient status message is not
+    // observable. The observable success signature is the remounted panel
+    // listing exactly one additional backup: the pre-restore backup that only
+    // a completed restore creates.
+    await browser.waitUntil(async () => {
+      const remounted = await $('section[aria-labelledby="recovery-title"]');
+      if (!(await remounted.isDisplayed().catch(() => false))) return false;
+      return (await remounted.$$("option").length) === backupsBeforeRestore + 1;
+    });
+    const remountedRecovery = await $(
+      'section[aria-labelledby="recovery-title"]',
     );
+    expect(
+      await (await remountedRecovery.$("strong=Verified restore preview")).isExisting(),
+    ).toBe(false);
     await capture("restore-completed-1366x768.png");
   });
 
@@ -331,16 +345,16 @@ describe("production SWL Windows desktop binary", () => {
     await (await buttonWithText("Continue to column mapping")).click();
     await (await buttonWithText("Confirm mapping and run comparison")).click();
     await (await buttonWithText("Review proposed changes")).click();
-    await (await buttonWithText("Price changed (5)")).click();
+    await (await buttonWithText("Price changed (6)")).click();
     await (await $('input[aria-label="Select all visible rows"]')).click();
-    await (await buttonWithText("Approve selected (5)")).click();
-    await (await buttonWithText("Approve 5 record(s)")).click();
+    await (await buttonWithText("Approve selected (6)")).click();
+    await (await buttonWithText("Approve 6 record(s)")).click();
     await browser.waitUntil(
-      async () => (await $$(".badge-approved").length) === 5,
+      async () => (await $$(".badge-approved").length) === 6,
     );
     await navigate("#/dashboard");
     const repopulatedHistory = await $("button*=Price versions on record");
-    await expect(await repopulatedHistory.$(".metric-value")).toHaveText("5");
+    await expect(await repopulatedHistory.$(".metric-value")).toHaveText("6");
     await capture("data-erasure-repopulated-synthetic-history-1366x768.png");
   });
 });
