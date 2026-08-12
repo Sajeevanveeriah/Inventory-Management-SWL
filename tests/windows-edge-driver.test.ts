@@ -134,7 +134,7 @@ describe('isolated release-profile desktop acceptance binary', () => {
       'Build isolated unbundled release-profile desktop acceptance binary',
     );
     expect(workflow).toContain('$env:CARGO_TARGET_DIR = $acceptanceTarget');
-    expect(workflow).toContain('--features tauri/devtools');
+    expect(workflow).toContain('--features tauri/devtools,tauri/custom-protocol');
     expect(workflow).toContain('$productionHashAfter -cne $productionHashBefore');
     expect(workflow).toContain('distributed = $false');
     expect(workflow).toContain('-ApplicationPath $env:SWL_DESKTOP_ACCEPTANCE_BINARY');

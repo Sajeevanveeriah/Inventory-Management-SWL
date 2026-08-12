@@ -421,7 +421,11 @@ jobs:
           # arguments because a JSON merge patch replaces arrays wholesale.
           # The canonical production build never sees this variable.
           $env:TAURI_CONFIG = '{"app":{"windows":[{"title":"SWL Pricing Initialising","width":1280,"height":800,"minWidth":390,"minHeight":600,"resizable":true,"center":true,"additionalBrowserArgs":"--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9515"}]}}'
-          cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin swl-pricing-desktop --features tauri/devtools
+          # tauri/custom-protocol selects the release flavour that embeds the
+          # compiled frontend and serves it over the app protocol; without it
+          # cargo builds the dev flavour, which embeds no assets and points
+          # the window at the (absent) dev server.
+          cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin swl-pricing-desktop --features tauri/devtools,tauri/custom-protocol
           $acceptanceBuildExitCode = $LASTEXITCODE
           Remove-Item Env:\TAURI_CONFIG -ErrorAction SilentlyContinue
           if ($acceptanceBuildExitCode -ne 0) { throw 'The isolated release-profile desktop acceptance build failed.' }
@@ -440,7 +444,7 @@ jobs:
           }
           [ordered]@{
             purpose = 'Unbundled release-profile WebDriver acceptance only'
-            cargoFeature = 'tauri/devtools'
+            cargoFeature = 'tauri/devtools,tauri/custom-protocol'
             acceptanceWebViewDebugPort = 9515
             acceptanceConfigMerge = 'TAURI_CONFIG additionalBrowserArgs for the acceptance build only; production configuration is untouched'
             acceptanceFixturesCompileTime = true
