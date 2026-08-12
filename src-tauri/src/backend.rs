@@ -3613,9 +3613,12 @@ fn validate_settings(settings: &Value) -> Result<String, String> {
         || !["markupPercent", "taxHandling", "theme"]
             .iter()
             .all(|key| object.contains_key(*key))
-        || !object
-            .keys()
-            .all(|key| matches!(key.as_str(), "markupPercent" | "taxHandling" | "theme" | "glassTint"))
+        || !object.keys().all(|key| {
+            matches!(
+                key.as_str(),
+                "markupPercent" | "taxHandling" | "theme" | "glassTint"
+            )
+        })
     {
         return Err("Settings contain an unsupported field.".to_string());
     }
@@ -4654,9 +4657,9 @@ fn credential_target() -> Vec<u16> {
         ACCEPTANCE_FIXTURE_BUILD_SETTING,
         LOCAL_TEST_PROFILE_BUILD_SETTING,
     )
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect()
+    .encode_utf16()
+    .chain(std::iter::once(0))
+    .collect()
 }
 
 #[cfg(windows)]
