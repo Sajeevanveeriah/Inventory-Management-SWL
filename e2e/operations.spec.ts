@@ -60,16 +60,25 @@ test('global topbar search routes to the inventory search page', async ({ page }
   await expect(page.locator('tbody tr').first()).toContainText('FIC-001');
 });
 
-test('expansion catalogue separates supplier-only categories behind approval', async ({ page }) => {
+test('expansion catalogue carries supplier categories out of scope and switches them on for review', async ({
+  page,
+}) => {
   await loadDemoAndCompare(page);
   await page.getByRole('button', { name: 'Expansion catalogue' }).click();
   await expect(page.getByRole('heading', { name: 'Expansion catalogue', level: 1 })).toBeVisible();
   await expect(page.getByText('0 automatic additions')).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Expansion catalogue' })).toBeVisible();
-  await expect(page.locator('tbody').getByText('Electronic').first()).toBeVisible();
+  const scope = page.getByRole('region', {
+    name: 'Supplier category scope switches',
+  });
+  const electronic = scope.getByRole('row').filter({ hasText: 'Electronic' });
+  await expect(electronic).toContainText('Out of scope');
+  await electronic.getByRole('button', { name: 'Enable for review' }).click();
+  await expect(electronic).toContainText('Enabled for later review');
+  const catalogue = page.getByRole('region', { name: 'Expansion catalogue' });
+  await expect(catalogue).toBeVisible();
   await page.getByLabel('Search future products').fill('FIC-004');
-  await expect(page.locator('tbody tr')).toHaveCount(1);
-  await expect(page.locator('tbody tr').first()).toContainText('Not approved');
+  await expect(catalogue.locator('tbody tr')).toHaveCount(1);
+  await expect(catalogue.locator('tbody tr').first()).toContainText('Enabled - approval required');
 });
 
 test('exceptions queue supports search and exclude-with-reason', async ({ page }) => {
@@ -93,8 +102,43 @@ test('approvals page records an immutable append-only approval', async ({ page }
 
   const firstApprove = page.getByRole('button', { name: 'Approve', exact: true }).first();
   await firstApprove.click();
+  await expect(page.getByRole('dialog', { name: 'Confirm approval' })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
   await expect(page.getByText('Recorded, append-only').first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Withdraw approval' })).toHaveCount(0);
+});
+
+test('mobile approvals expose their reason, decision and action without horizontal scrolling', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loadDemoAndCompare(page);
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('button', { name: 'Approvals' }).click();
+
+  const proposals = page.getByRole('region', { name: 'Proposals' });
+  await expect(proposals.locator('td[data-label="Reason"]').first()).toBeVisible();
+  await expect(proposals.locator('td[data-label="Decision"]').first()).toBeVisible();
+  const firstApprove = proposals.getByRole('button', { name: 'Approve', exact: true }).first();
+  await expect(firstApprove).toBeVisible();
+  await expect
+    .poll(() =>
+      proposals.evaluate((region) => ({
+        clientWidth: region.clientWidth,
+        scrollWidth: region.scrollWidth,
+      })),
+    )
+    .toEqual(expect.objectContaining({ clientWidth: expect.any(Number) }));
+  const widths = await proposals.evaluate((region) => ({
+    clientWidth: region.clientWidth,
+    scrollWidth: region.scrollWidth,
+  }));
+  expect(widths.scrollWidth).toBeLessThanOrEqual(widths.clientWidth + 1);
+
+  await firstApprove.click();
+  await expect(page.getByRole('dialog', { name: 'Confirm approval' })).toBeVisible();
+  await page.getByRole('button', { name: 'Confirm approval' }).click();
+  await expect(page.getByText('Recorded, append-only').first()).toBeVisible();
 });
 
 test('supplier profiles: save, export and delete with confirmation', async ({ page }) => {
@@ -204,15 +248,21 @@ test('operator navigation focuses the new route while global search keeps typing
   await expect(globalSearch).toBeFocused();
 });
 
-test('mobile appearance controls are keyboard operable and the open menu makes content inert', async ({
+test('mobile settings appearance is keyboard operable and the open menu makes content inert', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#/dashboard');
-  const light = page.locator('.topbar').getByRole('button', { name: 'Light appearance' });
+  await expect(
+    page.locator('.topbar').getByRole('button', { name: 'Light appearance' }),
+  ).toBeHidden();
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  const dialog = page.getByRole('dialog');
+  const light = dialog.getByRole('button', { name: 'Light appearance' });
   await light.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await dialog.getByRole('button', { name: 'Close' }).click();
 
   await page.getByRole('button', { name: 'Menu' }).click();
   await expect(page.locator('.app-frame')).toHaveAttribute('inert', '');
@@ -227,6 +277,62 @@ test('mobile appearance controls are keyboard operable and the open menu makes c
     return doc.documentElement.scrollWidth - doc.documentElement.clientWidth;
   });
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('mobile dashboard keeps metrics compact and charts keyboard scrollable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loadDemoAndCompare(page);
+  await navigateFromCompactMenu(page, 'Dashboard');
+
+  const metricColumns = await page.locator('.metric-row').evaluate((element) => {
+    const runtime = globalThis as unknown as {
+      getComputedStyle(node: unknown): { gridTemplateColumns: string };
+    };
+    return runtime.getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length;
+  });
+  expect(metricColumns).toBe(2);
+
+  const plot = page.getByRole('region', {
+    name: 'Catalogue items by current sell price bracket chart plot',
+  });
+  await expect(plot).toBeVisible();
+  const initial = await plot.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollLeft: element.scrollLeft,
+    scrollWidth: element.scrollWidth,
+  }));
+  expect(initial.scrollWidth).toBeGreaterThan(initial.clientWidth);
+
+  await plot.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect
+    .poll(() => plot.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(initial.scrollLeft);
+
+  const overflow = await page.evaluate(() => {
+    const runtime = globalThis as unknown as {
+      document: { documentElement: { scrollWidth: number; clientWidth: number } };
+    };
+    return (
+      runtime.document.documentElement.scrollWidth - runtime.document.documentElement.clientWidth
+    );
+  });
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('desktop charts do not add keyboard stops when their plots fit', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loadDemoAndCompare(page);
+  await page.getByRole('button', { name: 'Dashboard' }).click();
+
+  const plots = page.locator('.chart-plot');
+  await expect(plots).toHaveCount(2);
+  for (const plot of await plots.all()) {
+    await expect(plot).toHaveAttribute('data-scrollable', 'false');
+    await expect(plot).not.toHaveAttribute('tabindex');
+    await expect(plot).not.toHaveAttribute('aria-describedby');
+  }
+  await expect(page.locator('.chart-scroll-hint')).toHaveCount(0);
 });
 
 test('200 percent zoom equivalent keeps settings inside the viewport', async ({ page }) => {

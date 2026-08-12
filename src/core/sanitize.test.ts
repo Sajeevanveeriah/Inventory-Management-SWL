@@ -28,7 +28,7 @@ describe('formula-injection protection', () => {
 
 describe('sanitizeFilenamePart', () => {
   it('produces safe lowercase kebab names', () => {
-    expect(sanitizeFilenamePart('Acme Locks — Monthly!')).toBe('acme-locks-monthly');
+    expect(sanitizeFilenamePart('Acme Locks - Monthly!')).toBe('acme-locks-monthly');
     expect(sanitizeFilenamePart('../../etc/passwd')).toBe('etc-passwd');
     expect(sanitizeFilenamePart('***')).toBe('unnamed');
     expect(sanitizeFilenamePart('a'.repeat(100))).toHaveLength(40);

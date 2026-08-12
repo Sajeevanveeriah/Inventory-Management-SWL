@@ -21,7 +21,9 @@ export function createPlatformService(options?: {
     options?.staticDemo ?? import.meta.env.VITE_STATIC_DEMO === "true";
   return detectPlatformKind(location) === "desktop"
     ? createDesktopPlatformService(options?.invoke)
-    : createWebPlatformService(undefined, { sessionOnly: staticDemo });
+    : createWebPlatformService(undefined, {
+        sessionOnly: staticDemo,
+      });
 }
 
 export type * from "./contracts";

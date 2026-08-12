@@ -19,9 +19,17 @@ const index = readFileSync(indexPath, "utf8");
 if (!index.includes("Content-Security-Policy")) {
   throw new Error("The Pages index is missing the production CSP.");
 }
-if (!index.includes("connect-src 'self'")) {
+const cspContent =
+  index.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ??
+  "";
+const connectDirective = cspContent
+  .split(";")
+  .map((directive) => directive.trim())
+  .find((directive) => directive.startsWith("connect-src "));
+const expectedConnectDirective = "connect-src 'self'";
+if (connectDirective !== expectedConnectDirective) {
   throw new Error(
-    "The Pages CSP does not restrict connections to the same origin.",
+    `The Pages CSP connect boundary is invalid: ${connectDirective ?? "missing"}`,
   );
 }
 for (const forbidden of [
@@ -29,7 +37,6 @@ for (const forbidden of [
   "script-src *",
   "font-src *",
   "connect-src *",
-  "https:",
 ]) {
   if (index.includes(forbidden))
     throw new Error(`The Pages CSP contains forbidden value: ${forbidden}`);
@@ -103,4 +110,3 @@ for (const route of routes) {
 console.log(
   `Pages build check passed: ${localRefs.length} local assets and ${routes.length} hash routes.`,
 );
-

@@ -4,7 +4,7 @@
   "version": "1.2.0",
   "license": "SEE LICENSE IN LICENSE",
   "author": "Stan Wootton Locksmiths",
-  "description": "SWL Pricing and Inventory Control — local-first supplier price comparison and ServiceM8 import preparation for Stan Wootton Locksmiths.",
+  "description": "SWL Pricing and Inventory Control - local-first supplier price comparison and ServiceM8 import preparation for Stan Wootton Locksmiths.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "start": "node --env-file-if-exists=.env server/index.mjs",
     "server": "node --env-file-if-exists=.env server/index.mjs --trusted-origin http://127.0.0.1:5173 --trusted-origin http://localhost:5173 --trusted-origin http://127.0.0.1:4173 --trusted-origin http://localhost:4173",
-    "server:fixture": "node --env-file-if-exists=.env server/index.mjs --fixture --trusted-origin http://127.0.0.1:5173 --trusted-origin http://localhost:5173 --trusted-origin http://127.0.0.1:4173 --trusted-origin http://localhost:4173",
+    "server:fixture": "node --env-file-if-exists=.env tests/support/fixture-server.mjs --trusted-origin http://127.0.0.1:5173 --trusted-origin http://localhost:5173 --trusted-origin http://127.0.0.1:4173 --trusted-origin http://localhost:4173",
     "seed": "node server/seed.mjs",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",

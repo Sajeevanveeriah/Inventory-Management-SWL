@@ -294,45 +294,11 @@ describe('application workflow (jsdom integration)', () => {
     const user = userEvent.setup();
     const base = publicationService(true);
     const session = createWebPlatformService(undefined, { sessionOnly: true });
-    let attachedTestResult: unknown = null;
     const service: PlatformService = {
       ...base,
       capabilities: session.capabilities,
       health: session.health,
-      catalogue: {
-        ...base.catalogue,
-        async list() {
-          return platformOk([
-            {
-              id: 'LW4570',
-              itemNumber: 'LW4570',
-              description: 'Synthetic approved test item',
-              costCents: 10_000,
-              sellPriceCents: 15_000,
-              gstBasis: 'inc-gst',
-              updatedAt: '2026-08-11T00:00:00.000Z',
-            },
-          ]);
-        },
-      },
-      references: {
-        ...base.references,
-        async attach(itemId, observation) {
-          attachedTestResult = observation;
-          return platformOk({
-            id: 'browser-test-reference',
-            itemId,
-            observation,
-            attachedAt: '2026-08-11T00:00:00.000Z',
-          });
-        },
-      },
-      search: {
-        ...session.search,
-        async query() {
-          throw new Error('Static browser Test search must not call the platform provider.');
-        },
-      },
+      search: session.search,
     };
     window.location.hash = '#/dashboard';
     await renderApp(service);
@@ -347,46 +313,11 @@ describe('application workflow (jsdom integration)', () => {
       level: 1,
     });
     expect(screen.queryByRole('button', { name: /search live prices/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /run fixture search/i })).toBeInTheDocument();
-    expect(screen.getByRole('note')).toHaveTextContent(/no internet search/i);
-
-    const searchBox = screen.getByRole('searchbox', { name: /product name/i });
-    const outcome = screen.getByRole('combobox', { name: /test outcome/i });
-    await user.type(searchBox, 'Lockwood 4570');
-    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
-    expect(screen.getByRole('heading', { name: /preparing fixture results/i })).toBeInTheDocument();
-    expect(
-      await screen.findByRole('region', { name: /fixture search results/i }),
-    ).toBeInTheDocument();
-    await user.click(screen.getAllByRole('button', { name: /review result/i })[0]!);
-    expect(screen.getByRole('heading', { name: /review selected result/i })).toBeInTheDocument();
-    expect(screen.getByText(/included in this fictional test price/i)).toBeInTheDocument();
-    const attachButton = screen.getByRole('button', {
-      name: /attach selected result as reference/i,
-    });
-    expect(attachButton).toBeDisabled();
-    await user.type(screen.getByRole('textbox', { name: /catalogue item/i }), 'LW4570');
-    expect(attachButton).toBeEnabled();
-    await user.click(attachButton);
-    await waitFor(() => expect(attachedTestResult).not.toBeNull());
-    expect(attachedTestResult).toMatchObject({
-      seller: 'Fictional Geelong Locks',
-      currency: 'AUD',
-      sourceDomain: 'example.com',
-    });
-    expect(screen.getAllByText(/reference price stored for LW4570/i).length).toBeGreaterThan(0);
-
-    await user.selectOptions(outcome, 'empty');
-    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
-    expect(await screen.findByText(/no fixture prices found/i)).toBeInTheDocument();
-
-    await user.selectOptions(outcome, 'timeout');
-    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
-    expect(await screen.findByText(/search provider timed out/i)).toBeInTheDocument();
-
-    await user.selectOptions(outcome, 'provider_error');
-    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
-    expect(await screen.findByText(/search provider returned an error/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /run test search/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: /product name/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /test outcome/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Static Pages is provider-free and session-only/i)).toBeInTheDocument();
+    expect(screen.getByText(/manual competitor evidence remains available/i)).toBeInTheDocument();
 
     window.location.hash = '#/sources';
     window.dispatchEvent(new Event('hashchange'));
@@ -397,160 +328,6 @@ describe('application workflow (jsdom integration)', () => {
     await user.click(screen.getByRole('button', { name: /privacy and data handling/i }));
     expect(screen.getByText(/Static Pages has no Node server/i)).toBeInTheDocument();
     expect(screen.getByText(/cannot make a provider request/i)).toBeInTheDocument();
-  });
-
-  it('uses fixture wording while retaining the production-shaped server query path', async () => {
-    const user = userEvent.setup();
-    const base = publicationService(true);
-    let queryCalls = 0;
-    let openedSources = 0;
-    const service: PlatformService = {
-      ...base,
-      async health() {
-        return platformOk({
-          ok: true,
-          provider: 'fixture',
-          liveSearchConfigured: false,
-          fixtureMode: true,
-          paidCallsEnabled: false,
-        });
-      },
-      catalogue: {
-        ...base.catalogue,
-        async list() {
-          return platformOk([]);
-        },
-      },
-      search: {
-        ...base.search,
-        async status() {
-          return platformOk({
-            provider: 'fixture',
-            state: 'fixture',
-            paidCallsEnabled: false,
-            costCeilingAud: '0.00',
-            costCeilingCents: 0,
-            costPerCallCents: 0,
-            spentCents: 0,
-            credentialConfigured: false,
-            credentialHint: null,
-            lastValidatedAt: null,
-          });
-        },
-        async query(query) {
-          queryCalls += 1;
-          return {
-            state: 'ok',
-            query,
-            queryKind: 'free-text',
-            provider: 'fixture',
-            results: [
-              {
-                title: 'Fictional fixture deadlatch',
-                priceCents: 12_950,
-                priceAud: '129.50',
-                currency: 'AUD',
-                gstBasis: 'inc-gst',
-                packSize: 'each',
-                seller: 'Fictionville Security',
-                sourceDomain: 'example.com',
-                url: 'https://example.com/fixture-deadlatch',
-                retrievedAt: '2026-08-12T00:00:00.000Z',
-              },
-            ],
-            band: {
-              lowest: '129.50',
-              median: '129.50',
-              highest: '129.50',
-              lowestCents: 12_950,
-              medianCents: 12_950,
-              highestCents: 12_950,
-              pricedResults: 1,
-            },
-            retrievedAt: '2026-08-12T00:00:00.000Z',
-            cached: false,
-            detail: 'Deterministic fixture result.',
-            coverage: {
-              providerQueried: 'fixture',
-              sourcesWithPrice: 1,
-              sourceDomains: ['example.com'],
-              pricedResults: 1,
-            },
-          };
-        },
-      },
-      files: {
-        ...base.files,
-        async openVerifiedSource() {
-          openedSources += 1;
-          return platformOk(undefined);
-        },
-      },
-    };
-
-    window.location.hash = '#/competitors';
-    await renderApp(service);
-    expect(await screen.findByText(/fixture provider active/i)).toBeInTheDocument();
-    const search = screen.getByRole('searchbox', { name: /product name/i });
-    await user.type(search, 'LW4570');
-    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
-
-    expect(queryCalls).toBe(1);
-    expect(
-      await screen.findByRole('region', { name: /fixture search results/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/deterministic fixture retrieval/i)).toBeInTheDocument();
-    expect(screen.queryByText(/fresh retrieval/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: /live search results/i })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /inspect fixture source/i }));
-    expect(openedSources).toBe(0);
-    expect(screen.getAllByText(/no page was opened/i).length).toBeGreaterThan(0);
-  });
-
-  it('keeps live-provider wording when resolved health is not fixture mode', async () => {
-    const base = publicationService(true);
-    const service: PlatformService = {
-      ...base,
-      async health() {
-        return platformOk({
-          ok: true,
-          provider: 'native-provider',
-          liveSearchConfigured: true,
-          fixtureMode: false,
-          paidCallsEnabled: false,
-        });
-      },
-      catalogue: {
-        ...base.catalogue,
-        async list() {
-          return platformOk([]);
-        },
-      },
-      search: {
-        ...base.search,
-        async status() {
-          return platformOk({
-            provider: 'native-provider',
-            state: 'not_configured',
-            paidCallsEnabled: false,
-            costCeilingAud: '0.00',
-            costCeilingCents: 0,
-            costPerCallCents: 0,
-            spentCents: 0,
-            credentialConfigured: true,
-            credentialHint: null,
-            lastValidatedAt: null,
-          });
-        },
-      },
-    };
-
-    window.location.hash = '#/competitors';
-    await renderApp(service);
-    expect(await screen.findByText(/live search ready: same-origin provider/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /search live prices/i })).toBeInTheDocument();
-    expect(screen.queryByText(/fixture provider active/i)).not.toBeInTheDocument();
   });
 
   it('does not expose an unpersisted business rule while a delayed settings save fails', async () => {
@@ -799,15 +576,26 @@ describe('application workflow (jsdom integration)', () => {
     await user.click(screen.getByRole('button', { name: /^Competitor search$/ }));
     await user.type(screen.getByRole('textbox', { name: /sku or product/i }), 'LW4570');
     await user.type(screen.getByRole('textbox', { name: /observed price/i }), '95.00');
+    await user.type(screen.getByRole('textbox', { name: /observed shipping/i }), '0');
+    await user.type(
+      screen.getByRole('textbox', { name: /source url/i }),
+      'https://merchant.example.test/lw4570',
+    );
     await user.click(screen.getByRole('button', { name: /store observation/i }));
 
     await waitFor(() => expect(attached).not.toBeNull());
     expect(attached).toMatchObject({
       sku: 'LW4570',
       price: '95.00',
+      shipping: '0.00',
       currency: 'AUD',
       sourceName: 'Manual operator entry',
-      reviewState: 'accepted',
+      approvedSource: false,
+      packCompatible: false,
+      productOnly: false,
+      matchConfidence: 0,
+      reviewState: 'quarantined',
+      ambiguousMatch: true,
     });
     expect(screen.getAllByText(/reference price stored for LW4570/i).length).toBeGreaterThan(0);
   });
@@ -925,5 +713,493 @@ describe('application workflow (jsdom integration)', () => {
     await user.keyboard('{Escape}');
     expect(menu).toHaveAttribute('aria-expanded', 'false');
     expect(menu).toHaveFocus();
+  });
+
+  it('renders only platform API results when live competitor search is available', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    let receivedQuery: string | null = null;
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'serpapi',
+          liveSearchConfigured: true,
+          fixtureMode: false,
+          paidCallsEnabled: true,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'serpapi',
+            state: 'configured',
+            paidCallsEnabled: true,
+            costCeilingAud: '10.00',
+            costCeilingCents: 1_000,
+            costPerCallCents: 5,
+            spentCents: 0,
+            credentialConfigured: true,
+            credentialHint: null,
+            lastValidatedAt: '2026-08-11T00:00:00.000Z',
+          });
+        },
+        async query(query) {
+          receivedQuery = query;
+          return {
+            state: 'ok',
+            query,
+            queryKind: 'free-text',
+            provider: 'serpapi',
+            candidates: [],
+            results: [
+              {
+                title: 'Test-only live adapter listing',
+                priceCents: 12_345,
+                priceAud: '123.45',
+                itemPriceCents: 12_345,
+                itemPriceAud: '123.45',
+                shippingCents: 0,
+                shippingAud: '0.00',
+                estimatedTaxCents: null,
+                estimatedTaxAud: null,
+                totalPriceCents: 12_345,
+                totalPriceAud: '123.45',
+                comparisonPriceCents: 12_345,
+                comparisonPriceAud: '123.45',
+                priceBasis: 'provider_total',
+                originalPriceText: '$123.45',
+                currencyBasis: 'explicit-aud',
+                currency: 'AUD',
+                gstBasis: 'unknown',
+                packSize: null,
+                condition: 'new',
+                availability: 'in-stock',
+                financing: false,
+                comparisonEligible: true,
+                exclusionReasons: [],
+                seller: 'Test-only live adapter seller',
+                sourceDomain: 'retailer.test.invalid',
+                url: 'https://retailer.test.invalid/lockwood-4570',
+                retrievedAt: '2026-08-11T00:00:00.000Z',
+              },
+            ],
+            band: {
+              lowest: '123.45',
+              median: '123.45',
+              highest: '123.45',
+              lowestCents: 12_345,
+              medianCents: 12_345,
+              highestCents: 12_345,
+              pricedResults: 1,
+            },
+            retrievedAt: '2026-08-11T00:00:00.000Z',
+            cached: false,
+            coverage: {
+              providerQueried: 'serpapi',
+              sourcesWithPrice: 1,
+              sourceDomains: ['retailer.test.invalid'],
+              pricedResults: 1,
+              providerCandidates: 0,
+              parsedOffers: 1,
+              comparableOffers: 1,
+              excludedOffers: 0,
+            },
+          };
+        },
+      },
+    };
+    window.location.hash = '#/competitors';
+    await renderApp(service);
+
+    const submit = await screen.findByRole('button', {
+      name: /search live prices/i,
+    });
+    expect(screen.queryByRole('button', { name: /run test search/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /test outcome/i })).not.toBeInTheDocument();
+    await user.type(screen.getByRole('searchbox', { name: /product name/i }), 'Lockwood 4570');
+    await user.click(submit);
+
+    expect(await screen.findByRole('region', { name: /live search results/i })).toBeInTheDocument();
+    expect(screen.getByText('Test-only live adapter seller')).toBeInTheDocument();
+    expect(receivedQuery).toBe('Lockwood 4570');
+    expect(
+      screen.queryByText(/licensed shopping search API.*stored evidence/i),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /attach as reference/i })).toBeDisabled();
+  });
+
+  it('does not report desktop live search ready when the next call exceeds its budget', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    const service: PlatformService = {
+      ...base,
+      kind: 'desktop',
+      capabilities: {
+        ...base.capabilities,
+        liveSearch: true,
+        protectedCredentials: true,
+      },
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'serpapi',
+          liveSearchConfigured: true,
+          fixtureMode: false,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'serpapi',
+            state: 'configured',
+            paidCallsEnabled: true,
+            costCeilingAud: '1.00',
+            costCeilingCents: 100,
+            costPerCallCents: 5,
+            spentCents: 96,
+            credentialConfigured: true,
+            credentialHint: 'stored',
+            lastValidatedAt: '2026-08-11T00:00:00.000Z',
+          });
+        },
+      },
+    };
+    await renderApp(service);
+
+    await user.click(screen.getByRole('button', { name: /^Competitor search$/ }));
+    expect(await screen.findByText(/live search budget is exhausted/i)).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: /product name/i })).not.toBeInTheDocument();
+  });
+
+  it('does not allow an API request while the licensed live source is disabled', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    let searchCalls = 0;
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'serpapi',
+          liveSearchConfigured: true,
+          fixtureMode: false,
+          paidCallsEnabled: true,
+        });
+      },
+      sources: {
+        ...base.sources,
+        async list() {
+          return platformOk(
+            defaultSources().map((source) =>
+              source.id === 'live-provider' ? { ...source, enabled: false } : source,
+            ),
+          );
+        },
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'serpapi',
+            state: 'configured',
+            paidCallsEnabled: true,
+            costCeilingAud: '10.00',
+            costCeilingCents: 1_000,
+            costPerCallCents: 5,
+            spentCents: 0,
+            credentialConfigured: true,
+            credentialHint: null,
+            lastValidatedAt: '2026-08-11T00:00:00.000Z',
+          });
+        },
+        async query(query) {
+          searchCalls += 1;
+          return {
+            state: 'empty',
+            query,
+            queryKind: 'free-text',
+            provider: 'serpapi',
+            candidates: [],
+            results: [],
+            band: null,
+          };
+        },
+      },
+    };
+    await renderApp(service);
+
+    await user.click(screen.getByRole('button', { name: /^Competitor search$/ }));
+    expect(
+      await screen.findByRole('heading', {
+        name: /live API source is disabled/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: /product name/i })).not.toBeInTheDocument();
+    expect(searchCalls).toBe(0);
+  });
+
+  it('requires exact product selection before requesting merchant offers', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    const calls: Array<[string, string | undefined]> = [];
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'serpapi-google-shopping-au',
+          liveSearchConfigured: true,
+          fixtureMode: false,
+          paidCallsEnabled: true,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async query(query, candidateToken) {
+          calls.push([query, candidateToken]);
+          if (candidateToken === undefined) {
+            return {
+              state: 'selection_required',
+              query,
+              queryKind: 'identifier',
+              provider: 'serpapi-google-shopping-au',
+              candidates: [
+                {
+                  token: 'candidate-token',
+                  title: 'Lockwood 4570 mortice lock',
+                  brand: 'Lockwood',
+                  productId: '4570',
+                  productUrl: 'https://www.google.com.au/shopping/product/4570',
+                  displayedPrice: 'A$123.45',
+                  priceCents: 12_345,
+                  multipleSources: true,
+                  packSize: null,
+                  condition: 'new',
+                  position: 1,
+                },
+              ],
+              results: [],
+              band: null,
+            };
+          }
+          return {
+            state: 'ok',
+            query,
+            queryKind: 'identifier',
+            provider: 'serpapi-google-shopping-au',
+            candidates: [],
+            selectedProduct: {
+              title: 'Lockwood 4570 mortice lock',
+              brand: 'Lockwood',
+              productId: '4570',
+            },
+            results: [
+              {
+                title: 'Lockwood 4570 mortice lock',
+                priceCents: 12_000,
+                priceAud: '120.00',
+                itemPriceCents: 12_000,
+                itemPriceAud: '120.00',
+                shippingCents: 500,
+                shippingAud: '5.00',
+                estimatedTaxCents: null,
+                estimatedTaxAud: null,
+                totalPriceCents: 12_500,
+                totalPriceAud: '125.00',
+                comparisonPriceCents: 12_500,
+                comparisonPriceAud: '125.00',
+                priceBasis: 'provider_total',
+                originalPriceText: 'A$120.00',
+                currencyBasis: 'explicit-aud',
+                currency: 'AUD',
+                gstBasis: 'unknown',
+                packSize: null,
+                condition: 'new',
+                availability: 'in-stock',
+                financing: false,
+                comparisonEligible: true,
+                exclusionReasons: [],
+                seller: 'Observed merchant',
+                sourceDomain: 'merchant.example.test',
+                url: 'https://merchant.example.test/lockwood-4570',
+                retrievedAt: '2026-08-11T00:00:00.000Z',
+              },
+            ],
+            band: {
+              lowest: '125.00',
+              median: '125.00',
+              highest: '125.00',
+              lowestCents: 12_500,
+              medianCents: 12_500,
+              highestCents: 12_500,
+              pricedResults: 1,
+            },
+          };
+        },
+      },
+    };
+
+    window.location.hash = '#/competitors';
+    await renderApp(service);
+    await user.type(await screen.findByRole('searchbox', { name: /product name/i }), 'LW4570');
+    await user.click(screen.getByRole('button', { name: /search live prices/i }));
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /select the exact product before comparing stores/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Observed merchant')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /compare this exact product/i }));
+
+    expect(await screen.findByText('Observed merchant')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /selected exact product/i })).toBeInTheDocument();
+    expect(screen.getByText('4570')).toBeInTheDocument();
+    expect(calls).toEqual([
+      ['LW4570', undefined],
+      ['LW4570', 'candidate-token'],
+    ]);
+  });
+
+  it('tells the operator to repeat discovery when a product selection expires', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'serpapi-google-shopping-au',
+          liveSearchConfigured: true,
+          fixtureMode: false,
+          paidCallsEnabled: true,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'serpapi-google-shopping-au',
+            state: 'configured',
+            paidCallsEnabled: true,
+            costCeilingAud: '10.00',
+            costCeilingCents: 1_000,
+            costPerCallCents: 5,
+            spentCents: 0,
+            credentialConfigured: true,
+            credentialHint: null,
+            lastValidatedAt: '2026-08-11T00:00:00.000Z',
+          });
+        },
+        async query(query) {
+          return {
+            state: 'selection_expired',
+            query,
+            queryKind: 'identifier',
+            provider: 'serpapi-google-shopping-au',
+            candidates: [],
+            results: [],
+            band: null,
+            detail: 'The product selection expired or changed.',
+          };
+        },
+      },
+    };
+    window.location.hash = '#/competitors';
+    await renderApp(service);
+
+    await user.type(await screen.findByRole('searchbox', { name: /product name/i }), 'LW4570');
+    await user.click(screen.getByRole('button', { name: /search live prices/i }));
+
+    expect(
+      await screen.findByRole('heading', {
+        name: /selected product has expired/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/run the product search again/i)).toBeInTheDocument();
+  });
+
+  it('does not expose operator search controls for a fixture-mode service', async () => {
+    const base = publicationService(true);
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'test-fixture',
+          liveSearchConfigured: true,
+          fixtureMode: true,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'test-fixture',
+            state: 'configured',
+            paidCallsEnabled: false,
+            costCeilingAud: '0.00',
+            costCeilingCents: 0,
+            costPerCallCents: 0,
+            spentCents: 0,
+            credentialConfigured: false,
+            credentialHint: null,
+            lastValidatedAt: null,
+          });
+        },
+        async query() {
+          throw new Error('Fixture-mode search must remain unreachable from operator UI.');
+        },
+      },
+    };
+    window.location.hash = '#/competitors';
+    await renderApp(service);
+
+    expect(
+      await screen.findByText(/configured service is not a live provider/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /search live prices/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /run test search/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('searchbox', { name: /product name/i })).not.toBeInTheDocument();
   });
 });

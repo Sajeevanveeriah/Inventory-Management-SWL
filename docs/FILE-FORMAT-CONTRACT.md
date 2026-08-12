@@ -53,7 +53,7 @@ the single authority on it:
 | 3   | `Purchase Cost`        | Frequently `0` in real exports                     |
 | 4   | `Quantity In Stock`    | Never changed by this application                  |
 | 5   | `Price`                | The selling price this application replaces        |
-| 6   | `Price Includes Taxes` | `Yes` or `No` — the GST basis **of that row**      |
+| 6   | `Price Includes Taxes` | `Yes` or `No` - the GST basis **of that row**      |
 | 7   | `Tax Rate`             | e.g. `GST on Income`, or blank                     |
 | 8   | `Item is Inventoried`  | Never changed by this application                  |
 | 9   | `Barcode`              | Often damaged by spreadsheet round-tripping        |
@@ -66,7 +66,7 @@ and asserted in `tests/servicem8Format.test.ts`:
 - a field is quoted **only** when it contains `,`, `"`, CR or LF;
 - an embedded `"` is escaped by doubling it.
 
-### Conceptual fields (mapped by the operator — production column names are never assumed)
+### Conceptual fields (mapped by the operator - production column names are never assumed)
 
 | Field                            | File      | Required |
 | -------------------------------- | --------- | -------- |
@@ -110,7 +110,7 @@ Configuration; until they do, export is blocked by a release gate.
 | Hazard                                          | Behaviour                                                       |
 | ----------------------------------------------- | --------------------------------------------------------------- |
 | Same supplier code on many rows, identical cost | Folded into one proposal, with the folded rows named            |
-| Same supplier code, **different** costs         | Every copy blocked as ambiguous — the right cost is undecidable |
+| Same supplier code, **different** costs         | Every copy blocked as ambiguous - the right cost is undecidable |
 | `P.O.A.` in a price column                      | Its own explanation; the item must be priced by hand            |
 | `9.34368E+12` in an identifier or barcode       | Reported as spreadsheet damage; never matched on                |
 | `Purchase Cost` of `0`                          | Not an error; the decision is made on the selling price         |
@@ -127,25 +127,25 @@ and flagged as a warning.
 Outputs are generated locally and named
 `<yyyymmdd>-<profile>_<purpose>_run-<runid>.<ext>` with a sanitised profile name.
 
-1. **`servicem8-import`** — a **CSV in ServiceM8's exact format**, not a workbook.
+1. **`servicem8-import`** - a **CSV in ServiceM8's exact format**, not a workbook.
    - Contains **only approved, valid** price changes and new items. Never unchanged, excluded,
      ambiguous, invalid or missing records.
    - Each existing item is emitted by copying its ORIGINAL ServiceM8 row verbatim and replacing
-     only `Price` and `Purchase Cost`. Every other column — including any column this application
-     does not model — survives the round trip untouched.
+     only `Price` and `Purchase Cost`. Every other column - including any column this application
+     does not model - survives the round trip untouched.
    - New items fill the columns the mapping resolves and take documented defaults for the rest:
      `Quantity In Stock` `0`, `Item is Inventoried` `No`, and the tax basis and rate the ServiceM8
      account already uses most often (reported in the UI and audit summary).
    - The header row is the loaded export's own when it carries the whole contract, otherwise the
      canonical nine columns.
-2. **`change-report`** — `Summary` totals plus `All records` with statuses, decisions, match
+2. **`change-report`** - `Summary` totals plus `All records` with statuses, decisions, match
    methods, before/after values, cost movement, the pricing formula, source row references,
    exclusion reasons and validation messages.
-3. **`exceptions`** — sheets `Ambiguous`, `Invalid`, `Missing from supplier` with explanations.
-4. **`servicem8-rollback`** — a CSV in the SAME ServiceM8 format carrying the ORIGINAL values of
+3. **`exceptions`** - sheets `Ambiguous`, `Invalid`, `Missing from supplier` with explanations.
+4. **`servicem8-rollback`** - a CSV in the SAME ServiceM8 format carrying the ORIGINAL values of
    exactly the rows this run changes, so importing it restores the prior state in one step. New
    items have no prior state and are listed in the audit summary instead.
-5. **`audit-summary`** — human-readable text (see `docs/DATA-PRIVACY.md`).
+5. **`audit-summary`** - human-readable text (see `docs/DATA-PRIVACY.md`).
 
 ### Format assurance
 
@@ -190,5 +190,5 @@ CSV is a machine handoff, so values are written verbatim and any formula-like va
 to the operator instead.
 
 **Never open the generated CSV in Excel.** Doing so and saving rewrites long item numbers and
-barcodes into scientific notation irreversibly — the same damage already visible in genuine
+barcodes into scientific notation irreversibly - the same damage already visible in genuine
 ServiceM8 exports. The application says so at the point of export.

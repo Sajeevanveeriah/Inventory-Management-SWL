@@ -17,7 +17,7 @@ export function StartStep() {
         <p>
           This tool compares an untouched supplier price export against your
           current ServiceM8 materials list, applies the confirmed 30% markup on
-          cost, and prepares a controlled, reviewed import file — together with
+          cost, and prepares a controlled, reviewed import file - together with
           change, exception, rollback and audit reports.
         </p>
         <div className="callout callout-ok">

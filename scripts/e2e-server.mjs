@@ -20,7 +20,7 @@ cpSync(seedDataDir, dataDir, { recursive: true, errorOnExist: true });
 
 const server = spawn(
   process.execPath,
-  ["server/index.mjs", "--port", "4173", "--fixture"],
+  ["tests/support/fixture-server.mjs", "--port", "4173"],
   {
     env: { ...process.env, SWL_DATA_DIR: dataDir },
     stdio: "inherit",

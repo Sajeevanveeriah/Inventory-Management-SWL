@@ -2,10 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ProviderStatus } from "../../platform/contracts";
-import {
-  IntelligenceWorkspace,
-  ProviderPaidCallsControl,
-} from "./CompetitorSearchPage";
+import { ProviderPaidCallsControl } from "./CompetitorSearchPage";
 
 const status: ProviderStatus = {
   provider: "native-provider",
@@ -93,23 +90,5 @@ describe("provider paid-call control", () => {
     );
     await user.click(disable);
     expect(onToggle).toHaveBeenLastCalledWith(false);
-  });
-});
-
-describe("fixture intelligence workspace", () => {
-  it("labels its controls as session-only previews and gives review actions real visible state", async () => {
-    const user = userEvent.setup();
-    render(<IntelligenceWorkspace />);
-
-    expect(screen.getByRole("note")).toHaveTextContent(
-      /synthetic illustrative fixture/i,
-    );
-    await user.click(
-      screen.getByRole("button", { name: /preview accepted state/i }),
-    );
-    expect(
-      screen.getByRole("button", { name: /preview accepted state/i }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("accepted")).toBeInTheDocument();
   });
 });

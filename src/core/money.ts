@@ -3,12 +3,12 @@ import Big from 'big.js';
 /**
  * Decimal-safe money handling.
  *
- * All monetary arithmetic uses big.js decimal values — never binary floats.
+ * All monetary arithmetic uses big.js decimal values - never binary floats.
  * Amounts cross module boundaries as fixed two-decimal strings ("130.00")
  * so application state stays serialisable and exact.
  *
  * Rounding rule (documented, tested, shown in the UI):
- *   "round half up" to 2 decimal places — the common commercial rule where
+ *   "round half up" to 2 decimal places - the common commercial rule where
  *   exactly .005 rounds away from zero (1.005 -> 1.01).
  */
 

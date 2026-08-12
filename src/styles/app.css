@@ -1063,7 +1063,7 @@ dialog::backdrop {
   font-size: 0.885rem;
   text-align: left;
   padding: 0.55rem 0.7rem;
-  min-height: 40px;
+  min-height: 44px;
   cursor: pointer;
 }
 .side-nav button:hover {
@@ -1138,7 +1138,8 @@ dialog::backdrop {
   align-items: center;
   flex: 1 1 240px;
   min-width: 0;
-  max-width: 420px;
+  max-width: 640px;
+  margin-right: auto;
 }
 .topbar-search .search-icon {
   position: absolute;
@@ -1151,7 +1152,7 @@ dialog::backdrop {
 .topbar-search .global-search {
   width: 100%;
   min-width: 0;
-  height: 42px;
+  height: 44px;
   padding: 0 0.9rem 0 2.35rem;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -1172,8 +1173,8 @@ dialog::backdrop {
 .icon-btn {
   display: inline-grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   flex: none;
   border: 1px solid var(--border);
   border-radius: 50%;
@@ -1238,7 +1239,7 @@ dialog::backdrop {
   white-space: nowrap;
 }
 .header-btn {
-  min-height: 38px;
+  min-height: 44px;
   padding: 0.38rem 0.8rem;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -1320,7 +1321,7 @@ dialog::backdrop {
   font-size: 0.885rem;
   white-space: nowrap;
   padding: 0.6rem 0.8rem;
-  min-height: 42px;
+  min-height: 44px;
   cursor: pointer;
 }
 .run-stepper button:hover:not(:disabled) {
@@ -2618,5 +2619,378 @@ html[data-theme] textarea {
   .expansion-safety,
   dialog {
     background: var(--surface);
+  }
+}
+
+/* Final interaction and material refinement --------------------------------
+   Chrome and overlays carry translucency. Operational content stays opaque so
+   hierarchy remains calm, text remains predictable and scrolling is cheaper. */
+.card,
+.metric-card,
+.run-stepper,
+.setting-row,
+.ci-status-grid > div,
+.ci-panel,
+.expansion-safety {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.route-view {
+  min-width: 0;
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.side-nav .nav-brand,
+.side-nav .local-badge {
+  flex: none;
+}
+
+.side-nav .local-badge {
+  align-self: flex-start;
+}
+
+.side-nav nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--space-2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.recovery-shell {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  background:
+    radial-gradient(circle at 82% 2%, var(--ambient-primary), transparent 30rem),
+    radial-gradient(circle at 12% 98%, var(--ambient-secondary), transparent 30rem), var(--canvas);
+}
+
+.recovery-main {
+  width: min(100%, 760px);
+  max-width: none;
+  padding: 0;
+}
+
+.recovery-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 var(--space-2) var(--space-4);
+}
+
+.recovery-brand > span {
+  color: var(--ink-secondary);
+  font-size: 0.78rem;
+  font-weight: 680;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recovery-surface {
+  padding: clamp(1.1rem, 4vw, 2rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.recovery-surface .page-head {
+  margin-bottom: var(--space-4);
+}
+
+.chart-plot {
+  position: relative;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border-radius: var(--radius-sm);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.chart-plot::-webkit-scrollbar {
+  height: 7px;
+}
+
+.chart-plot::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+
+.chart-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-scroll-hint {
+  display: none;
+  margin: var(--space-1) 0 0;
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+}
+
+.topbar-search.demo-active .global-search {
+  padding-right: 9.2rem;
+}
+
+.demo-indicator {
+  position: absolute;
+  right: 0.45rem;
+  max-width: 8.2rem;
+  overflow: hidden;
+  padding: 0.18rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  border-radius: 999px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-theme] .btn,
+html[data-theme] .header-btn,
+html[data-theme] .chip,
+html[data-theme] .status-tabs button,
+html[data-theme] .side-nav button,
+html[data-theme] .metric-card,
+html[data-theme] .setting-row,
+html[data-theme] .dropzone,
+html[data-theme] .appearance-control button,
+html[data-theme] .glass-tint-control button,
+html[data-theme] select,
+html[data-theme] input[type='text'],
+html[data-theme] input[type='search'],
+html[data-theme] input[type='number'],
+html[data-theme] textarea {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-theme] .btn,
+  html[data-theme] .header-btn,
+  html[data-theme] .chip,
+  html[data-theme] .status-tabs button,
+  html[data-theme] .side-nav button,
+  html[data-theme] .metric-card,
+  html[data-theme] .setting-row,
+  html[data-theme] .dropzone,
+  html[data-theme] .appearance-control button,
+  html[data-theme] .glass-tint-control button,
+  html[data-theme] select,
+  html[data-theme] input[type='text'],
+  html[data-theme] input[type='search'],
+  html[data-theme] input[type='number'],
+  html[data-theme] textarea {
+    transition:
+      transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      border-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .route-view {
+    animation: swl-route-enter 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .btn:active:not(:disabled),
+  .header-btn:active:not(:disabled),
+  .icon-btn:active:not(:disabled),
+  .workspace-chip:active:not(:disabled),
+  .appearance-control button:active:not(:disabled),
+  .glass-tint-control button:active:not(:disabled),
+  .metric-link:active:not(:disabled),
+  .side-nav button:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes swl-route-enter {
+  from {
+    transform: translateY(6px) scale(0.997);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .side-nav,
+  .topbar,
+  dialog {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  dialog::backdrop {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: var(--border-strong);
+  }
+
+  .card,
+  .metric-card,
+  .run-stepper,
+  .setting-row,
+  .ci-status-grid > div,
+  .ci-panel,
+  .expansion-safety {
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .topbar .workspace-chip {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) and (prefers-reduced-motion: no-preference) {
+  .side-nav {
+    transition:
+      transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      visibility 0s linear 240ms;
+  }
+
+  .side-nav.nav-open {
+    transition-delay: 0s;
+  }
+}
+
+@media (max-width: 560px) {
+  .btn,
+  .btn-sm {
+    min-height: 44px;
+  }
+
+  .topbar .appearance-control {
+    display: none;
+  }
+}
+
+@media (max-width: 430px) {
+  .approval-table-scroll {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .approval-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 0.75rem;
+    padding: 0.65rem 0.4rem;
+  }
+  .approval-table td {
+    align-items: start;
+    overflow-wrap: anywhere;
+  }
+  .approval-table td[data-label='Action'] {
+    align-items: center;
+    padding-top: 0.55rem;
+  }
+  .approval-table td[data-label='Action'] .btn {
+    width: 100%;
+  }
+  .metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .metric-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 0.6rem;
+    padding: 0.75rem 0.8rem 0.8rem;
+  }
+
+  .metric-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .metric-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .metric-label {
+    min-height: 2.7em;
+    font-size: 0.68rem;
+  }
+
+  .metric-value {
+    font-size: 1.5rem;
+  }
+
+  .metric-state {
+    font-size: 0.71rem;
+  }
+
+  .chart {
+    overflow: visible;
+  }
+
+  .chart-plot {
+    margin-inline: -0.2rem;
+    padding-inline: 0.2rem;
+  }
+
+  .chart-plot svg,
+  .chart svg {
+    min-width: 480px;
+  }
+
+  .chart-scroll-hint {
+    display: block;
+  }
+
+  .recovery-brand {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 350px) {
+  .metric-row {
+    grid-template-columns: 1fr;
   }
 }

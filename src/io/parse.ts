@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import type { ParsedTable } from '../core/table';
 import { sha256Hex } from './hash';
 import {
@@ -121,7 +121,7 @@ function parseCsv(
   const text = new TextDecoder('utf-8').decode(buffer);
   const warnings: string[] = [];
   const result = Papa.parse<string[]>(text, {
-    dynamicTyping: false, // keep everything as strings — preserves leading zeroes
+    dynamicTyping: false, // keep everything as strings - preserves leading zeroes
     skipEmptyLines: 'greedy',
   });
   for (const err of result.errors.slice(0, 3)) {
@@ -181,7 +181,8 @@ async function parseXlsx(
   sha256: string,
   preferredSheet?: string,
 ): Promise<ParsedTable> {
-  const workbook = new ExcelJS.Workbook();
+  const { default: ExcelJSRuntime } = await import('exceljs');
+  const workbook = new ExcelJSRuntime.Workbook();
   try {
     await workbook.xlsx.load(buffer);
   } catch {

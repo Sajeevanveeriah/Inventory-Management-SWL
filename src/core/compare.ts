@@ -250,7 +250,7 @@ export function runComparison(
         .join(', ');
       messages.push({
         severity: 'error',
-        message: `Supplier code “${sup.code}” appears more than once with DIFFERENT costs — also ${others}. The correct cost cannot be determined, so every copy is blocked.`,
+        message: `Supplier code “${sup.code}” appears more than once with DIFFERENT costs - also ${others}. The correct cost cannot be determined, so every copy is blocked.`,
       });
       rows.push(
         blankRow({ id: `sup-row:${sup.rowIndex}`, status: 'ambiguous', supplier: sup, messages }),
@@ -480,7 +480,7 @@ export function runComparison(
     messages.push({
       severity: 'info',
       message:
-        'Present in ServiceM8 but absent from the supplier file. Flagged for awareness only — this tool never deletes or deactivates items.',
+        'Present in ServiceM8 but absent from the supplier file. Flagged for awareness only - this tool never deletes or deactivates items.',
     });
     rows.push(
       blankRow({ id: `s8:${s8.itemNumberNorm}`, status: 'missing-from-supplier', s8, messages }),

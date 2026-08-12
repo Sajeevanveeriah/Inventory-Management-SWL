@@ -59,7 +59,7 @@ function byId(rows: ComparisonRow[], code: string): ComparisonRow {
   return found;
 }
 
-describe('runComparison — statuses', () => {
+describe('runComparison - statuses', () => {
   it('classifies unchanged when cost matches exactly', () => {
     const result = run(
       [['A-1', 'Fictional Widget', '12.50']],
@@ -184,7 +184,7 @@ describe('runComparison — statuses', () => {
   });
 });
 
-describe('runComparison — aliases', () => {
+describe('runComparison - aliases', () => {
   it('matches through an approved alias and reports the method', () => {
     const aliases = new Map([['ALIAS-11', 'FIC-011']]);
     const result = run(
@@ -267,7 +267,7 @@ describe('runComparison — aliases', () => {
   });
 });
 
-describe('runComparison — totals', () => {
+describe('runComparison - totals', () => {
   it('produces internally consistent totals', () => {
     const result = run(
       [
@@ -295,7 +295,7 @@ describe('runComparison — totals', () => {
   });
 });
 
-describe('runComparison — price-driven change detection', () => {
+describe('runComparison - price-driven change detection', () => {
   it('treats a row as changed when the PRICE is wrong, even if cost is identical', () => {
     // ServiceM8 records the same cost, but the selling price sits below the
     // markup floor. Comparing cost against cost would call this unchanged and
@@ -358,7 +358,7 @@ describe('runComparison — price-driven change detection', () => {
   });
 });
 
-describe('runComparison — duplicate supplier rows', () => {
+describe('runComparison - duplicate supplier rows', () => {
   it('folds duplicates that agree on cost into one proposal', () => {
     const result = run(
       [
@@ -392,7 +392,7 @@ describe('runComparison — duplicate supplier rows', () => {
   });
 });
 
-describe('runComparison — real-world data hazards', () => {
+describe('runComparison - real-world data hazards', () => {
   it('explains a price-on-application item rather than reporting a parse failure', () => {
     const result = run(
       [['POA-1', 'Fictional Restricted Key', 'P.O.A.']],

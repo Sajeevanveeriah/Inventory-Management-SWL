@@ -11,6 +11,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 
 const ALLOWED_DATA_PATHS = [/^tests\/fixtures\//, /^src\/demo\//];
+const PRIVATE_ENV_PATHS = new Set([
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.production.local",
+]);
+const excludePrivateEnv = process.argv.includes("--exclude-private-env");
 
 /**
  * Source modules are code, not data. The name heuristics below match on FILE
@@ -85,6 +92,7 @@ for (const file of deletedFromIndex) files.delete(file);
 
 const findings = [];
 for (const file of files) {
+  if (excludePrivateEnv && PRIVATE_ENV_PATHS.has(file)) continue;
   const allowed = ALLOWED_DATA_PATHS.some((re) => re.test(file));
   const sourceCode = SOURCE_CODE_PATH.test(file);
   for (const { re, why } of SUSPICIOUS_NAME) {

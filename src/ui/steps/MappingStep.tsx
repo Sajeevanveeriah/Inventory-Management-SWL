@@ -85,7 +85,7 @@ function MappingPanel({
                 onChange(next);
               }}
             >
-              <option value="">— not mapped —</option>
+              <option value="">- not mapped -</option>
               {table.headers.map((h, i) => (
                 <option key={`${i}-${h}`} value={String(i)}>
                   {h || `(column ${i + 1})`}
@@ -210,7 +210,7 @@ export function MappingStep() {
 
       <Dialog open={saveOpen} title="Save mapping profile" onClose={() => setSaveOpen(false)}>
         <p className="muted small">
-          Saves only the column layout (header names and positions) for reuse — never any imported
+          Saves only the column layout (header names and positions) for reuse - never any imported
           rows. Use a supplier-specific name.
         </p>
         <div className="field">

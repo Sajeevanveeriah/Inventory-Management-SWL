@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+import type ExcelJS from 'exceljs';
 import type { ComparisonResult, ComparisonRow } from '../core/compare';
 import type { DecisionMap } from '../core/review';
 import type { ParsedTable } from '../core/table';
@@ -87,15 +87,16 @@ async function toBlob(wb: ExcelJS.Workbook): Promise<Blob> {
   return new Blob([buffer], { type: XLSX_MIME });
 }
 
-function newWorkbook(): ExcelJS.Workbook {
-  const wb = new ExcelJS.Workbook();
+async function newWorkbook(): Promise<ExcelJS.Workbook> {
+  const { default: ExcelJSRuntime } = await import('exceljs');
+  const wb = new ExcelJSRuntime.Workbook();
   wb.creator = `${APP_NAME} v${APP_VERSION}`;
   return wb;
 }
 
 /** 2. Detailed change report covering every record and decision. */
 async function buildChangeReport(input: ExportInput): Promise<{ blob: Blob; sanitized: number }> {
-  const wb = newWorkbook();
+  const wb = await newWorkbook();
   const writer = new CellWriter();
   const { comparison, decisions } = input;
   const headers = [
@@ -184,7 +185,7 @@ async function buildChangeReport(input: ExportInput): Promise<{ blob: Blob; sani
 async function buildExceptionsWorkbook(
   input: ExportInput,
 ): Promise<{ blob: Blob; sanitized: number }> {
-  const wb = newWorkbook();
+  const wb = await newWorkbook();
   const writer = new CellWriter();
   const { comparison } = input;
   const exceptionHeaders = ['Identifier', 'Description', 'Source row', 'File', 'Explanation'];
@@ -263,7 +264,7 @@ export async function buildAllOutputs(input: ExportInput): Promise<GeneratedOutp
     taxHandling: input.taxHandling,
     newItemConvention: `${input.newItemIncludesTaxes ? 'Price includes GST' : 'Price excludes GST'}, tax rate “${input.newItemTaxRate}”`,
     importFormat: importBuild.matchesCanonicalContract
-      ? 'ServiceM8 Materials & Services CSV — canonical column contract'
+      ? 'ServiceM8 Materials & Services CSV - canonical column contract'
       : `ServiceM8 CSV adapted from the loaded export (${importBuild.headers.length} columns)`,
     settingsChanges: input.settingsChanges,
     outputFilenames: [...filenames],
@@ -300,7 +301,7 @@ export async function buildAllOutputs(input: ExportInput): Promise<GeneratedOutp
     {
       filename: filenames[3],
       kind: 'rollback',
-      label: 'ServiceM8 rollback file (CSV) — prior values of the changed rows',
+      label: 'ServiceM8 rollback file (CSV) - prior values of the changed rows',
       blob: csvBlob(rollbackBuild.text),
       sanitizedCells: 0,
       serviceM8: rollbackBuild,

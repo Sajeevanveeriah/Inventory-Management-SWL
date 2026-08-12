@@ -20,7 +20,7 @@ export const STATUS_DESCRIPTIONS: Record<BaseStatus, string> = {
     'Supplier cost differs from the existing ServiceM8 cost. A new price is proposed.',
   'new-item': 'The supplier identifier is absent from ServiceM8. Requires explicit approval.',
   'missing-from-supplier':
-    'The ServiceM8 item is absent from the supplier file. Flagged only — never deleted automatically.',
+    'The ServiceM8 item is absent from the supplier file. Flagged only - never deleted automatically.',
   ambiguous: 'Multiple or uncertain matches exist. Blocked from the import output.',
   invalid: 'A required value is missing or malformed. Blocked from the import output.',
 };

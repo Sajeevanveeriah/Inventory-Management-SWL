@@ -20,7 +20,7 @@ function table(name: string, headers: string[], rows: string[][]): ParsedTable {
 }
 
 describe('buildAuditText', () => {
-  it('contains rules, totals, hashes, decisions and outputs — but no raw rows', () => {
+  it('contains rules, totals, hashes, decisions and outputs - but no raw rows', () => {
     const supplierTable = table(
       'DEMO-supplier.csv',
       ['Code', 'Name', 'Cost'],
@@ -76,7 +76,7 @@ describe('buildAuditText', () => {
       },
       taxHandling: 'Supplier costs exclude GST',
       newItemConvention: 'Price excludes GST, tax rate “GST on Income”',
-      importFormat: 'ServiceM8 Materials & Services CSV — canonical column contract',
+      importFormat: 'ServiceM8 Materials & Services CSV - canonical column contract',
       settingsChanges: [{ at: '2026-01-01T00:00:01Z', change: 'markup changed 30% → 30%' }],
       outputFilenames: ['20260101-Test_import-candidate_run-RUN123.xlsx'],
     });

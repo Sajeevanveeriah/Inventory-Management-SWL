@@ -13,7 +13,7 @@ describe('outputFilename', () => {
   it('builds deterministic sanitised names with date, profile, purpose and run id', () => {
     const name = outputFilename(
       new Date(2026, 7, 3),
-      'Acme Locks — Monthly!',
+      'Acme Locks - Monthly!',
       'servicem8-import',
       'AB12CD',
       'csv',

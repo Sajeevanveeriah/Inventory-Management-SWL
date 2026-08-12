@@ -29,7 +29,7 @@ export interface AuditInput {
 }
 
 /**
- * Human-readable audit summary. Contains identifiers, statuses and totals —
+ * Human-readable audit summary. Contains identifiers, statuses and totals -
  * never full raw source rows. It is generated locally and downloaded by the
  * operator; nothing is transmitted anywhere.
  */
@@ -43,7 +43,7 @@ export function buildAuditText(input: AuditInput): string {
   const lines: string[] = [];
   const push = (s = '') => lines.push(s);
 
-  push(`${APP_NAME} — Audit summary`);
+  push(`${APP_NAME} - Audit summary`);
   push('='.repeat(60));
   push(`Application version: ${APP_VERSION}`);
   push(`Run identifier:      ${input.runId}`);
@@ -102,7 +102,7 @@ export function buildAuditText(input: AuditInput): string {
     const kind = r.status === 'new-item' ? 'NEW' : 'PRICE';
     const before = r.s8?.existingSell != null ? formatAud(r.s8.existingSell) : 'no prior price';
     push(
-      `  [${kind}] ${id} — cost ${formatAud(r.supplier?.cost ?? '0.00')}; price ${before} → ${formatAud(r.proposedSell ?? '0.00')} (${r.pricing?.explanation ?? r.matchMethod})`,
+      `  [${kind}] ${id} - cost ${formatAud(r.supplier?.cost ?? '0.00')}; price ${before} → ${formatAud(r.proposedSell ?? '0.00')} (${r.pricing?.explanation ?? r.matchMethod})`,
     );
   }
   if (importRows.length === 0) push('  (none)');
@@ -111,7 +111,7 @@ export function buildAuditText(input: AuditInput): string {
   push('-'.repeat(60));
   for (const r of excluded) {
     const id = r.supplier?.code ?? r.s8?.itemNumber ?? r.id;
-    push(`  ${id} — ${decisions[r.id]?.reason ?? 'no reason recorded'}`);
+    push(`  ${id} - ${decisions[r.id]?.reason ?? 'no reason recorded'}`);
   }
   if (excluded.length === 0) push('  (none)');
   push();
@@ -124,7 +124,7 @@ export function buildAuditText(input: AuditInput): string {
       `row ${r.supplier?.sourceRow ?? r.s8?.sourceRow ?? '?'}`;
     const firstError =
       r.messages.find((m) => m.severity === 'error')?.message ?? STATUS_LABELS[r.status];
-    push(`  [${STATUS_LABELS[r.status]}] ${id} — ${firstError}`);
+    push(`  [${STATUS_LABELS[r.status]}] ${id} - ${firstError}`);
   }
   if (blocked.length === 0) push('  (none)');
   push();

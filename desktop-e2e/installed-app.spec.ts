@@ -12,6 +12,7 @@ const ROUTES = [
   '#/new-run',
   '#/runs',
   '#/inventory',
+  '#/expansion',
   '#/suppliers',
   '#/mapping-profiles',
   '#/pricing-rules',
@@ -71,10 +72,15 @@ describe('production SWL Windows desktop binary', () => {
     await expect($('html')).toHaveAttribute('data-theme', 'light');
     await capture('dashboard-light-1366x768.png');
 
-    await (await buttonWithLabel('Switch to the dark theme')).click();
+    await (await buttonWithLabel('Dark appearance')).click();
+    await expect($('html')).toHaveAttribute('data-theme-preference', 'dark');
     await expect($('html')).toHaveAttribute('data-theme', 'dark');
     await capture('dashboard-dark-1366x768.png');
-    await (await buttonWithLabel('Switch to the light theme')).click();
+    await (await buttonWithLabel('System appearance')).click();
+    await expect($('html')).toHaveAttribute('data-theme-preference', 'system');
+    expect(['light', 'dark']).toContain(await $('html').getAttribute('data-theme'));
+    await (await buttonWithLabel('Light appearance')).click();
+    await expect($('html')).toHaveAttribute('data-theme-preference', 'light');
     await expect($('html')).toHaveAttribute('data-theme', 'light');
 
     await browser.setWindowSize(1920, 1080);
@@ -85,6 +91,17 @@ describe('production SWL Windows desktop binary', () => {
     expect(minimumSize.width).toBe(390);
     expect(minimumSize.height).toBe(600);
     await capture('dashboard-minimum-390x600.png');
+
+    const settingsOpener = await buttonWithLabel('Open settings');
+    await settingsOpener.click();
+    const settingsDialog = await $('dialog[open]');
+    await expect(settingsDialog).toBeDisplayed();
+    await (await settingsDialog.$('button[aria-label="Dark appearance"]')).click();
+    await expect($('html')).toHaveAttribute('data-theme-preference', 'dark');
+    await expect($('html')).toHaveAttribute('data-theme', 'dark');
+    await browser.keys(['Escape']);
+    await expect($('dialog[open]')).not.toExist();
+    await expect(settingsOpener).toBeFocused();
 
     await browser.execute(() => {
       const runtime = globalThis as unknown as {
@@ -128,6 +145,21 @@ describe('production SWL Windows desktop binary', () => {
       await navigate(route);
       await expect($('main h1')).toBeDisplayed();
     }
+
+    await browser.setWindowSize(390, 600);
+    await navigate('#/expansion');
+    await expect($('main h1=Expansion catalogue')).toBeDisplayed();
+    await expect($('table[aria-label="Supplier category scope switches"]')).toBeDisplayed();
+    const hasDocumentOverflow = (await browser.execute(() => {
+      const runtime = globalThis as unknown as {
+        document: {
+          documentElement: { scrollWidth: number; clientWidth: number };
+        };
+      };
+      const root = runtime.document.documentElement;
+      return root.scrollWidth > root.clientWidth;
+    })) as unknown as boolean;
+    expect(hasDocumentOverflow).toBe(false);
   });
 
   it('runs all seven workflow stages offline with synthetic data', async () => {
@@ -189,7 +221,7 @@ describe('production SWL Windows desktop binary', () => {
     expect(unexpectedNetwork).toEqual([]);
   });
 
-  it('renders every native deterministic provider state without network access', async () => {
+  it('requires provider authorisation for ordinary and legacy fixture-prefixed searches', async () => {
     await browser.setWindowSize(1366, 768);
     await navigate('#/competitors');
     const search = await $('input[placeholder*="Lockwood 4570"]');
@@ -203,12 +235,20 @@ describe('production SWL Windows desktop binary', () => {
     };
 
     await captureState('LW4570', 'Live search is not configured', 'not-configured');
-    await captureState('fixture:empty', 'No live prices found', 'empty');
-    await captureState('fixture:offline', 'The computer is offline', 'offline');
-    await captureState('fixture:timeout', 'The search provider timed out', 'timeout');
-    await captureState('fixture:quota', 'Provider quota is exhausted', 'quota-exhausted');
-    await captureState('fixture:rate-limit', 'Local rate limit reached', 'rate-limited');
-    await captureState('fixture:error', 'The search provider returned an error', 'provider-error');
+    for (const [query, screenshotName] of [
+      ['fixture:empty', 'empty'],
+      ['fixture:offline', 'offline'],
+      ['fixture:timeout', 'timeout'],
+      ['fixture:quota', 'quota'],
+      ['fixture:rate-limit', 'rate-limit'],
+      ['fixture:error', 'error'],
+    ] as const) {
+      await captureState(
+        query,
+        'Live search is not configured',
+        `fixture-prefix-${screenshotName}-requires-provider`,
+      );
+    }
   });
 
   it('creates, previews, confirms and restores a verified local backup', async () => {

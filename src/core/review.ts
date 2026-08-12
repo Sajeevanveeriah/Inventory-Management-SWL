@@ -65,7 +65,7 @@ function preserveCommittedApprovals(
   return next;
 }
 
-/** Approve rows. Silently skips rows that are not approvable — bulk approval
+/** Approve rows. Silently skips rows that are not approvable - bulk approval
  *  can therefore never include ambiguous or invalid records. Returns the new
  *  state and the count actually approved. */
 export function approveRows(

@@ -2,12 +2,12 @@ import { normalizeDescription } from './normalize';
 
 /**
  * Deterministic description similarity for manual-review suggestions only.
- * Sørensen–Dice coefficient over the union of word tokens and character
+ * Sørensen-Dice coefficient over the union of word tokens and character
  * bigrams. Returns a value in [0, 1].
  *
  * A real supplier price list has thousands of unmatched rows and a ServiceM8
- * catalogue has thousands of items, so the naive form — rebuilding both
- * feature sets for every pair — costs tens of millions of set constructions
+ * catalogue has thousands of items, so the naive form - rebuilding both
+ * feature sets for every pair - costs tens of millions of set constructions
  * and freezes the interface for minutes. The prepared form below computes each
  * description's features ONCE, interns them as integers, and intersects sorted
  * integer arrays. `similarityBound` additionally rejects pairs that cannot

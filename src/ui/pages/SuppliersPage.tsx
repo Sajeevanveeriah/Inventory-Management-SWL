@@ -11,7 +11,7 @@ import { EmptyState, Page } from "./PageChrome";
 /**
  * Supplier mapping profiles: the durable per-supplier configuration
  * (column mappings and header fingerprints). Profiles never contain
- * business rows — only operator-authored mapping metadata.
+ * business rows - only operator-authored mapping metadata.
  */
 export function SuppliersPage() {
   const state = useAppState();

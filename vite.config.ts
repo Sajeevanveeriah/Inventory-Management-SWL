@@ -4,11 +4,9 @@ import react from "@vitejs/plugin-react";
 /**
  * Content Security Policy for the production build only.
  *
- * Invariant change (authorised by the repository owner, August 2026): the
- * application is no longer no-network. The browser may call ITS OWN ORIGIN
- * ONLY (`connect-src 'self'`), which is the small bundled Node server that
- * performs live competitor searches through a licensed provider and owns
- * persistence. No third-party origin is ever reachable from the page.
+ * Browser deployments may call only their own origin. GitHub Pages is static
+ * and has no provider integration; the desktop bundle receives its separate
+ * network policy from Tauri.
  *
  * The policy is not applied in dev because Vite's HMR client requires inline
  * scripts and a WebSocket connection.
@@ -22,8 +20,6 @@ const productionCsp = () =>
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
-    // Own origin only: the browser demonstration API lives on the same origin.
-    // The desktop bundle receives its single effective policy from Tauri.
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",

@@ -1,3 +1,7 @@
+import { createEbayBrowseProvider } from "./ebayBrowseProvider.mjs";
+import { createSerpApiProvider } from "./serpapiProvider.mjs";
+import { createSerperShoppingProvider } from "./serperShoppingProvider.mjs";
+
 /** Capability contract shared by every retrieval adapter. Credentials stay server-side. */
 export function providerCapabilities(provider, overrides = {}) {
   return Object.freeze({
@@ -48,18 +52,9 @@ export function createDisabledProvider({
 
 export function optionalProviderRegistry(env = process.env) {
   return [
-    createDisabledProvider({
-      id: "serper-shopping-au",
-      displayName: "Serper Shopping AU",
-      authentication: "API key",
-      dataRights: "Finite provider credits apply; never describe as unlimited.",
-    }),
-    createDisabledProvider({
-      id: "ebay-browse-au",
-      displayName: "eBay Browse AU",
-      authentication: "OAuth application credentials",
-      dataRights: "Official Browse API and EBAY_AU marketplace terms apply.",
-    }),
+    createSerpApiProvider(env),
+    createSerperShoppingProvider(env),
+    createEbayBrowseProvider(env),
     createDisabledProvider({
       id: "merchant-market-benchmark",
       displayName: "Google Merchant market benchmark",
@@ -86,6 +81,33 @@ export function optionalProviderRegistry(env = process.env) {
         "Discovery only; obey site terms, robots controls and rate limits. No bypasses.",
     }),
   ];
+}
+
+/** Select one live provider without ever moving a credential into the browser. */
+export function createProviderFromEnvironment(
+  env = process.env,
+  fetchImpl = fetch,
+) {
+  const requested = (env.SWL_SEARCH_PROVIDER ?? "").trim().toLowerCase();
+  if (["serper", "serper-shopping-au"].includes(requested)) {
+    return createSerperShoppingProvider(env, fetchImpl);
+  }
+  if (["ebay", "ebay-browse-au"].includes(requested)) {
+    return createEbayBrowseProvider(env, fetchImpl);
+  }
+  if (["serpapi", "serpapi-google-shopping-au"].includes(requested)) {
+    return createSerpApiProvider(env, fetchImpl);
+  }
+  if (requested !== "") {
+    throw new Error("SWL_SEARCH_PROVIDER must be serpapi, serper or ebay.");
+  }
+  if (createSerperShoppingProvider(env, fetchImpl).configured) {
+    return createSerperShoppingProvider(env, fetchImpl);
+  }
+  if (createEbayBrowseProvider(env, fetchImpl).configured) {
+    return createEbayBrowseProvider(env, fetchImpl);
+  }
+  return createSerpApiProvider(env, fetchImpl);
 }
 
 export function publicProviderStatus(provider) {

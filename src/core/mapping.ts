@@ -11,7 +11,7 @@ export interface MappingSuggestion {
 }
 
 /**
- * Suggest column mappings from header names. Suggestions are advisory only —
+ * Suggest column mappings from header names. Suggestions are advisory only -
  * the operator must confirm every mapping before it is used.
  */
 export function suggestMappings(headers: string[], fields: FieldDefinition[]): MappingSuggestion[] {

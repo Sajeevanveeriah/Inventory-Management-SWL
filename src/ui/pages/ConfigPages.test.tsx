@@ -121,7 +121,7 @@ describe("backup and recovery UI", () => {
       args: { previewToken: "preview-1" },
     });
     expect(announce).toHaveBeenCalledWith(
-      "Backup restored and active session data cleared.",
+      "Backup restored and active workflow cleared.",
     );
   });
 
@@ -162,7 +162,7 @@ describe("backup and recovery UI", () => {
       expect.stringMatching(/reload failed.*workflow remains blocked/i),
     );
     expect(announce).not.toHaveBeenCalledWith(
-      "Backup restored and active session data cleared.",
+      "Backup restored and active workflow cleared.",
     );
   });
 });

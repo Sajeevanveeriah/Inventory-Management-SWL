@@ -10,7 +10,7 @@ import {
  * Every source records honestly how it is accessed. Live competitor search is
  * performed through the active platform's licensed shopping-search adapter
  * (rate limited, honest user agent; the server-backed web adapter may cache)
- * — never by scraping retailer websites directly.
+ * - never by scraping retailer websites directly.
  * Manual entry remains available on every platform. Bulk evidence-file import
  * is not exposed in this release.
  * Sources that cannot be supported lawfully are disabled in this registry
@@ -29,7 +29,25 @@ export interface CompetitorSource {
   enabled: boolean;
 }
 
-/** Fictional example sources following the repository's demo-data convention. */
+const LEGACY_SYNTHETIC_SOURCE_IDS = new Set([
+  "fictionville-security",
+  "fictionville-hardware",
+  "fictionville-auctions",
+]);
+
+/**
+ * Hide exact synthetic defaults written by older demonstration builds without
+ * deleting or rewriting an operator's persistent source registry.
+ */
+export function withoutLegacySyntheticSources(
+  sources: CompetitorSource[],
+): CompetitorSource[] {
+  return sources.filter(
+    (source) => !LEGACY_SYNTHETIC_SOURCE_IDS.has(source.id),
+  );
+}
+
+/** Production source registry. Synthetic demo competitors never appear here. */
 export function defaultSources(): CompetitorSource[] {
   return [
     {
@@ -47,30 +65,6 @@ export function defaultSources(): CompetitorSource[] {
       automatedAccessNote:
         "Not applicable: prices are typed in by the operator with a source URL.",
       enabled: true,
-    },
-    {
-      id: "fictionville-security",
-      name: "Fictionville Security Supplies (example)",
-      accessMethod: "manual-entry",
-      automatedAccessNote:
-        "Entered manually: no published product API; site terms disallow scraping.",
-      enabled: true,
-    },
-    {
-      id: "fictionville-hardware",
-      name: "Fictionville Hardware Direct (example)",
-      accessMethod: "manual-entry",
-      automatedAccessNote:
-        "Automated access not permitted: robots.txt disallows automated product queries.",
-      enabled: true,
-    },
-    {
-      id: "fictionville-auctions",
-      name: "Fictionville Auctions (example)",
-      accessMethod: "manual-entry",
-      automatedAccessNote:
-        "Disabled: listings mix used and bundled products; prices are not comparable evidence.",
-      enabled: false,
     },
   ];
 }
@@ -170,7 +164,20 @@ export interface PriceBand {
 /** Lowest / median / highest of the normalised ex-GST prices, or null when none. */
 export function priceBand(results: EvidenceSearchResult[]): PriceBand | null {
   const priced = results
-    .filter((r) => r.normalisedEx !== null)
+    .filter(({ observation, normalisedEx }) => {
+      return (
+        normalisedEx !== null &&
+        observation.approvedSource &&
+        observation.currency === "AUD" &&
+        observation.gstBasis !== "unknown" &&
+        observation.matchConfidence >= 0.8 &&
+        observation.reviewState === "accepted" &&
+        observation.packCompatible &&
+        observation.condition === "new" &&
+        observation.productOnly &&
+        observation.ambiguousMatch !== true
+      );
+    })
     .map((r) => ({
       value: new Big(r.normalisedEx as string),
       source: r.sourceName,
