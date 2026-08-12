@@ -70,5 +70,53 @@ export const config: WebdriverIO.Config = {
         { cause },
       );
     }
+    console.log(
+      `[swl-acceptance] window URLs observed: ${JSON.stringify(observedUrls)}`,
+    );
+
+    // Boot diagnostics: capture the application's own console output across a
+    // reload, then print a DOM snapshot, so a frontend that fails to mount
+    // leaves its error in the step log rather than only inside the artefact.
+    const consoleEntries: string[] = [];
+    try {
+      await browser.sessionSubscribe({ events: ["log.entryAdded"] });
+      browser.on(
+        "log.entryAdded",
+        (entry: { level?: string; text?: string | null }) => {
+          consoleEntries.push(`[${entry.level ?? "log"}] ${entry.text ?? ""}`);
+        },
+      );
+    } catch {
+      consoleEntries.push("[meta] console subscription unavailable");
+    }
+    await browser.execute(() => {
+      (
+        globalThis as unknown as { location: { reload: () => void } }
+      ).location.reload();
+    });
+    await browser.pause(8_000);
+    const bootSnapshot = await browser.execute(() => {
+      const runtime = globalThis as unknown as {
+        document: {
+          readyState: string;
+          documentElement: { dataset: { theme?: string } };
+          getElementById: (id: string) => { childElementCount: number } | null;
+          body: { innerText?: string } | null;
+        };
+      };
+      return {
+        readyState: runtime.document.readyState,
+        theme: runtime.document.documentElement.dataset.theme ?? null,
+        rootChildren:
+          runtime.document.getElementById("root")?.childElementCount ?? -1,
+        bodyPreview: (runtime.document.body?.innerText ?? "").slice(0, 400),
+      };
+    });
+    console.log(
+      `[swl-acceptance] boot snapshot: ${JSON.stringify(bootSnapshot)}`,
+    );
+    console.log(
+      `[swl-acceptance] console entries: ${JSON.stringify(consoleEntries.slice(0, 50))}`,
+    );
   },
 };
