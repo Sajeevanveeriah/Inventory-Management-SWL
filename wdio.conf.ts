@@ -91,8 +91,10 @@ export const config: WebdriverIO.Config = {
 
     if (!onApplicationOrigin) {
       // The embedded custom-protocol handler serves the compiled frontend for
-      // this origin regardless of which side initiates the navigation.
-      await browser.url("http://tauri.localhost/index.html");
+      // this origin regardless of which side initiates the navigation. The
+      // asset resolver maps the root path to index.html; an explicit
+      // /index.html request returns "asset not found".
+      await browser.url("http://tauri.localhost/");
     }
 
     type BootState = {
