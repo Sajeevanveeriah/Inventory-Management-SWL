@@ -403,7 +403,7 @@ project-locally by Windows CI, never compiled into the application.
 | @wdio/jasmine-framework    | 9.30.1        | MIT               | Development/CI only                       |
 | @types/jasmine             | 5.1.15        | MIT               | Desktop-test TypeScript declarations only |
 | @wdio/spec-reporter        | 9.30.1        | MIT               | Development/CI only                       |
-| @wdio/tauri-service        | 1.3.0         | MIT               | External driver orchestration only        |
+| @wdio/tauri-service        | 1.3.0         | MIT               | Retained dev dependency; unused at run time |
 | tauri-driver               | 2.0.6         | Apache-2.0 OR MIT | External project-local CI executable only |
 
 ## Demonstration mode

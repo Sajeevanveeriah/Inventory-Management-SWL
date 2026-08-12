@@ -20,7 +20,7 @@ Commands:
 - `cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings`
 - `cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features`
 - `npm run desktop:build`
-- `npm run e2e:desktop` (Windows, after installing external `tauri-driver` 2.0.6)
+- `npm run e2e:desktop` (Windows, connected by `scripts/run-windows-desktop-e2e.ps1` through Microsoft Edge WebDriver attached to the application's loopback WebView2 debug port)
 - `npm run check:desktop-boundaries`
 
 Vitest covers money, parsing, mapping, comparison, review, output eligibility, workbook generation, sanitisation, configuration, competitor logic and operational metadata. Playwright covers the production build, accessibility scans and screenshot capture when a real Chromium executable is available. Each browser case restores the same fixed fictional Node-store snapshot before it starts, and the suite uses one worker so append-only approval and history records cannot leak between cases.
@@ -30,9 +30,10 @@ origin tests prove the exact Vite proxy origins work while foreign, forged and c
 remain rejected without mutation.
 
 The Windows workflow uses the installed Microsoft Edge only after verifying its Microsoft
-Authenticode signature and passes its path through `CHROMIUM_PATH`. It explicitly installs the
-external official `tauri-driver` 2.0.6 into a project-local tools directory, drives the production
-desktop executable and scans the production output to prove the driver was not bundled. The same
+Authenticode signature and passes its path through `CHROMIUM_PATH`. Its acceptance runner launches
+the unmodified release-profile executable with the documented WebView2 loader variable supplying a
+loopback remote-debugging port, attaches the exact validated Microsoft Edge WebDriver to that port
+and scans the production output to prove no driver was bundled. The same
 workflow downloads the official Microsoft x64 Evergreen WebView2 offline installer from reviewed
 HTTPS hosts, validates the platform-specific x64 distribution identity, Windows-compatible outer
 launcher and Microsoft Authenticode signature before the bundle,

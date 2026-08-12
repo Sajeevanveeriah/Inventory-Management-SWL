@@ -21,7 +21,7 @@ Complete every item before shipping a build of SWL Pricing and Inventory Control
 - [ ] Locked Clippy passes for every target and feature with warnings denied
 - [ ] All locked Rust targets and features pass, including migration, backup, restore and negative tests
 - [ ] `npm run desktop:build` produces exactly one current-user NSIS installer
-- [ ] External `tauri-driver` 2.0.6 drives the production desktop executable; no embedded driver is used
+- [ ] Microsoft Edge WebDriver attaches to the production desktop executable's loopback WebView2 debug port; no embedded driver is used
 - [ ] `npm run check:desktop-boundaries` confirms scoped permissions, CSP and driver absence
 - [ ] The official x64 WebView2 payload is validated before bundling and the embedded bytes, version,
       SHA-256 and valid Microsoft Authenticode identity match it exactly

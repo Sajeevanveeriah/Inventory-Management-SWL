@@ -16,6 +16,34 @@ $ruleNames = [Collections.Generic.List[string]]::new()
 $monitor = $null
 $profilesBefore = @()
 $testExitCode = 1
+$applicationProcess = $null
+$driverProcess = $null
+$webViewDebugPort = 9515
+$edgeDriverPort = 4444
+
+function Wait-ForLoopbackPort {
+  param(
+    [Parameter(Mandatory = $true)][int]$Port,
+    [Parameter(Mandatory = $true)][string]$Label,
+    [Parameter(Mandatory = $true)][Diagnostics.Process]$OwnerProcess,
+    [int]$TimeoutSeconds = 90
+  )
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  while ([DateTime]::UtcNow -lt $deadline) {
+    if ($OwnerProcess.HasExited) {
+      throw "The $Label process exited with code $($OwnerProcess.ExitCode) before loopback port $Port was ready."
+    }
+    $client = [Net.Sockets.TcpClient]::new()
+    try {
+      $connectTask = $client.ConnectAsync('127.0.0.1', $Port)
+      if ($connectTask.Wait(1000) -and $client.Connected) { return }
+    }
+    catch {}
+    finally { $client.Dispose() }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "The $Label did not open loopback port $Port within $TimeoutSeconds seconds."
+}
 
 function Get-BoundedEdgeDriverVersion {
   param([string]$FilePath)
@@ -298,17 +326,63 @@ try {
       applicationSamples = $applicationSamples
       observedProcessNames = @($processNames | Sort-Object)
       testInfrastructureLoopbackListenerCount = $loopbackListeners.Count
+      observedLoopbackListeners = @($loopbackListeners | Sort-Object)
       nonLoopbackListenerCount = $otherListeners.Count
       unexpectedRemoteConnectionCount = $remoteConnections.Count
       monitorErrorCount = $monitorErrors
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $EvidencePath -Encoding utf8
   } -ArgumentList $application, $stopSentinel, $monitorEvidencePath
 
+  # Launch the unmodified release binary with the WebView2 remote-debugging
+  # loopback port supplied through the documented loader environment variable,
+  # which is appended to the application's own browser arguments. The variable
+  # is removed immediately after launch so nothing else inherits it.
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$webViewDebugPort"
+  try {
+    $applicationProcess = Start-Process -FilePath $application -PassThru
+  }
+  finally {
+    Remove-Item Env:\WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
+  }
+  Wait-ForLoopbackPort -Port $webViewDebugPort -Label 'application WebView2 debug endpoint' -OwnerProcess $applicationProcess
+
+  # Microsoft Edge WebDriver attaches to the already-running WebView2 through
+  # ms:edgeOptions.debuggerAddress; it never launches the application itself.
+  $driverProcess = Start-Process -FilePath $edgeDriver.FullName -ArgumentList "--port=$edgeDriverPort" -PassThru
+  Wait-ForLoopbackPort -Port $edgeDriverPort -Label 'Microsoft Edge WebDriver' -OwnerProcess $driverProcess
+
+  $env:SWL_EDGEDRIVER_PORT = "$edgeDriverPort"
+  $env:SWL_WEBVIEW_DEBUG_PORT = "$webViewDebugPort"
   & npm run e2e:desktop 2>&1 | Tee-Object -FilePath (Join-Path $evidenceRoot 'WDIO.log')
   $testExitCode = $LASTEXITCODE
 }
 finally {
   $cleanupFailures = [Collections.Generic.List[string]]::new()
+
+  if ($null -ne $driverProcess) {
+    try {
+      if (!$driverProcess.HasExited) { $driverProcess.Kill($true) }
+      [void]$driverProcess.WaitForExit(15000)
+    }
+    catch {
+      [void]$cleanupFailures.Add('edge-webdriver-stop')
+    }
+  }
+
+  if ($null -ne $applicationProcess) {
+    try {
+      if (!$applicationProcess.HasExited) {
+        [void]$applicationProcess.CloseMainWindow()
+        if (!$applicationProcess.WaitForExit(15000)) {
+          $applicationProcess.Kill($true)
+          [void]$applicationProcess.WaitForExit(15000)
+        }
+      }
+    }
+    catch {
+      [void]$cleanupFailures.Add('application-stop')
+    }
+  }
 
   try {
     New-Item -ItemType File -Path $stopSentinel -Force -ErrorAction Stop | Out-Null
@@ -417,8 +491,13 @@ $forbiddenDescendants = @($networkEvidence.observedProcessNames | Where-Object {
 if ($forbiddenDescendants.Count -ne 0) {
   throw 'The desktop acceptance workflow launched a forbidden Node, command or terminal descendant.'
 }
+# The only sanctioned listener is the WebView2 remote-debugging endpoint the
+# runner itself requested, bound to loopback on the exact configured port.
+$unexpectedLoopbackListeners = @(@($networkEvidence.observedLoopbackListeners) | Where-Object {
+  $_ -notmatch "^\d+:(?:127\.0\.0\.1|::1):$webViewDebugPort$"
+})
 if ($networkEvidence.monitorErrorCount -ne 0 -or
-    $networkEvidence.testInfrastructureLoopbackListenerCount -ne 0 -or
+    $unexpectedLoopbackListeners.Count -ne 0 -or
     $networkEvidence.nonLoopbackListenerCount -ne 0 -or
     $networkEvidence.unexpectedRemoteConnectionCount -ne 0) {
   throw 'The desktop acceptance workflow violated the fail-closed process/network boundary.'

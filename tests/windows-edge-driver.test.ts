@@ -40,7 +40,7 @@ describe('locked Tauri service EdgeDriver compatibility', () => {
     expect(workflow.indexOf('npm ci')).toBeLessThan(
       workflow.indexOf('node scripts/patch-tauri-service-edge-driver-label.mjs'),
     );
-    expect(wdio).toContain('autoDownloadEdgeDriver: false');
+    expect(wdio).not.toContain('@wdio/tauri-service');
   });
 });
 
@@ -167,7 +167,17 @@ describe('production WDIO driver boundary', () => {
     expect(workflow).not.toContain(
       '[IO.Path]::GetDirectoryName($driverPath) | Out-File -FilePath $env:GITHUB_PATH',
     );
-    expect(wdio).toContain('autoDownloadEdgeDriver: false');
+    expect(wdio).toContain('browserName: "webview2"');
+    expect(wdio).toContain('debuggerAddress: `127.0.0.1:${webViewDebugPort}`');
+    expect(desktopRunner).toContain(
+      '$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$webViewDebugPort"',
+    );
+    expect(desktopRunner).toContain(
+      'Start-Process -FilePath $edgeDriver.FullName -ArgumentList "--port=$edgeDriverPort"',
+    );
+    expect(desktopRunner).toContain(
+      '$_ -notmatch "^\\d+:(?:127\\.0\\.0\\.1|::1):$webViewDebugPort$"',
+    );
   });
 
   it('makes one validated driver visible process-locally and blocks its Internet access', () => {
