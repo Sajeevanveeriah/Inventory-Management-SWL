@@ -1,13 +1,13 @@
 # SWL Pricing and Inventory Control
 
-## Browser application on GitHub Pages
+## Static browser application
 
-The public browser application is deployed only through GitHub Pages. A push to `main` runs
-`.github/workflows/deploy-pages.yml`, verifies the application, builds it for the
+The public browser application can be deployed through GitHub Pages or Vercel. A push to `main`
+runs `.github/workflows/deploy-pages.yml`, verifies the application, builds it for the
 `/Inventory-Management-SWL/` project path and publishes only the generated `dist/` directory.
-There is no Vercel, Netlify or other third-party hosting configuration in this repository.
+`vercel.json` applies the same explicit static-demonstration boundary at the domain root.
 
-GitHub Pages is static hosting, so this deployment deliberately uses the browser-only adapter:
+Both targets are static hosting, so these deployments deliberately use the browser-only adapter:
 
 - imports, comparison, review and exports run locally in the browser;
 - fictional demonstration records remain in the current browser session;

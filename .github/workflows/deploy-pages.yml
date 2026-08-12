@@ -39,7 +39,6 @@ jobs:
           GIT_INDEX_FILE="$pages_index" git rm --cached --quiet --ignore-unmatch \
             .env .env.local .env.production .env.production.local
           rm -f -- .env .env.local .env.production .env.production.local
-          echo "GIT_INDEX_FILE=$pages_index" >> "$GITHUB_ENV"
           test ! -e .env
           test ! -e .env.local
           test ! -e .env.production
