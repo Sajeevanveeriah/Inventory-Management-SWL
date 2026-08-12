@@ -400,8 +400,19 @@ jobs:
             throw 'The isolated desktop acceptance target was not clean.'
           }
           $env:CARGO_TARGET_DIR = $acceptanceTarget
+          # Acceptance-only WebView2 debugging endpoint. External injection of
+          # the remote-debugging argument (loader environment variable and the
+          # per-user policy registry value) is not applied to this WebView2
+          # runtime, so the argument is compiled into the acceptance window
+          # configuration through the documented TAURI_CONFIG merge. The full
+          # window object restates tauri.conf.json plus wry's default browser
+          # arguments because a JSON merge patch replaces arrays wholesale.
+          # The canonical production build never sees this variable.
+          $env:TAURI_CONFIG = '{"app":{"windows":[{"title":"SWL Pricing Initialising","width":1280,"height":800,"minWidth":390,"minHeight":600,"resizable":true,"center":true,"additionalBrowserArgs":"--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9515"}]}}'
           cargo build --release --locked --manifest-path src-tauri/Cargo.toml --bin swl-pricing-desktop --features tauri/devtools
-          if ($LASTEXITCODE -ne 0) { throw 'The isolated release-profile desktop acceptance build failed.' }
+          $acceptanceBuildExitCode = $LASTEXITCODE
+          Remove-Item Env:\TAURI_CONFIG -ErrorAction SilentlyContinue
+          if ($acceptanceBuildExitCode -ne 0) { throw 'The isolated release-profile desktop acceptance build failed.' }
           $productionHashAfter = (Get-FileHash -LiteralPath $productionBinary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($productionHashAfter -cne $productionHashBefore) {
             throw 'The isolated desktop acceptance build changed the canonical production binary.'
@@ -418,6 +429,8 @@ jobs:
           [ordered]@{
             purpose = 'Unbundled release-profile WebDriver acceptance only'
             cargoFeature = 'tauri/devtools'
+            acceptanceWebViewDebugPort = 9515
+            acceptanceConfigMerge = 'TAURI_CONFIG additionalBrowserArgs for the acceptance build only; production configuration is untouched'
             distributed = $false
             canonicalProductionSha256Before = $productionHashBefore
             canonicalProductionSha256After = $productionHashAfter
