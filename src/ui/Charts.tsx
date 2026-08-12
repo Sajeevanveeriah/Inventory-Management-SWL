@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
  * Deterministic SVG charts, no chart library needed. Colours are CSS custom
@@ -20,6 +20,56 @@ export interface ChartSeries {
 const W = 560;
 const H = 220;
 const PAD = { top: 16, right: 96, bottom: 28, left: 56 };
+
+function ScrollableChartPlot({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint: string;
+  children: ReactNode;
+}) {
+  const hintId = useId();
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [scrollable, setScrollable] = useState(false);
+
+  useLayoutEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const update = () => setScrollable(plot.scrollWidth > plot.clientWidth + 1);
+    update();
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(update);
+      observer.observe(plot);
+      if (plot.firstElementChild) observer.observe(plot.firstElementChild);
+      return () => observer.disconnect();
+    }
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return (
+    <>
+      <div
+        ref={plotRef}
+        className="chart-plot"
+        role="region"
+        tabIndex={scrollable ? 0 : undefined}
+        aria-label={`${title} chart plot`}
+        aria-describedby={scrollable ? hintId : undefined}
+        data-scrollable={scrollable ? 'true' : 'false'}
+      >
+        {children}
+      </div>
+      {scrollable && (
+        <p id={hintId} className="chart-scroll-hint">
+          {hint}
+        </p>
+      )}
+    </>
+  );
+}
 
 function niceTicks(min: number, max: number, count = 4): number[] {
   if (min === max) return [min];
@@ -63,58 +113,60 @@ export function LineChart({
   return (
     <figure className="chart" role="group" aria-labelledby={titleId}>
       <figcaption id={titleId}>{title}</figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={chartSummary(series, formatY)}>
-        {yTicks.map((t) => (
-          <g key={t}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={sy(t)} y2={sy(t)} className="chart-grid" />
-            <text x={PAD.left - 8} y={sy(t) + 4} textAnchor="end" className="chart-tick num">
-              {formatY(t)}
-            </text>
-          </g>
-        ))}
-        {xTicks.map((t) => (
-          <text
-            key={t}
-            x={sx(t)}
-            y={H - PAD.bottom + 18}
-            textAnchor="middle"
-            className="chart-tick num"
-          >
-            {formatX(t)}
-          </text>
-        ))}
-        {series.map((s, i) => {
-          const sortedPoints = [...s.points].sort((a, b) => a.x - b.x);
-          const d = sortedPoints
-            .map((p, j) => `${j === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`)
-            .join(' ');
-          const last = sortedPoints[sortedPoints.length - 1];
-          if (!last) return null;
-          return (
-            <g key={s.label}>
-              <path d={d} fill="none" stroke={colours[i % 2]} strokeWidth={2} />
-              {sortedPoints.map((p) => (
-                <circle key={p.x} cx={sx(p.x)} cy={sy(p.y)} r={3} fill={colours[i % 2]} />
-              ))}
-              <text
-                x={sx(last.x) + 8}
-                y={sy(last.y) + 4}
-                className="chart-series-label"
-                fill={colours[i % 2]}
-              >
-                {s.label}
+      <ScrollableChartPlot title={title} hint="Scroll horizontally to inspect the full chart.">
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={chartSummary(series, formatY)}>
+          {yTicks.map((t) => (
+            <g key={t}>
+              <line x1={PAD.left} x2={W - PAD.right} y1={sy(t)} y2={sy(t)} className="chart-grid" />
+              <text x={PAD.left - 8} y={sy(t) + 4} textAnchor="end" className="chart-tick num">
+                {formatY(t)}
               </text>
             </g>
-          );
-        })}
-        <line
-          x1={PAD.left}
-          x2={W - PAD.right}
-          y1={H - PAD.bottom}
-          y2={H - PAD.bottom}
-          className="chart-axis"
-        />
-      </svg>
+          ))}
+          {xTicks.map((t) => (
+            <text
+              key={t}
+              x={sx(t)}
+              y={H - PAD.bottom + 18}
+              textAnchor="middle"
+              className="chart-tick num"
+            >
+              {formatX(t)}
+            </text>
+          ))}
+          {series.map((s, i) => {
+            const sortedPoints = [...s.points].sort((a, b) => a.x - b.x);
+            const d = sortedPoints
+              .map((p, j) => `${j === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`)
+              .join(' ');
+            const last = sortedPoints[sortedPoints.length - 1];
+            if (!last) return null;
+            return (
+              <g key={s.label}>
+                <path d={d} fill="none" stroke={colours[i % 2]} strokeWidth={2} />
+                {sortedPoints.map((p) => (
+                  <circle key={p.x} cx={sx(p.x)} cy={sy(p.y)} r={3} fill={colours[i % 2]} />
+                ))}
+                <text
+                  x={sx(last.x) + 8}
+                  y={sy(last.y) + 4}
+                  className="chart-series-label"
+                  fill={colours[i % 2]}
+                >
+                  {s.label}
+                </text>
+              </g>
+            );
+          })}
+          <line
+            x1={PAD.left}
+            x2={W - PAD.right}
+            y1={H - PAD.bottom}
+            y2={H - PAD.bottom}
+            className="chart-axis"
+          />
+        </svg>
+      </ScrollableChartPlot>
       <ul className="chart-legend">
         {series.map((s, i) => (
           <li key={s.label}>
@@ -174,38 +226,40 @@ export function BarChart({
   return (
     <figure className="chart" role="group" aria-labelledby={titleId}>
       <figcaption id={titleId}>{title}</figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary}>
-        {buckets.map((b, i) => {
-          const x = PAD.left + i * step + (step - barW) / 2;
-          const y = sy(b.count);
-          return (
-            <g key={b.label}>
-              <path
-                d={`M${x},${H - PAD.bottom} L${x},${y + 4} Q${x},${y} ${x + 4},${y} L${x + barW - 4},${y} Q${x + barW},${y} ${x + barW},${y + 4} L${x + barW},${H - PAD.bottom} Z`}
-                fill="var(--chart-series-1)"
-              />
-              <text x={x + barW / 2} y={y - 6} textAnchor="middle" className="chart-tick num">
-                {b.count}
-              </text>
-              <text
-                x={x + barW / 2}
-                y={H - PAD.bottom + 18}
-                textAnchor="middle"
-                className="chart-tick"
-              >
-                {b.label}
-              </text>
-            </g>
-          );
-        })}
-        <line
-          x1={PAD.left}
-          x2={W - PAD.right + 64}
-          y1={H - PAD.bottom}
-          y2={H - PAD.bottom}
-          className="chart-axis"
-        />
-      </svg>
+      <ScrollableChartPlot title={title} hint="Scroll horizontally to inspect every category.">
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary}>
+          {buckets.map((b, i) => {
+            const x = PAD.left + i * step + (step - barW) / 2;
+            const y = sy(b.count);
+            return (
+              <g key={b.label}>
+                <path
+                  d={`M${x},${H - PAD.bottom} L${x},${y + 4} Q${x},${y} ${x + 4},${y} L${x + barW - 4},${y} Q${x + barW},${y} ${x + barW},${y + 4} L${x + barW},${H - PAD.bottom} Z`}
+                  fill="var(--chart-series-1)"
+                />
+                <text x={x + barW / 2} y={y - 6} textAnchor="middle" className="chart-tick num">
+                  {b.count}
+                </text>
+                <text
+                  x={x + barW / 2}
+                  y={H - PAD.bottom + 18}
+                  textAnchor="middle"
+                  className="chart-tick"
+                >
+                  {b.label}
+                </text>
+              </g>
+            );
+          })}
+          <line
+            x1={PAD.left}
+            x2={W - PAD.right + 64}
+            y1={H - PAD.bottom}
+            y2={H - PAD.bottom}
+            className="chart-axis"
+          />
+        </svg>
+      </ScrollableChartPlot>
       <p className="chart-note">{unit} per bracket, direct-labelled.</p>
     </figure>
   );

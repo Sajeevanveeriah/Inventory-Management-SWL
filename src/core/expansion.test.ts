@@ -53,6 +53,14 @@ describe("buildExpansionCatalogue", () => {
       "A-1",
       "B-2",
     ]);
+    expect(
+      categories.every((category) => category.scope === "out-of-scope"),
+    ).toBe(true);
+    expect(
+      categories
+        .flatMap((category) => category.items)
+        .every((item) => item.scope === "out-of-scope"),
+    ).toBe(true);
     expect(categories.flatMap((category) => category.items)).toHaveLength(3);
   });
 });

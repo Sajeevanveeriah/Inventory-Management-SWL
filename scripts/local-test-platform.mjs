@@ -70,7 +70,6 @@ function scrubbedEnvironment() {
 function fixtureEnvironment(dataDirectory) {
   const environment = scrubbedEnvironment();
   environment.SWL_DATA_DIR = dataDirectory;
-  environment.SWL_SEARCH_PROVIDER = 'fixture';
   environment.SWL_PAID_CALLS_ENABLED = 'false';
   return environment;
 }
@@ -125,12 +124,16 @@ function availablePort() {
 }
 
 function startFixtureServer(port, dataDirectory) {
-  const child = spawn(process.execPath, ['server/index.mjs', '--port', String(port), '--fixture'], {
-    cwd: REPOSITORY_ROOT,
-    env: fixtureEnvironment(dataDirectory),
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  const child = spawn(
+    process.execPath,
+    ['tests/support/fixture-server.mjs', '--port', String(port)],
+    {
+      cwd: REPOSITORY_ROOT,
+      env: fixtureEnvironment(dataDirectory),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  );
   child.stdout.on('data', (chunk) => process.stdout.write(`[server] ${chunk}`));
   child.stderr.on('data', (chunk) => process.stderr.write(`[server] ${chunk}`));
   return child;

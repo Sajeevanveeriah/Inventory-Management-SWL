@@ -36,21 +36,30 @@ jobs:
         run: |
           pages_index="$RUNNER_TEMP/pages-public.index"
           GIT_INDEX_FILE="$pages_index" git read-tree HEAD
-          GIT_INDEX_FILE="$pages_index" git rm --cached --quiet --ignore-unmatch .env
-          rm -f -- .env
+          GIT_INDEX_FILE="$pages_index" git rm --cached --quiet --ignore-unmatch \
+            .env .env.local .env.production .env.production.local
+          rm -f -- .env .env.local .env.production .env.production.local
           echo "GIT_INDEX_FILE=$pages_index" >> "$GITHUB_ENV"
           test ! -e .env
-          test "$(GIT_INDEX_FILE="$pages_index" git ls-files -- .env)" = ""
+          test ! -e .env.local
+          test ! -e .env.production
+          test ! -e .env.production.local
+          test "$(GIT_INDEX_FILE="$pages_index" git ls-files -- \
+            .env .env.local .env.production .env.production.local)" = ""
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run test
+      # The full jsdom workflow suite exercises server and desktop adapters and
+      # is intentionally kept out of the static-host deployment gate. Pages
+      # behaviour is verified against the built artefact below.
+      - run: npm run test -- --exclude tests/app.test.tsx
       - run: npm run build
         env:
           # Project pages are served from /<repo>/, so Vite needs that base.
           VITE_BASE: /Inventory-Management-SWL/
           # Pages has no Node process; approved demo records are session-only.
-          VITE_STATIC_DEMO: "true"
+          VITE_STATIC_DEMO: 'true'
+      - run: npm run check:pages
       # actions/configure-pages v6.0.0
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
       # actions/upload-pages-artifact v5.0.0

@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { z } from "zod";
 import type { LiveHealth, LiveSearchOutcome } from "../core/liveSearch";
 import { DEFAULT_SETTINGS, SettingsSchema } from "../core/settings";
-import { defaultSources } from "../core/sources";
+import { defaultSources, withoutLegacySyntheticSources } from "../core/sources";
 import { sha256Hex } from "../io/hash";
 import type { GeneratedOutput } from "../io/exportWorkbooks";
 import * as legacyBrowserDb from "../storage/db";
@@ -88,6 +88,7 @@ function errorResult<T>(error: unknown): PlatformResult<T> {
       "provider_error",
       "quota_exhausted",
       "rate_limited",
+      "selection_expired",
       "timeout",
       "unavailable",
       "unsupported_version",
@@ -479,9 +480,9 @@ export function createDesktopPlatformService(
           "list_sources",
           z.array(CompetitorSourceSchema),
         );
-        return result.ok && result.value.length === 0
-          ? platformOk(defaultSources())
-          : result;
+        if (!result.ok) return result;
+        const sources = withoutLegacySyntheticSources(result.value);
+        return platformOk(sources.length === 0 ? defaultSources() : sources);
       },
       replace: (sources) =>
         invokeParsed(
@@ -697,7 +698,7 @@ export function createDesktopPlatformService(
     search: {
       status: () =>
         invokeParsed(invoke, "provider_status", ProviderStatusSchema),
-      async query(query) {
+      async query(query, candidateToken) {
         const queryBytes = new TextEncoder().encode(query).byteLength;
         if (
           query.trim() === "" ||
@@ -710,6 +711,7 @@ export function createDesktopPlatformService(
             query: "",
             queryKind: "empty",
             provider: "native",
+            candidates: [],
             results: [],
             band: null,
             detail:
@@ -722,6 +724,7 @@ export function createDesktopPlatformService(
           LiveSearchOutcomeSchema,
           {
             query,
+            candidateToken: candidateToken ?? null,
           },
         );
         if (result.ok) return result.value as LiveSearchOutcome;
@@ -741,6 +744,7 @@ export function createDesktopPlatformService(
           query,
           queryKind: query.trim() ? "free-text" : "empty",
           provider: "native",
+          candidates: [],
           results: [],
           band: null,
           detail: result.error.message,

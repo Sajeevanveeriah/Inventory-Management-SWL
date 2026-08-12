@@ -8,9 +8,9 @@ import type { TaxHandling } from './settings';
  * ServiceM8 records each material's price against one of two bases, per row,
  * in its "Price Includes Taxes" column. A single marked-up number cannot be
  * written into both bases: doing so under-prices every tax-inclusive row by
- * exactly the GST rate. This module makes the basis explicit on both sides —
+ * exactly the GST rate. This module makes the basis explicit on both sides -
  * how the supplier's cost is quoted, and how the target ServiceM8 row stores
- * its price — and converts between them once, in one place.
+ * its price - and converts between them once, in one place.
  *
  * The markup is always applied to the tax-EXCLUSIVE cost, because GST is not
  * a cost to a registered business; it is collected and remitted. Marking up a
@@ -38,7 +38,7 @@ export interface PricingInput {
 }
 
 export interface PricingResult {
-  /** Supplier cost expressed excluding GST — the markup base. */
+  /** Supplier cost expressed excluding GST - the markup base. */
   costExGst: string;
   /** Marked-up sell price excluding GST. */
   sellExGst: string;

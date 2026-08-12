@@ -15,7 +15,7 @@ import {
  * A synthetic document written in exactly the dialect a genuine ServiceM8
  * Materials & Services export uses: no BOM, CRLF on every line including the
  * last, and quoting only where a field contains a comma, a double quote or a
- * line break. It carries each hazard the real export contains — an embedded
+ * line break. It carries each hazard the real export contains - an embedded
  * comma, an embedded quote pair, an embedded newline, an empty trailing field
  * and a barcode already destroyed into scientific notation.
  */

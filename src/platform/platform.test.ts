@@ -1,28 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SETTINGS } from "../core/settings";
-import type { MappingProfile } from "../core/mapping";
-import type { BrowserConfigurationSnapshot } from "../storage/db";
-import * as legacyBrowserDb from "../storage/db";
-import { sha256Hex } from "../io/hash";
-import type { GeneratedOutput } from "../io/exportWorkbooks";
-import { createDesktopPlatformService, type InvokeFunction } from "./desktop";
-import { createPlatformService, detectPlatformKind } from "./index";
-import { canonicalConfigurationPayload, type AliasRecord } from "./contracts";
-import { createWebPlatformService, type WebConfigurationStorage } from "./web";
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../core/settings';
+import type { MappingProfile } from '../core/mapping';
+import type { BrowserConfigurationSnapshot } from '../storage/db';
+import * as legacyBrowserDb from '../storage/db';
+import { sha256Hex } from '../io/hash';
+import type { GeneratedOutput } from '../io/exportWorkbooks';
+import { createDesktopPlatformService, type InvokeFunction } from './desktop';
+import { createPlatformService, detectPlatformKind } from './index';
+import { canonicalConfigurationPayload, type AliasRecord } from './contracts';
+import { createWebPlatformService, type WebConfigurationStorage } from './web';
 
 const OPERATIONAL_OUTPUT_FILENAMES = [
-  "20260809-Test-Workbook.xlsx",
-  "20260809-Change-Report.xlsx",
-  "20260809-Exceptions.xlsx",
-  "20260809-Rollback.xlsx",
-  "20260809-Audit-Summary.txt",
+  '20260809-Test-Workbook.xlsx',
+  '20260809-Change-Report.xlsx',
+  '20260809-Exceptions.xlsx',
+  '20260809-Rollback.xlsx',
+  '20260809-Audit-Summary.txt',
 ] as const;
 
 function syntheticOperationalOutputs(firstSize = 1): GeneratedOutput[] {
   return OPERATIONAL_OUTPUT_FILENAMES.map((filename, index) => ({
     filename,
-    kind: index === 4 ? "audit" : "import",
-    label: "Synthetic output",
+    kind: index === 4 ? 'audit' : 'import',
+    label: 'Synthetic output',
     blob: new Blob([new Uint8Array(index === 0 ? firstSize : 1)]),
     sanitizedCells: 0,
   }));
@@ -57,16 +57,12 @@ function memoryStorage(initial: BrowserConfigurationSnapshot): {
     },
     async saveAlias(alias) {
       value.aliases = [
-        ...value.aliases.filter(
-          (item) => item.supplierCode !== alias.supplierCode,
-        ),
+        ...value.aliases.filter((item) => item.supplierCode !== alias.supplierCode),
         structuredClone(alias),
       ];
     },
     async deleteAlias(supplierCode) {
-      value.aliases = value.aliases.filter(
-        (item) => item.supplierCode !== supplierCode,
-      );
+      value.aliases = value.aliases.filter((item) => item.supplierCode !== supplierCode);
     },
     async deleteAllStoredData() {
       value = {
@@ -94,47 +90,42 @@ function memoryStorage(initial: BrowserConfigurationSnapshot): {
   return { storage, snapshot: () => structuredClone(value) };
 }
 
-describe("platform selection", () => {
-  it("selects desktop only for the Tauri runtime and fails closed when IPC is unavailable", async () => {
-    expect(detectPlatformKind({ protocol: "tauri:", hostname: "" })).toBe(
-      "desktop",
-    );
-    expect(
-      detectPlatformKind({ protocol: "https:", hostname: "example.test" }),
-    ).toBe("web");
+describe('platform selection', () => {
+  it('selects desktop only for the Tauri runtime and fails closed when IPC is unavailable', async () => {
+    expect(detectPlatformKind({ protocol: 'tauri:', hostname: '' })).toBe('desktop');
+    expect(detectPlatformKind({ protocol: 'https:', hostname: 'example.test' })).toBe('web');
 
     const service = createPlatformService({
-      location: { protocol: "tauri:", hostname: "tauri.localhost" },
-      invoke: async () =>
-        Promise.reject(new Error("C:\\Users\\operator\\secret.db")),
+      location: { protocol: 'tauri:', hostname: 'tauri.localhost' },
+      invoke: async () => Promise.reject(new Error('C:\\Users\\operator\\secret.db')),
     });
-    expect(service.kind).toBe("desktop");
+    expect(service.kind).toBe('desktop');
     const health = await service.health();
     expect(health.ok).toBe(false);
     if (!health.ok) {
-      expect(health.error.code).toBe("unavailable");
-      expect(health.error.message).not.toContain("operator");
-      expect(health.error.message).not.toContain("secret.db");
+      expect(health.error.code).toBe('unavailable');
+      expect(health.error.message).not.toContain('operator');
+      expect(health.error.message).not.toContain('secret.db');
     }
   });
 
-  it("uses a no-network session store for the static Pages demonstration", async () => {
+  it('uses a no-network session store for the static Pages demonstration', async () => {
     const fetchSpy = vi.fn(() => {
-      throw new Error("Static Pages must not call the Node adapter.");
+      throw new Error('Static Pages must not call the Node adapter.');
     });
-    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubGlobal('fetch', fetchSpy);
     const service = createPlatformService({
-      location: { protocol: "https:", hostname: "example.github.io" },
+      location: { protocol: 'https:', hostname: 'example.github.io' },
       staticDemo: true,
     });
     const item = {
-      id: "static-000123",
-      itemNumber: "000123",
-      description: "Synthetic static demonstration lock",
+      id: 'static-000123',
+      itemNumber: '000123',
+      description: 'Synthetic static demonstration lock',
       costCents: 10_000,
       sellPriceCents: 13_000,
-      gstBasis: "unknown" as const,
-      updatedAt: "2026-08-09T00:00:00.000Z",
+      gstBasis: 'unknown' as const,
+      updatedAt: '2026-08-09T00:00:00.000Z',
     };
 
     expect(service.capabilities.liveSearch).toBe(false);
@@ -142,8 +133,8 @@ describe("platform selection", () => {
       await service.catalogue.publishApproved([
         {
           item,
-          approvedBy: "Demonstration operator",
-          reason: "Explicit synthetic approval",
+          approvedBy: 'Demonstration operator',
+          reason: 'Explicit synthetic approval',
         },
       ]),
     ).toMatchObject({ ok: true, value: [{ item }] });
@@ -165,33 +156,75 @@ describe("platform selection", () => {
         }),
       ],
     });
-    expect(await service.search.query("LW4570")).toMatchObject({
-      state: "not_configured",
-      provider: "manual-only",
+    expect(await service.search.query('LW4570')).toMatchObject({
+      state: 'not_configured',
+      provider: 'manual-only',
+    });
+    expect(await service.search.configureCredential('synthetic-placeholder')).toMatchObject({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: expect.stringContaining('Static Pages has no provider credential'),
+      },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
 
     const refreshed = createPlatformService({
-      location: { protocol: "https:", hostname: "example.github.io" },
+      location: { protocol: 'https:', hostname: 'example.github.io' },
       staticDemo: true,
     });
     expect(await refreshed.catalogue.list()).toEqual({ ok: true, value: [] });
   });
+
+  it('directs connected-web credential changes to the local Node service', async () => {
+    const service = createWebPlatformService();
+    expect(await service.search.configureCredential('synthetic-placeholder')).toMatchObject({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: expect.stringContaining('local Node service environment'),
+      },
+    });
+    expect(await service.search.validateCredential()).toMatchObject({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: expect.stringContaining('checked by the local Node service'),
+      },
+    });
+  });
 });
 
-describe("desktop adapter command mapping", () => {
-  it("uses narrowly named IPC commands and validates their DTOs", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> =
-      [];
-    const invoke: InvokeFunction = async <T>(
-      command: string,
-      args?: Record<string, unknown>,
-    ) => {
+describe('desktop adapter command mapping', () => {
+  it('preserves the native selection-expired state', async () => {
+    const service = createDesktopPlatformService(<T>(command: string) => {
+      expect(command).toBe('search_competitors');
+      return Promise.resolve({
+        state: 'selection_expired',
+        query: 'LW4570',
+        queryKind: 'identifier',
+        provider: 'serpapi-google-shopping-au',
+        candidates: [],
+        results: [],
+        band: null,
+        detail: 'The selected product candidate expired.',
+      } as T);
+    });
+
+    expect(await service.search.query('LW4570', 'expired-candidate-token')).toMatchObject({
+      state: 'selection_expired',
+      detail: 'The selected product candidate expired.',
+    });
+  });
+
+  it('uses narrowly named IPC commands and validates their DTOs', async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const invoke: InvokeFunction = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push(args ? { command, args } : { command });
       const responses: Record<string, unknown> = {
         desktop_health: {
           ok: true,
-          provider: "fixture",
+          provider: 'fixture',
           liveSearchConfigured: false,
           fixtureMode: true,
           schemaVersion: 1,
@@ -200,31 +233,31 @@ describe("desktop adapter command mapping", () => {
         publish_approved_changes: [
           {
             item: {
-              id: "000123",
-              itemNumber: "000123",
-              description: "Synthetic lock",
+              id: '000123',
+              itemNumber: '000123',
+              description: 'Synthetic lock',
               costCents: 10_000,
               sellPriceCents: 13_000,
-              gstBasis: "unknown",
-              updatedAt: "2026-08-09T00:00:00.000Z",
+              gstBasis: 'unknown',
+              updatedAt: '2026-08-09T00:00:00.000Z',
             },
             approval: {
-              id: "approval-1",
-              itemId: "000123",
-              approvedBy: "Local operator",
+              id: 'approval-1',
+              itemId: '000123',
+              approvedBy: 'Local operator',
               proposedSellCents: 13_000,
-              reason: "Explicit operator approval",
-              approvedAt: "2026-08-09T00:00:00.000Z",
+              reason: 'Explicit operator approval',
+              approvedAt: '2026-08-09T00:00:00.000Z',
             },
             priceHistory: {
-              id: "history-1",
-              itemId: "000123",
-              cost: "100.00",
-              sellPrice: "130.00",
+              id: 'history-1',
+              itemId: '000123',
+              cost: '100.00',
+              sellPrice: '130.00',
               costCents: 10_000,
               sellPriceCents: 13_000,
-              approvalId: "approval-1",
-              recordedAt: "2026-08-09T00:00:00.000Z",
+              approvalId: 'approval-1',
+              recordedAt: '2026-08-09T00:00:00.000Z',
             },
           },
         ],
@@ -233,10 +266,10 @@ describe("desktop adapter command mapping", () => {
         list_sources: [],
         load_settings: DEFAULT_SETTINGS,
         provider_status: {
-          provider: "fixture",
-          state: "fixture",
+          provider: 'fixture',
+          state: 'fixture',
           paidCallsEnabled: false,
-          costCeilingAud: "0.00",
+          costCeilingAud: '0.00',
           costCeilingCents: 0,
           costPerCallCents: 0,
           spentCents: 0,
@@ -245,24 +278,25 @@ describe("desktop adapter command mapping", () => {
           lastValidatedAt: null,
         },
         search_competitors: {
-          state: "empty",
-          query: "LW4570",
-          queryKind: "identifier",
-          provider: "fixture",
+          state: 'empty',
+          query: 'LW4570',
+          queryKind: 'identifier',
+          provider: 'fixture',
+          candidates: [],
           results: [],
           band: null,
         },
         set_provider_paid_calls: {
-          provider: "fixture",
-          state: "fixture",
+          provider: 'fixture',
+          state: 'fixture',
           paidCallsEnabled: true,
-          costCeilingAud: "10.00",
+          costCeilingAud: '10.00',
           costCeilingCents: 1_000,
           costPerCallCents: 5,
           spentCents: 0,
           credentialConfigured: true,
-          credentialHint: "stored in Windows",
-          lastValidatedAt: "2026-08-09T00:00:00.000Z",
+          credentialHint: 'stored in Windows',
+          lastValidatedAt: '2026-08-09T00:00:00.000Z',
         },
       };
       return responses[command] as T;
@@ -273,16 +307,16 @@ describe("desktop adapter command mapping", () => {
     await service.catalogue.publishApproved([
       {
         item: {
-          id: "000123",
-          itemNumber: "000123",
-          description: "Synthetic lock",
+          id: '000123',
+          itemNumber: '000123',
+          description: 'Synthetic lock',
           costCents: 10_000,
           sellPriceCents: 13_000,
-          gstBasis: "unknown",
-          updatedAt: "2026-08-09T00:00:00.000Z",
+          gstBasis: 'unknown',
+          updatedAt: '2026-08-09T00:00:00.000Z',
         },
-        approvedBy: "Local operator",
-        reason: "Explicit operator approval",
+        approvedBy: 'Local operator',
+        reason: 'Explicit operator approval',
       },
     ]);
     await service.profiles.list();
@@ -291,7 +325,8 @@ describe("desktop adapter command mapping", () => {
     await service.settings.load();
     await service.search.status();
     const paidCalls = await service.search.setPaidCallsEnabled(true, 1_000, 5);
-    await service.search.query("LW4570");
+    await service.search.query('LW4570');
+    await service.search.query('LW4570', 'synthetic-stage-two-token');
     expect(paidCalls).toMatchObject({
       ok: true,
       value: { paidCallsEnabled: true },
@@ -300,69 +335,67 @@ describe("desktop adapter command mapping", () => {
       ok: true,
       value: expect.arrayContaining([
         expect.objectContaining({
-          id: "manual",
-          accessMethod: "manual-entry",
+          id: 'manual',
+          accessMethod: 'manual-entry',
           enabled: true,
         }),
       ]),
     });
     expect(calls.map((call) => call.command)).toEqual([
-      "desktop_health",
-      "list_catalogue_items",
-      "publish_approved_changes",
-      "list_mapping_profiles",
-      "list_aliases",
-      "list_sources",
-      "load_settings",
-      "provider_status",
-      "set_provider_paid_calls",
-      "search_competitors",
+      'desktop_health',
+      'list_catalogue_items',
+      'publish_approved_changes',
+      'list_mapping_profiles',
+      'list_aliases',
+      'list_sources',
+      'load_settings',
+      'provider_status',
+      'set_provider_paid_calls',
+      'search_competitors',
+      'search_competitors',
     ]);
-    expect(calls.at(-1)?.args).toEqual({ query: "LW4570" });
-    expect(
-      calls.find((call) => call.command === "set_provider_paid_calls")?.args,
-    ).toEqual({
+    expect(calls.slice(-2).map((call) => call.args)).toEqual([
+      { query: 'LW4570', candidateToken: null },
+      { query: 'LW4570', candidateToken: 'synthetic-stage-two-token' },
+    ]);
+    expect(calls.find((call) => call.command === 'set_provider_paid_calls')?.args).toEqual({
       enabled: true,
       costCeilingCents: 1_000,
       costPerCallCents: 5,
     });
-    expect(calls.some((call) => call.command === "append_approval")).toBe(
-      false,
-    );
-    expect(calls.some((call) => call.command === "append_price_history")).toBe(
-      false,
-    );
+    expect(calls.some((call) => call.command === 'append_approval')).toBe(false);
+    expect(calls.some((call) => call.command === 'append_price_history')).toBe(false);
   });
 
-  it("fails an approval batch through one atomic IPC command without sequential fallbacks", async () => {
+  it('fails an approval batch through one atomic IPC command without sequential fallbacks', async () => {
     const calls: string[] = [];
     const service = createDesktopPlatformService(<T>(command: string) => {
       calls.push(command);
-      return Promise.reject<T>(new Error("Synthetic transactional rejection"));
+      return Promise.reject<T>(new Error('Synthetic transactional rejection'));
     });
     const result = await service.catalogue.publishApproved([
       {
         item: {
-          id: "000123",
-          itemNumber: "000123",
-          description: "Synthetic lock",
+          id: '000123',
+          itemNumber: '000123',
+          description: 'Synthetic lock',
           costCents: 10_000,
           sellPriceCents: 13_000,
-          gstBasis: "unknown",
-          updatedAt: "2026-08-09T00:00:00.000Z",
+          gstBasis: 'unknown',
+          updatedAt: '2026-08-09T00:00:00.000Z',
         },
-        approvedBy: "Local operator",
-        reason: "Explicit operator approval",
+        approvedBy: 'Local operator',
+        reason: 'Explicit operator approval',
       },
     ]);
     expect(result).toMatchObject({ ok: false });
-    expect(calls).toEqual(["publish_approved_changes"]);
-    expect(calls).not.toContain("upsert_catalogue_items");
-    expect(calls).not.toContain("append_approval");
-    expect(calls).not.toContain("append_price_history");
+    expect(calls).toEqual(['publish_approved_changes']);
+    expect(calls).not.toContain('upsert_catalogue_items');
+    expect(calls).not.toContain('append_approval');
+    expect(calls).not.toContain('append_price_history');
   });
 
-  it("maps desktop appearance preferences to the narrowly scoped native theme command", async () => {
+  it('maps desktop appearance preferences to the narrowly scoped native theme command', async () => {
     const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
     const service = createDesktopPlatformService(
       async <T>(command: string, args?: Record<string, unknown>) => {
@@ -371,147 +404,133 @@ describe("desktop adapter command mapping", () => {
       },
     );
 
-    expect(await service.appearance.setTheme("dark")).toEqual({
+    expect(await service.appearance.setTheme('dark')).toEqual({
       ok: true,
       value: undefined,
     });
-    expect(await service.appearance.setTheme("system")).toEqual({
+    expect(await service.appearance.setTheme('system')).toEqual({
       ok: true,
       value: undefined,
     });
     expect(calls).toEqual([
-      { command: "plugin:app|set_app_theme", args: { theme: "dark" } },
-      { command: "plugin:app|set_app_theme", args: { theme: null } },
+      { command: 'plugin:app|set_app_theme', args: { theme: 'dark' } },
+      { command: 'plugin:app|set_app_theme', args: { theme: null } },
     ]);
   });
 
-  it("rejects invalid search and credential arguments before IPC", async () => {
+  it('rejects invalid search and credential arguments before IPC', async () => {
     const calls: string[] = [];
     const service = createDesktopPlatformService(async <T>(command: string) => {
       calls.push(command);
       return undefined as T;
     });
-    expect((await service.search.query(` ${"x".repeat(512)}`)).state).toBe(
-      "invalid_query",
-    );
-    expect(await service.search.configureCredential(" short ")).toMatchObject({
+    expect((await service.search.query(` ${'x'.repeat(512)}`)).state).toBe('invalid_query');
+    expect(await service.search.configureCredential(' short ')).toMatchObject({
       ok: false,
-      error: { code: "invalid_input" },
+      error: { code: 'invalid_input' },
     });
-    expect(
-      await service.search.setPaidCallsEnabled(true, 100, 101),
-    ).toMatchObject({
+    expect(await service.search.setPaidCallsEnabled(true, 100, 101)).toMatchObject({
       ok: false,
-      error: { code: "invalid_input" },
+      error: { code: 'invalid_input' },
     });
     expect(calls).toEqual([]);
   });
 
-  it("rejects untyped competitor evidence before IPC without persisting it", async () => {
+  it('rejects untyped competitor evidence before IPC without persisting it', async () => {
     const calls: string[] = [];
     const service = createDesktopPlatformService(async <T>(command: string) => {
       calls.push(command);
       return undefined as T;
     });
     const unsafeObservation = {
-      title: "Synthetic lock",
+      title: 'Synthetic lock',
       priceCents: 9_500,
-      priceAud: "95.00",
-      currency: "AUD",
-      gstBasis: "inc-gst",
+      priceAud: '95.00',
+      currency: 'AUD',
+      gstBasis: 'inc-gst',
       packSize: null,
-      seller: "Fictionville Security Supplies",
-      sourceDomain: "fictionville-security.example.com.au",
-      url: "https://fictionville-security.example.com.au/product/lw4570",
-      retrievedAt: "2026-08-09T00:00:00.000Z",
+      seller: 'Fictionville Security Supplies',
+      sourceDomain: 'fictionville-security.example.com.au',
+      url: 'https://fictionville-security.example.com.au/product/lw4570',
+      retrievedAt: '2026-08-09T00:00:00.000Z',
       supplierCostCents: 10_000,
-      apiKey: "not-a-real-placeholder",
+      apiKey: 'not-a-real-placeholder',
     };
 
-    expect(
-      await service.references.attach("LW4570", unsafeObservation as never),
-    ).toMatchObject({
+    expect(await service.references.attach('LW4570', unsafeObservation as never)).toMatchObject({
       ok: false,
-      error: { code: "invalid_input" },
+      error: { code: 'invalid_input' },
     });
     expect(calls).toEqual([]);
   });
 
-  it("saves desktop configuration through a native grant and validates the filename before IPC", async () => {
-    const calls: Array<{ command: string; args?: Record<string, unknown> }> =
-      [];
-    const filename = "20260809-SWL-Configuration.json";
+  it('saves desktop configuration through a native grant and validates the filename before IPC', async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const filename = '20260809-SWL-Configuration.json';
     const service = createDesktopPlatformService(
       async <T>(command: string, args?: Record<string, unknown>) => {
         calls.push(args ? { command, args } : { command });
-        if (command === "choose_output_destination") {
+        if (command === 'choose_output_destination') {
           return {
-            grantId: "configuration-grant",
-            displayName: "Selected folder",
+            grantId: 'configuration-grant',
+            displayName: 'Selected folder',
           } as T;
         }
-        if (command === "export_configuration_to_folder") return filename as T;
+        if (command === 'export_configuration_to_folder') return filename as T;
         return undefined as T;
       },
     );
 
-    expect(
-      await service.configuration.exportToSelectedFolder("configuration.json"),
-    ).toMatchObject({
+    expect(await service.configuration.exportToSelectedFolder('configuration.json')).toMatchObject({
       ok: false,
-      error: { code: "invalid_input" },
+      error: { code: 'invalid_input' },
     });
     expect(calls).toEqual([]);
-    expect(
-      await service.configuration.exportToSelectedFolder(filename),
-    ).toEqual({
+    expect(await service.configuration.exportToSelectedFolder(filename)).toEqual({
       ok: true,
       value: filename,
     });
     expect(calls).toEqual([
-      { command: "choose_output_destination" },
+      { command: 'choose_output_destination' },
       {
-        command: "export_configuration_to_folder",
-        args: { grantId: "configuration-grant", filename },
+        command: 'export_configuration_to_folder',
+        args: { grantId: 'configuration-grant', filename },
       },
     ]);
   });
 
-  it("streams a workbook in bounded 256 KiB chunks with length and SHA metadata", async () => {
+  it('streams a workbook in bounded 256 KiB chunks with length and SHA metadata', async () => {
     const appended: Array<{ offset: number; bytes: number }> = [];
     const calls: string[] = [];
     const filenames = [...OPERATIONAL_OUTPUT_FILENAMES];
-    const invoke: InvokeFunction = async <T>(
-      command: string,
-      args?: Record<string, unknown>,
-    ) => {
+    const invoke: InvokeFunction = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push(command);
-      if (command === "reserve_export_batch") {
+      if (command === 'reserve_export_batch') {
         expect(args?.files).toHaveLength(5);
-        return { batchId: "c9bd9ec1-9084-44ea-9bd6-d0f836c8a778" } as T;
+        return { batchId: 'c9bd9ec1-9084-44ea-9bd6-d0f836c8a778' } as T;
       }
-      if (command === "begin_export_file") {
-        expect(args?.batchId).toBe("c9bd9ec1-9084-44ea-9bd6-d0f836c8a778");
+      if (command === 'begin_export_file') {
+        expect(args?.batchId).toBe('c9bd9ec1-9084-44ea-9bd6-d0f836c8a778');
         expect(args?.sha256).toMatch(/^[a-f0-9]{64}$/);
         return {
           sessionId: `session-${String(args?.filename)}`,
           conflict: false,
         } as T;
       }
-      if (command === "append_export_chunk") {
-        const base64 = String(args?.base64Data ?? "");
+      if (command === 'append_export_chunk') {
+        const base64 = String(args?.base64Data ?? '');
         const offset = Number(args?.offset);
         const bytes = atob(base64).length;
         appended.push({ offset, bytes });
         return (offset + bytes) as T;
       }
-      if (command === "commit_export_file") return "prepared-output" as T;
-      if (command === "commit_export_batch") return filenames as T;
+      if (command === 'commit_export_file') return 'prepared-output' as T;
+      if (command === 'commit_export_batch') return filenames as T;
       return null as T;
     };
     const service = createDesktopPlatformService(invoke);
     const result = await service.files.saveOutputs(
-      { grantId: "grant-1", displayName: "Selected output folder" },
+      { grantId: 'grant-1', displayName: 'Selected output folder' },
       syntheticOperationalOutputs(600 * 1024),
     );
     expect(result).toEqual({
@@ -524,27 +543,22 @@ describe("desktop adapter command mapping", () => {
       { offset: 512 * 1024, bytes: 88 * 1024 },
     ]);
     expect(appended).toHaveLength(7);
-    expect(
-      Math.max(...appended.map((chunk) => chunk.bytes)),
-    ).toBeLessThanOrEqual(256 * 1024);
-    expect(calls).toContain("reserve_export_batch");
-    expect(calls).toContain("commit_export_batch");
-    expect(calls).not.toContain("abort_export_batch");
-    expect(calls).not.toContain("write_export_file");
+    expect(Math.max(...appended.map((chunk) => chunk.bytes))).toBeLessThanOrEqual(256 * 1024);
+    expect(calls).toContain('reserve_export_batch');
+    expect(calls).toContain('commit_export_batch');
+    expect(calls).not.toContain('abort_export_batch');
+    expect(calls).not.toContain('write_export_file');
   });
 
-  it("fails the complete export before streaming when the batch reservation finds a conflict", async () => {
+  it('fails the complete export before streaming when the batch reservation finds a conflict', async () => {
     const calls: string[] = [];
-    const invoke: InvokeFunction = async <T>(
-      command: string,
-      args?: Record<string, unknown>,
-    ) => {
+    const invoke: InvokeFunction = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push(command);
-      if (command === "reserve_export_batch") {
+      if (command === 'reserve_export_batch') {
         const files = args?.files as Array<{ filename: string }>;
-        expect(files[1]?.filename).toBe("20260809-Change-Report.xlsx");
-        throw Object.assign(new Error("The second output already exists."), {
-          code: "conflict",
+        expect(files[1]?.filename).toBe('20260809-Change-Report.xlsx');
+        throw Object.assign(new Error('The second output already exists.'), {
+          code: 'conflict',
           retryable: false,
         });
       }
@@ -552,7 +566,7 @@ describe("desktop adapter command mapping", () => {
     };
 
     const result = await createDesktopPlatformService(invoke).files.saveOutputs(
-      { grantId: "grant-1", displayName: "Selected output folder" },
+      { grantId: 'grant-1', displayName: 'Selected output folder' },
       syntheticOperationalOutputs(),
     );
 
@@ -560,40 +574,34 @@ describe("desktop adapter command mapping", () => {
     if (result.ok) {
       expect(result.value.written).toEqual([]);
       expect(result.value.failed).toHaveLength(5);
-      expect(
-        result.value.failed.every((failure) => failure.code === "conflict"),
-      ).toBe(true);
+      expect(result.value.failed.every((failure) => failure.code === 'conflict')).toBe(true);
     }
-    expect(calls).toEqual(["reserve_export_batch"]);
+    expect(calls).toEqual(['reserve_export_batch']);
   });
 
-  it("aborts the complete batch and reports no writes when the final batch commit fails", async () => {
+  it('aborts the complete batch and reports no writes when the final batch commit fails', async () => {
     const calls: string[] = [];
-    const batchId = "c9bd9ec1-9084-44ea-9bd6-d0f836c8a778";
-    const invoke: InvokeFunction = async <T>(
-      command: string,
-      args?: Record<string, unknown>,
-    ) => {
+    const batchId = 'c9bd9ec1-9084-44ea-9bd6-d0f836c8a778';
+    const invoke: InvokeFunction = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push(command);
-      if (command === "reserve_export_batch") return { batchId } as T;
-      if (command === "begin_export_file") {
+      if (command === 'reserve_export_batch') return { batchId } as T;
+      if (command === 'begin_export_file') {
         return {
           sessionId: `session-${String(args?.filename)}`,
           conflict: false,
         } as T;
       }
-      if (command === "append_export_chunk") {
-        return (Number(args?.offset) +
-          atob(String(args?.base64Data)).length) as T;
+      if (command === 'append_export_chunk') {
+        return (Number(args?.offset) + atob(String(args?.base64Data)).length) as T;
       }
-      if (command === "commit_export_file") return "prepared-output" as T;
-      if (command === "commit_export_batch") {
-        throw Object.assign(new Error("The export batch failed."), {
-          code: "integrity_failed",
+      if (command === 'commit_export_file') return 'prepared-output' as T;
+      if (command === 'commit_export_batch') {
+        throw Object.assign(new Error('The export batch failed.'), {
+          code: 'integrity_failed',
           retryable: false,
         });
       }
-      if (command === "abort_export_batch") {
+      if (command === 'abort_export_batch') {
         expect(args).toEqual({ batchId });
         return undefined as T;
       }
@@ -601,7 +609,7 @@ describe("desktop adapter command mapping", () => {
     };
 
     const result = await createDesktopPlatformService(invoke).files.saveOutputs(
-      { grantId: "grant-1", displayName: "Selected output folder" },
+      { grantId: 'grant-1', displayName: 'Selected output folder' },
       syntheticOperationalOutputs(),
     );
 
@@ -609,100 +617,79 @@ describe("desktop adapter command mapping", () => {
     if (result.ok) {
       expect(result.value.written).toEqual([]);
       expect(result.value.failed).toHaveLength(5);
-      expect(
-        result.value.failed.every(
-          (failure) => failure.code === "integrity_failed",
-        ),
-      ).toBe(true);
+      expect(result.value.failed.every((failure) => failure.code === 'integrity_failed')).toBe(
+        true,
+      );
     }
-    expect(
-      calls.filter((command) => command === "abort_export_batch"),
-    ).toHaveLength(1);
-    expect(
-      calls.filter((command) => command === "begin_export_file"),
-    ).toHaveLength(5);
-    expect(
-      calls.filter((command) => command === "commit_export_file"),
-    ).toHaveLength(5);
+    expect(calls.filter((command) => command === 'abort_export_batch')).toHaveLength(1);
+    expect(calls.filter((command) => command === 'begin_export_file')).toHaveLength(5);
+    expect(calls.filter((command) => command === 'commit_export_file')).toHaveLength(5);
   });
 
-  it("reads a native input grant in bounded chunks and always releases it", async () => {
+  it('reads a native input grant in bounded chunks and always releases it', async () => {
     const length = 300 * 1024;
     const reads: Array<{ offset: number; length: number }> = [];
     const calls: string[] = [];
-    const invoke: InvokeFunction = async <T>(
-      command: string,
-      args?: Record<string, unknown>,
-    ) => {
+    const invoke: InvokeFunction = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push(command);
-      if (command === "choose_input_file") {
-        expect(args).toEqual({ role: "supplier" });
+      if (command === 'choose_input_file') {
+        expect(args).toEqual({ role: 'supplier' });
         return {
-          grantId: "input-grant-1",
-          displayName: "synthetic-supplier.csv",
+          grantId: 'input-grant-1',
+          displayName: 'synthetic-supplier.csv',
           length,
-          extension: "csv",
+          extension: 'csv',
         } as T;
       }
-      if (command === "read_input_chunk") {
+      if (command === 'read_input_chunk') {
         const offset = Number(args?.offset);
         const requested = Number(args?.length);
         reads.push({ offset, length: requested });
-        return btoa("x".repeat(requested)) as T;
+        return btoa('x'.repeat(requested)) as T;
       }
       return undefined as T;
     };
-    const result =
-      await createDesktopPlatformService(invoke).files.chooseInputFile(
-        "supplier",
-      );
+    const result = await createDesktopPlatformService(invoke).files.chooseInputFile('supplier');
     expect(result.ok).toBe(true);
     if (!result.ok || result.value === null) return;
-    expect(result.value.name).toBe("synthetic-supplier.csv");
+    expect(result.value.name).toBe('synthetic-supplier.csv');
     expect(result.value.size).toBe(length);
     expect(reads).toEqual([
       { offset: 0, length: 256 * 1024 },
       { offset: 256 * 1024, length: 44 * 1024 },
     ]);
-    expect(Math.max(...reads.map((read) => read.length))).toBeLessThanOrEqual(
-      256 * 1024,
-    );
-    expect(calls.at(-1)).toBe("release_input_grant");
+    expect(Math.max(...reads.map((read) => read.length))).toBeLessThanOrEqual(256 * 1024);
+    expect(calls.at(-1)).toBe('release_input_grant');
   });
 
-  it("releases a native input grant after a failed chunk read", async () => {
+  it('releases a native input grant after a failed chunk read', async () => {
     const calls: string[] = [];
     const service = createDesktopPlatformService(async <T>(command: string) => {
       calls.push(command);
-      if (command === "choose_input_file") {
+      if (command === 'choose_input_file') {
         return {
-          grantId: "input-grant-2",
-          displayName: "synthetic-supplier.csv",
+          grantId: 'input-grant-2',
+          displayName: 'synthetic-supplier.csv',
           length: 10,
-          extension: "csv",
+          extension: 'csv',
         } as T;
       }
-      if (command === "read_input_chunk")
-        throw new Error("Synthetic read failure");
+      if (command === 'read_input_chunk') throw new Error('Synthetic read failure');
       return undefined as T;
     });
-    const result = await service.files.chooseInputFile("supplier");
+    const result = await service.files.chooseInputFile('supplier');
     expect(result).toMatchObject({ ok: false });
-    expect(calls).toEqual([
-      "choose_input_file",
-      "read_input_chunk",
-      "release_input_grant",
-    ]);
+    expect(calls).toEqual(['choose_input_file', 'read_input_chunk', 'release_input_grant']);
   });
 
-  it("binds migration status to the exact inspected legacy envelope", async () => {
+  it('binds migration status to the exact inspected legacy envelope', async () => {
     const baseSnapshot: BrowserConfigurationSnapshot = {
       profiles: [],
       aliases: [],
       settings: DEFAULT_SETTINGS,
     };
     const inspect = vi
-      .spyOn(legacyBrowserDb, "inspectConfigurationForMigration")
+      .spyOn(legacyBrowserDb, 'inspectConfigurationForMigration')
       .mockResolvedValueOnce({
         legacyConfigurationFound: true,
         valid: true,
@@ -719,19 +706,17 @@ describe("desktop adapter command mapping", () => {
         validationMessages: [],
         snapshot: {
           ...baseSnapshot,
-          settings: { ...DEFAULT_SETTINGS, theme: "dark" },
+          settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
         },
       });
     const envelopes: Array<Record<string, unknown>> = [];
     const service = createDesktopPlatformService(
       async <T>(command: string, args?: Record<string, unknown>) => {
-        expect(command).toBe("configuration_migration_status");
-        expect(args).toHaveProperty("legacySerialised");
+        expect(command).toBe('configuration_migration_status');
+        expect(args).toHaveProperty('legacySerialised');
         const serialised = args?.legacySerialised;
-        expect(typeof serialised).toBe("string");
-        envelopes.push(
-          JSON.parse(String(serialised)) as Record<string, unknown>,
-        );
+        expect(typeof serialised).toBe('string');
+        envelopes.push(JSON.parse(String(serialised)) as Record<string, unknown>);
         return {
           legacyConfigurationFound: false,
           alreadyImported: envelopes.length === 1,
@@ -758,10 +743,10 @@ describe("desktop adapter command mapping", () => {
     expect(envelopes[0]).not.toEqual(envelopes[1]);
   });
 
-  it("accepts conflict-free and idempotent native configuration previews", async () => {
+  it('accepts conflict-free and idempotent native configuration previews', async () => {
     let previewCount = 0;
     const service = createDesktopPlatformService(async <T>(command: string) => {
-      expect(command).toBe("preview_configuration_import");
+      expect(command).toBe('preview_configuration_import');
       previewCount += 1;
       return {
         previewToken: `preview-${previewCount}`,
@@ -769,15 +754,12 @@ describe("desktop adapter command mapping", () => {
         counts: { profiles: 0, aliases: 0, settings: 1 },
         conflicts: { profiles: 0, aliases: 0, settings: 0 },
         valid: true,
-        validationMessages:
-          previewCount === 1
-            ? []
-            : ["This configuration was already imported."],
+        validationMessages: previewCount === 1 ? [] : ['This configuration was already imported.'],
       } as T;
     });
 
-    const fresh = await service.configuration.previewImport("{}");
-    const idempotent = await service.configuration.previewImport("{}");
+    const fresh = await service.configuration.previewImport('{}');
+    const idempotent = await service.configuration.previewImport('{}');
 
     expect(fresh).toMatchObject({
       ok: true,
@@ -793,29 +775,29 @@ describe("desktop adapter command mapping", () => {
   });
 });
 
-describe("web configuration transfer", () => {
+describe('web configuration transfer', () => {
   const profile: MappingProfile = {
-    id: "profile-demo",
-    name: "Synthetic supplier",
+    id: 'profile-demo',
+    name: 'Synthetic supplier',
     version: 1,
     supplierMapping: { supplierCode: 0, supplierCost: 1 },
-    supplierHeaders: ["SKU", "Cost"],
+    supplierHeaders: ['SKU', 'Cost'],
     servicem8Mapping: { itemNumber: 0 },
-    servicem8Headers: ["Item Number"],
-    createdAt: "2026-08-09T00:00:00.000Z",
-    updatedAt: "2026-08-09T00:00:00.000Z",
+    servicem8Headers: ['Item Number'],
+    createdAt: '2026-08-09T00:00:00.000Z',
+    updatedAt: '2026-08-09T00:00:00.000Z',
   };
   const alias: AliasRecord = {
-    supplierCode: "SYN-001",
-    itemNumber: "000123",
-    approvedAt: "2026-08-09T00:00:00.000Z",
+    supplierCode: 'SYN-001',
+    itemNumber: '000123',
+    approvedAt: '2026-08-09T00:00:00.000Z',
   };
 
-  it("uses the cross-runtime canonical checksum regardless of object insertion order", async () => {
+  it('uses the cross-runtime canonical checksum regardless of object insertion order', async () => {
     const withoutHash = {
       schemaVersion: 1 as const,
-      application: "swl-pricing-inventory-control" as const,
-      exportedAt: "2026-08-09T00:00:00.000Z",
+      application: 'swl-pricing-inventory-control' as const,
+      exportedAt: '2026-08-09T00:00:00.000Z',
       counts: { profiles: 1, aliases: 1, settings: 1 },
       data: {
         profiles: [
@@ -826,26 +808,22 @@ describe("web configuration transfer", () => {
         ],
         aliases: [alias],
         settings: {
-          markupPercent: "30",
-          taxHandling: "prices-inc-gst" as const,
-          theme: "dark" as const,
-          glassTint: "clear" as const,
+          markupPercent: '30',
+          taxHandling: 'prices-inc-gst' as const,
+          theme: 'dark' as const,
+          glassTint: 'clear' as const,
         },
       },
     };
     const payload = canonicalConfigurationPayload(withoutHash);
     const digest = await sha256Hex(new TextEncoder().encode(payload).buffer);
 
-    expect(digest).toBe(
-      "191fe976bdf67000bc94b0399b7c072df8ba0bb2f4876829c1547cc73a75c415",
-    );
-    expect(payload.indexOf('"supplierCode":0')).toBeLessThan(
-      payload.indexOf('"supplierCost":1'),
-    );
+    expect(digest).toBe('191fe976bdf67000bc94b0399b7c072df8ba0bb2f4876829c1547cc73a75c415');
+    expect(payload.indexOf('"supplierCode":0')).toBeLessThan(payload.indexOf('"supplierCost":1'));
   });
 
-  it("imports non-default settings and treats an exact repeated import idempotently", async () => {
-    const nonDefaultSettings = { ...DEFAULT_SETTINGS, theme: "dark" as const };
+  it('imports non-default settings and treats an exact repeated import idempotently', async () => {
+    const nonDefaultSettings = { ...DEFAULT_SETTINGS, theme: 'dark' as const };
     const memory = memoryStorage({
       profiles: [profile],
       aliases: [alias],
@@ -867,10 +845,9 @@ describe("web configuration transfer", () => {
       settings: 1,
     });
     expect(memory.snapshot().profiles).toHaveLength(0);
-    expect(
-      (await service.configuration.applyImport(firstPreview.value.previewToken))
-        .ok,
-    ).toBe(true);
+    expect((await service.configuration.applyImport(firstPreview.value.previewToken)).ok).toBe(
+      true,
+    );
     expect(memory.snapshot()).toEqual(exported.value.data);
 
     const secondPreview = await service.configuration.previewImport(serialised);
@@ -883,36 +860,30 @@ describe("web configuration transfer", () => {
     });
     expect(secondPreview.value.valid).toBe(true);
     expect(secondPreview.value.validationMessages).toHaveLength(0);
-    expect(
-      (
-        await service.configuration.applyImport(
-          secondPreview.value.previewToken,
-        )
-      ).ok,
-    ).toBe(true);
+    expect((await service.configuration.applyImport(secondPreview.value.previewToken)).ok).toBe(
+      true,
+    );
     expect(memory.snapshot()).toEqual(exported.value.data);
   });
 
-  it("adds disjoint imported records without deleting existing browser configuration", async () => {
+  it('adds disjoint imported records without deleting existing browser configuration', async () => {
     const incomingStore = memoryStorage({
       profiles: [profile],
       aliases: [alias],
-      settings: { ...DEFAULT_SETTINGS, theme: "dark" },
+      settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
     });
-    const incoming = await createWebPlatformService(
-      incomingStore.storage,
-    ).configuration.export();
+    const incoming = await createWebPlatformService(incomingStore.storage).configuration.export();
     expect(incoming.ok).toBe(true);
     if (!incoming.ok) return;
     const existingProfile = {
       ...profile,
-      id: "profile-existing",
-      name: "Existing synthetic profile",
+      id: 'profile-existing',
+      name: 'Existing synthetic profile',
     };
     const existingAlias = {
       ...alias,
-      supplierCode: "SYN-EXISTING",
-      itemNumber: "000999",
+      supplierCode: 'SYN-EXISTING',
+      itemNumber: '000999',
     };
     const target = memoryStorage({
       profiles: [existingProfile],
@@ -920,9 +891,7 @@ describe("web configuration transfer", () => {
       settings: DEFAULT_SETTINGS,
     });
     const service = createWebPlatformService(target.storage);
-    const preview = await service.configuration.previewImport(
-      JSON.stringify(incoming.value),
-    );
+    const preview = await service.configuration.previewImport(JSON.stringify(incoming.value));
     expect(preview).toMatchObject({
       ok: true,
       value: {
@@ -931,9 +900,7 @@ describe("web configuration transfer", () => {
       },
     });
     if (!preview.ok) return;
-    expect(
-      (await service.configuration.applyImport(preview.value.previewToken)).ok,
-    ).toBe(true);
+    expect((await service.configuration.applyImport(preview.value.previewToken)).ok).toBe(true);
     expect(target.snapshot()).toEqual({
       profiles: [existingProfile, profile],
       aliases: [existingAlias, alias],
@@ -941,7 +908,7 @@ describe("web configuration transfer", () => {
     });
   });
 
-  it("rejects a stale web reset preview without erasing same-count or added data", async () => {
+  it('rejects a stale web reset preview without erasing same-count or added data', async () => {
     const memory = memoryStorage({
       profiles: [profile],
       aliases: [alias],
@@ -953,41 +920,35 @@ describe("web configuration transfer", () => {
     if (!preview.ok) return;
     await memory.storage.saveProfile({
       ...profile,
-      name: "Changed after preview",
+      name: 'Changed after preview',
     });
     const before = memory.snapshot();
     expect(
-      await service.recovery.reset(
-        preview.value.resetToken,
-        preview.value.confirmationPhrase,
-      ),
-    ).toMatchObject({ ok: false, error: { code: "conflict" } });
+      await service.recovery.reset(preview.value.resetToken, preview.value.confirmationPhrase),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(memory.snapshot()).toEqual(before);
   });
 
-  it("detects all conflict classes and rechecks them before applying without mutation", async () => {
+  it('detects all conflict classes and rechecks them before applying without mutation', async () => {
     const source = memoryStorage({
       profiles: [profile],
       aliases: [alias],
-      settings: { ...DEFAULT_SETTINGS, theme: "dark" },
+      settings: { ...DEFAULT_SETTINGS, theme: 'dark' },
     });
-    const exported = await createWebPlatformService(
-      source.storage,
-    ).configuration.export();
+    const exported = await createWebPlatformService(source.storage).configuration.export();
     expect(exported.ok).toBe(true);
     if (!exported.ok) return;
 
     const conflicting = memoryStorage({
-      profiles: [{ ...profile, name: "Existing profile" }],
-      aliases: [{ ...alias, itemNumber: "009999" }],
-      settings: { ...DEFAULT_SETTINGS, taxHandling: "prices-ex-gst" },
+      profiles: [{ ...profile, name: 'Existing profile' }],
+      aliases: [{ ...alias, itemNumber: '009999' }],
+      settings: { ...DEFAULT_SETTINGS, taxHandling: 'prices-ex-gst' },
     });
     const conflictingService = createWebPlatformService(conflicting.storage);
     const beforeConflict = conflicting.snapshot();
-    const conflictPreview =
-      await conflictingService.configuration.previewImport(
-        JSON.stringify(exported.value),
-      );
+    const conflictPreview = await conflictingService.configuration.previewImport(
+      JSON.stringify(exported.value),
+    );
     expect(conflictPreview.ok).toBe(true);
     if (!conflictPreview.ok) return;
     expect(conflictPreview.value).toMatchObject({
@@ -996,10 +957,8 @@ describe("web configuration transfer", () => {
     });
     expect(conflictPreview.value.validationMessages).toHaveLength(3);
     expect(
-      await conflictingService.configuration.applyImport(
-        conflictPreview.value.previewToken,
-      ),
-    ).toMatchObject({ ok: false, error: { code: "conflict" } });
+      await conflictingService.configuration.applyImport(conflictPreview.value.previewToken),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect(conflicting.snapshot()).toEqual(beforeConflict);
 
     const changedAfterPreview = memoryStorage({
@@ -1007,9 +966,7 @@ describe("web configuration transfer", () => {
       aliases: [],
       settings: DEFAULT_SETTINGS,
     });
-    const changedService = createWebPlatformService(
-      changedAfterPreview.storage,
-    );
+    const changedService = createWebPlatformService(changedAfterPreview.storage);
     const cleanPreview = await changedService.configuration.previewImport(
       JSON.stringify(exported.value),
     );
@@ -1017,21 +974,19 @@ describe("web configuration transfer", () => {
     if (!cleanPreview.ok) return;
     await changedAfterPreview.storage.saveProfile({
       ...profile,
-      name: "Added after preview",
+      name: 'Added after preview',
     });
     const beforeApply = changedAfterPreview.snapshot();
     expect(
-      await changedService.configuration.applyImport(
-        cleanPreview.value.previewToken,
-      ),
+      await changedService.configuration.applyImport(cleanPreview.value.previewToken),
     ).toMatchObject({
       ok: false,
-      error: { code: "conflict" },
+      error: { code: 'conflict' },
     });
     expect(changedAfterPreview.snapshot()).toEqual(beforeApply);
   });
 
-  it("rejects unsupported versions and checksum changes without mutating live data", async () => {
+  it('rejects unsupported versions and checksum changes without mutating live data', async () => {
     const memory = memoryStorage({
       profiles: [profile],
       aliases: [alias],
@@ -1042,28 +997,28 @@ describe("web configuration transfer", () => {
     const unsupported = await service.configuration.previewImport(
       JSON.stringify({
         schemaVersion: 999,
-        application: "swl-pricing-inventory-control",
+        application: 'swl-pricing-inventory-control',
       }),
     );
     expect(unsupported).toMatchObject({
       ok: false,
-      error: { code: "unsupported_version" },
+      error: { code: 'unsupported_version' },
     });
 
     const exported = await service.configuration.export();
     expect(exported.ok).toBe(true);
     if (!exported.ok) return;
     const corrupted = await service.configuration.previewImport(
-      JSON.stringify({ ...exported.value, sha256: "0".repeat(64) }),
+      JSON.stringify({ ...exported.value, sha256: '0'.repeat(64) }),
     );
     expect(corrupted).toMatchObject({
       ok: false,
-      error: { code: "integrity_failed" },
+      error: { code: 'integrity_failed' },
     });
     expect(memory.snapshot()).toEqual(before);
   });
 
-  it("rejects unknown envelope and nested fields without stripping or mutating them", async () => {
+  it('rejects unknown envelope and nested fields without stripping or mutating them', async () => {
     const memory = memoryStorage({
       profiles: [profile],
       aliases: [alias],
@@ -1104,63 +1059,64 @@ describe("web configuration transfer", () => {
     ];
 
     for (const variant of variants) {
-      expect(
-        await service.configuration.previewImport(JSON.stringify(variant)),
-      ).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+      expect(await service.configuration.previewImport(JSON.stringify(variant))).toMatchObject({
+        ok: false,
+        error: { code: 'invalid_input' },
+      });
       expect(memory.snapshot()).toEqual(before);
     }
   });
 });
 
-describe("web persisted-data integrity", () => {
-  it("fails the complete catalogue when any returned record is malformed", async () => {
+describe('web persisted-data integrity', () => {
+  it('fails the complete catalogue when any returned record is malformed', async () => {
     vi.stubGlobal(
-      "fetch",
+      'fetch',
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify([
             {
-              id: "valid",
-              itemNumber: "000123",
-              description: "Synthetic lock",
+              id: 'valid',
+              itemNumber: '000123',
+              description: 'Synthetic lock',
               costCents: 10_000,
               sellPriceCents: 13_000,
-              gstBasis: "unknown",
-              updatedAt: "2026-08-09T00:00:00.000Z",
+              gstBasis: 'unknown',
+              updatedAt: '2026-08-09T00:00:00.000Z',
             },
             {
-              id: "invalid",
-              description: "Missing exact identifier",
+              id: 'invalid',
+              description: 'Missing exact identifier',
               costCents: 10_000,
               sellPriceCents: 13_000,
-              updatedAt: "2026-08-09T00:00:00.000Z",
+              updatedAt: '2026-08-09T00:00:00.000Z',
             },
           ]),
-          { status: 200, headers: { "content-type": "application/json" } },
+          { status: 200, headers: { 'content-type': 'application/json' } },
         ),
       ),
     );
 
     expect(await createWebPlatformService().catalogue.list()).toMatchObject({
       ok: false,
-      error: { code: "integrity_failed" },
+      error: { code: 'integrity_failed' },
     });
   });
 
-  it("propagates a source-registry server failure instead of masking it with defaults", async () => {
+  it('propagates a source-registry server failure instead of masking it with defaults', async () => {
     vi.stubGlobal(
-      "fetch",
+      'fetch',
       vi.fn().mockResolvedValue(
-        new Response("{}", {
+        new Response('{}', {
           status: 503,
-          headers: { "content-type": "application/json" },
+          headers: { 'content-type': 'application/json' },
         }),
       ),
     );
 
     expect(await createWebPlatformService().sources.list()).toMatchObject({
       ok: false,
-      error: { code: "provider_error" },
+      error: { code: 'unavailable' },
     });
   });
 });

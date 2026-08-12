@@ -23,8 +23,8 @@ import {
  *
  * Rows are built by copying the ORIGINAL ServiceM8 row verbatim and replacing
  * only the two money columns this application is responsible for. Every other
- * column — tax basis, stock quantity, inventory flag, barcode, and any column
- * this application does not model — survives the round trip untouched. New
+ * column - tax basis, stock quantity, inventory flag, barcode, and any column
+ * this application does not model - survives the round trip untouched. New
  * items fill the columns the mapping resolves and take documented defaults for
  * the rest.
  *

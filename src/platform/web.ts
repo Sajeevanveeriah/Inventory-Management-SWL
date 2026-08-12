@@ -1,14 +1,14 @@
-import { z } from "zod";
-import { APP_VERSION } from "../core/audit";
-import { DEFAULT_SETTINGS, SettingsSchema } from "../core/settings";
+import { z } from 'zod';
+import { APP_VERSION } from '../core/audit';
+import { DEFAULT_SETTINGS, SettingsSchema } from '../core/settings';
+import { centsToAud, type LiveHealth, type LiveSearchOutcome } from '../core/liveSearch';
 import {
-  centsToAud,
-  type LiveHealth,
-  type LiveSearchOutcome,
-} from "../core/liveSearch";
-import { defaultSources, type CompetitorSource } from "../core/sources";
-import { sha256Hex } from "../io/hash";
-import * as browserDb from "../storage/db";
+  defaultSources,
+  withoutLegacySyntheticSources,
+  type CompetitorSource,
+} from '../core/sources';
+import { sha256Hex } from '../io/hash';
+import * as browserDb from '../storage/db';
 import type {
   ApprovalRecord,
   BackupReason,
@@ -24,13 +24,13 @@ import type {
   ProviderStatus,
   ResetPreview,
   RestorePreview,
-} from "./contracts";
+} from './contracts';
 import {
   canonicalConfigurationPayload,
   CONFIGURATION_SCHEMA_VERSION,
   platformFail,
   platformOk,
-} from "./contracts";
+} from './contracts';
 import {
   AliasRecordSchema,
   ApprovalRecordSchema,
@@ -45,10 +45,11 @@ import {
   MappingProfileSchema,
   PriceHistoryVersionSchema,
   PublishedChangeSchema,
-} from "./schemas";
+} from './schemas';
 
 const MAX_CONFIGURATION_BYTES = 10 * 1024 * 1024;
-const RESET_CONFIRMATION = "ERASE SWL LOCAL DATA";
+const RESET_CONFIRMATION = 'ERASE SWL LOCAL DATA';
+const REQUEST_TIMEOUT_MS = 25_000;
 
 const WebCatalogueItemSchema = z.object({
   id: z.string().min(1).max(128),
@@ -57,14 +58,14 @@ const WebCatalogueItemSchema = z.object({
   description: z.string().max(2000),
   costCents: z.number().int().min(0).max(1_000_000_000),
   sellPriceCents: z.number().int().min(0).max(1_000_000_000),
-  gstBasis: z.enum(["inc-gst", "ex-gst", "unknown"]).optional(),
+  gstBasis: z.enum(['inc-gst', 'ex-gst', 'unknown']).optional(),
   updatedAt: z.string().min(1).max(64),
 });
 
 const WebSourceSchema = z.object({
   id: z.string().min(1).max(128),
   name: z.string().min(1).max(256),
-  accessMethod: z.enum(["live-api", "manual-entry", "file-import"]),
+  accessMethod: z.enum(['live-api', 'manual-entry', 'file-import']),
   automatedAccessNote: z.string().max(2000).optional(),
   note: z.string().max(2000).optional(),
   enabled: z.boolean(),
@@ -84,11 +85,10 @@ export interface WebPlatformOptions {
 }
 
 function sanitisedFetchError(error: unknown): string {
-  if (error instanceof DOMException && error.name === "AbortError")
-    return "The request timed out.";
+  if (error instanceof DOMException && error.name === 'AbortError') return 'The request timed out.';
   return error instanceof TypeError
-    ? "The application service is unavailable."
-    : "The request could not be completed.";
+    ? 'The application service is unavailable.'
+    : 'The request could not be completed.';
 }
 
 async function requestJson<T>(
@@ -97,36 +97,75 @@ async function requestJson<T>(
   init?: RequestInit,
 ): Promise<PlatformResult<T>> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(url, {
       ...init,
       signal: controller.signal,
       headers: {
-        accept: "application/json",
+        accept: 'application/json',
         ...init?.headers,
       },
     });
     if (!response.ok) {
+      let serviceMessage = '';
+      let serviceCode = '';
+      try {
+        const errorBody: unknown = await response.json();
+        if (
+          errorBody &&
+          typeof errorBody === 'object' &&
+          !Array.isArray(errorBody) &&
+          'error' in errorBody &&
+          typeof errorBody.error === 'string' &&
+          errorBody.error.length <= 256 &&
+          ![...errorBody.error].some((character) => {
+            const point = character.codePointAt(0);
+            return point !== undefined && (point <= 31 || point === 127);
+          })
+        ) {
+          serviceMessage = errorBody.error;
+        }
+        if (
+          errorBody &&
+          typeof errorBody === 'object' &&
+          !Array.isArray(errorBody) &&
+          'code' in errorBody &&
+          errorBody.code === 'selection_expired'
+        ) {
+          serviceCode = errorBody.code;
+        }
+      } catch {
+        // Status and a fixed local message remain sufficient if no safe error body exists.
+      }
       const code: PlatformErrorCode =
-        response.status === 409 ? "conflict" : "provider_error";
+        response.status === 410 && serviceCode === 'selection_expired'
+          ? 'selection_expired'
+          : response.status === 401 || response.status === 403
+            ? 'permission_denied'
+            : response.status === 429 && /budget/iu.test(serviceMessage)
+              ? 'quota_exhausted'
+              : [400, 413, 415, 422].includes(response.status)
+                ? 'invalid_input'
+                : response.status === 409
+                  ? 'conflict'
+                  : response.status === 429
+                    ? 'rate_limited'
+                    : response.status === 503
+                      ? 'unavailable'
+                      : 'provider_error';
       return platformFail(
         code,
-        `The application service rejected the request (${response.status}).`,
+        serviceMessage || `The application service rejected the request (${response.status}).`,
       );
     }
     const parsed = schema.safeParse(await response.json());
     return parsed.success
       ? platformOk(parsed.data)
-      : platformFail(
-          "integrity_failed",
-          "The application service returned an invalid response.",
-        );
+      : platformFail('integrity_failed', 'The application service returned an invalid response.');
   } catch (error) {
     return platformFail(
-      error instanceof DOMException && error.name === "AbortError"
-        ? "timeout"
-        : "offline",
+      error instanceof DOMException && error.name === 'AbortError' ? 'timeout' : 'offline',
       sanitisedFetchError(error),
       true,
     );
@@ -156,7 +195,7 @@ async function buildConfigurationEnvelope(
   const data = await storage.readConfigurationSnapshot();
   const withoutHash = {
     schemaVersion: CONFIGURATION_SCHEMA_VERSION,
-    application: "swl-pricing-inventory-control" as const,
+    application: 'swl-pricing-inventory-control' as const,
     exportedAt: new Date().toISOString(),
     counts: {
       profiles: data.profiles.length,
@@ -165,9 +204,7 @@ async function buildConfigurationEnvelope(
     },
     data,
   };
-  const encoded = new TextEncoder().encode(
-    canonicalConfigurationPayload(withoutHash),
-  );
+  const encoded = new TextEncoder().encode(canonicalConfigurationPayload(withoutHash));
   return { ...withoutHash, sha256: await sha256Hex(encoded.buffer) };
 }
 
@@ -177,34 +214,29 @@ async function validateEnvelope(
   const bytes = new TextEncoder().encode(serialised);
   if (bytes.byteLength === 0 || bytes.byteLength > MAX_CONFIGURATION_BYTES) {
     return platformFail(
-      "invalid_input",
-      "The configuration file size is outside the supported range.",
+      'invalid_input',
+      'The configuration file size is outside the supported range.',
     );
   }
   let value: unknown;
   try {
     value = JSON.parse(serialised);
   } catch {
-    return platformFail(
-      "invalid_input",
-      "The configuration file is not valid JSON.",
-    );
+    return platformFail('invalid_input', 'The configuration file is not valid JSON.');
   }
   const parsed = ConfigurationEnvelopeSchema.safeParse(value);
   if (!parsed.success) {
     const rawVersion =
-      typeof value === "object" && value !== null && "schemaVersion" in value
+      typeof value === 'object' && value !== null && 'schemaVersion' in value
         ? (value as { schemaVersion?: unknown }).schemaVersion
         : undefined;
     return platformFail(
-      typeof rawVersion === "number" &&
-        rawVersion !== CONFIGURATION_SCHEMA_VERSION
-        ? "unsupported_version"
-        : "invalid_input",
-      typeof rawVersion === "number" &&
-        rawVersion !== CONFIGURATION_SCHEMA_VERSION
+      typeof rawVersion === 'number' && rawVersion !== CONFIGURATION_SCHEMA_VERSION
+        ? 'unsupported_version'
+        : 'invalid_input',
+      typeof rawVersion === 'number' && rawVersion !== CONFIGURATION_SCHEMA_VERSION
         ? `Configuration schema version ${rawVersion} is not supported.`
-        : "The configuration file failed schema validation.",
+        : 'The configuration file failed schema validation.',
     );
   }
   const { sha256, ...withoutHash } = parsed.data;
@@ -213,8 +245,8 @@ async function validateEnvelope(
   );
   if (digest !== sha256) {
     return platformFail(
-      "integrity_failed",
-      "The configuration checksum does not match its contents.",
+      'integrity_failed',
+      'The configuration checksum does not match its contents.',
     );
   }
   if (
@@ -222,8 +254,8 @@ async function validateEnvelope(
     parsed.data.counts.aliases !== parsed.data.data.aliases.length
   ) {
     return platformFail(
-      "integrity_failed",
-      "The configuration record counts do not match its contents.",
+      'integrity_failed',
+      'The configuration record counts do not match its contents.',
     );
   }
   return platformOk(parsed.data);
@@ -243,8 +275,8 @@ function emptyRecordCounts() {
 }
 
 function settingsEqual(
-  left: browserDb.BrowserConfigurationSnapshot["settings"],
-  right: browserDb.BrowserConfigurationSnapshot["settings"],
+  left: browserDb.BrowserConfigurationSnapshot['settings'],
+  right: browserDb.BrowserConfigurationSnapshot['settings'],
 ): boolean {
   return (
     left.markupPercent === right.markupPercent &&
@@ -260,16 +292,12 @@ function configurationRecordEqual(left: unknown, right: unknown): boolean {
 
 function configurationConflicts(
   current: browserDb.BrowserConfigurationSnapshot,
-  incoming: ConfigurationEnvelope["data"],
-): ConfigurationPreview["conflicts"] {
+  incoming: ConfigurationEnvelope['data'],
+): ConfigurationPreview['conflicts'] {
   return {
     profiles: incoming.profiles.filter((candidate) => {
-      const existing = current.profiles.find(
-        (record) => record.id === candidate.id,
-      );
-      return (
-        existing !== undefined && !configurationRecordEqual(existing, candidate)
-      );
+      const existing = current.profiles.find((record) => record.id === candidate.id);
+      return existing !== undefined && !configurationRecordEqual(existing, candidate);
     }).length,
     aliases: incoming.aliases.filter((candidate) =>
       current.aliases.some(
@@ -286,24 +314,16 @@ function configurationConflicts(
   };
 }
 
-function conflictMessages(
-  conflicts: ConfigurationPreview["conflicts"],
-): string[] {
+function conflictMessages(conflicts: ConfigurationPreview['conflicts']): string[] {
   const messages: string[] = [];
   if (conflicts.profiles > 0) {
-    messages.push(
-      `${conflicts.profiles} mapping profile identifier conflict(s) must be resolved.`,
-    );
+    messages.push(`${conflicts.profiles} mapping profile identifier conflict(s) must be resolved.`);
   }
   if (conflicts.aliases > 0) {
-    messages.push(
-      `${conflicts.aliases} approved alias identifier conflict(s) must be resolved.`,
-    );
+    messages.push(`${conflicts.aliases} approved alias identifier conflict(s) must be resolved.`);
   }
   if (conflicts.settings > 0) {
-    messages.push(
-      "Current non-default settings differ from the incoming settings.",
-    );
+    messages.push('Current non-default settings differ from the incoming settings.');
   }
   return messages;
 }
@@ -312,24 +332,21 @@ function webProviderStatus(health: {
   provider: string;
   liveSearchConfigured: boolean;
   fixtureMode: boolean;
+  requiresPaidCall?: boolean;
   paidCallsEnabled?: boolean;
   costCeilingAud?: string;
   costCeilingCents?: number;
   costPerCallCents?: number;
   spentCents?: number;
 }): ProviderStatus {
-  const paidCallsEnabled = health.fixtureMode
-    ? false
-    : health.paidCallsEnabled === true;
+  const paidCallsEnabled = health.fixtureMode ? false : health.paidCallsEnabled === true;
+  const providerCallsReady =
+    health.liveSearchConfigured && (health.requiresPaidCall === false || paidCallsEnabled);
   return {
     provider: health.provider,
-    state: health.fixtureMode
-      ? "fixture"
-      : health.liveSearchConfigured && paidCallsEnabled
-        ? "configured"
-        : "not_configured",
+    state: health.fixtureMode ? 'fixture' : providerCallsReady ? 'configured' : 'not_configured',
     paidCallsEnabled,
-    costCeilingAud: health.costCeilingAud ?? "0.00",
+    costCeilingAud: health.costCeilingAud ?? '0.00',
     costCeilingCents: health.costCeilingCents ?? 0,
     costPerCallCents: health.costPerCallCents ?? 0,
     spentCents: health.spentCents ?? 0,
@@ -344,108 +361,95 @@ export function createWebPlatformService(
   options: WebPlatformOptions = {},
 ): PlatformService {
   const sessionOnly = options.sessionOnly === true;
+  const liveSearchEnabled = !sessionOnly;
   const importPreviews = new Map<string, ConfigurationEnvelope>();
   const resetPreviews = new Map<
     string,
     { preview: ResetPreview; snapshot: browserDb.BrowserConfigurationSnapshot }
   >();
-  const backups = new Map<
-    string,
-    { summary: BackupSummary; envelope: ConfigurationEnvelope }
-  >();
+  const backups = new Map<string, { summary: BackupSummary; envelope: ConfigurationEnvelope }>();
   const sessionCatalogue = new Map<string, CatalogueItem>();
   const sessionApprovals: ApprovalRecord[] = [];
   const sessionPriceHistory: PriceHistoryVersion[] = [];
   const sessionReferences: CompetitorReferenceRecord[] = [];
   let sessionSources = defaultSources();
 
-  const publishSessionChanges: PlatformService["catalogue"]["publishApproved"] =
-    async (changes) => {
-      const parsed = z
-        .array(SessionApprovedChangeSchema)
-        .min(1)
-        .max(10_000)
-        .safeParse(changes);
-      if (!parsed.success) {
+  const publishSessionChanges: PlatformService['catalogue']['publishApproved'] = async (
+    changes,
+  ) => {
+    const parsed = z.array(SessionApprovedChangeSchema).min(1).max(10_000).safeParse(changes);
+    if (!parsed.success) {
+      return platformFail('invalid_input', 'The approved catalogue batch is invalid.');
+    }
+    const stagedCatalogue = new Map(sessionCatalogue);
+    const batchIds = new Set<string>();
+    const batchNumbers = new Set<string>();
+    for (const change of parsed.data) {
+      const { item } = change;
+      if (batchIds.has(item.id) || batchNumbers.has(item.itemNumber)) {
         return platformFail(
-          "invalid_input",
-          "The approved catalogue batch is invalid.",
+          'conflict',
+          'The approved batch contains a duplicate catalogue identifier.',
         );
       }
-      const stagedCatalogue = new Map(sessionCatalogue);
-      const batchIds = new Set<string>();
-      const batchNumbers = new Set<string>();
-      for (const change of parsed.data) {
-        const { item } = change;
-        if (batchIds.has(item.id) || batchNumbers.has(item.itemNumber)) {
-          return platformFail(
-            "conflict",
-            "The approved batch contains a duplicate catalogue identifier.",
-          );
-        }
-        batchIds.add(item.id);
-        batchNumbers.add(item.itemNumber);
-        const itemNumberOwner = [...stagedCatalogue.values()].find(
-          (existing) =>
-            existing.itemNumber === item.itemNumber && existing.id !== item.id,
-        );
-        if (itemNumberOwner) {
-          return platformFail(
-            "conflict",
-            "The item number already belongs to another catalogue item.",
-          );
-        }
-        // Integer cents and half-up rounding: cost * 1.30, rounded to cents.
-        const minimumSellCents = Math.trunc((item.costCents * 130 + 50) / 100);
-        if (item.sellPriceCents < minimumSellCents) {
-          return platformFail(
-            "invalid_input",
-            "The proposed sell price is below the required 30 percent markup floor.",
-          );
-        }
-        stagedCatalogue.set(item.id, item);
-      }
-
-      const published = parsed.data.map(({ item, approvedBy, reason }) => {
-        const approvedAt = new Date().toISOString();
-        const approval: ApprovalRecord = {
-          id: crypto.randomUUID(),
-          itemId: item.id,
-          approvedBy,
-          proposedSellCents: item.sellPriceCents,
-          reason,
-          approvedAt,
-        };
-        const priceHistory: PriceHistoryVersion = {
-          id: crypto.randomUUID(),
-          itemId: item.id,
-          cost: centsToAud(item.costCents),
-          sellPrice: centsToAud(item.sellPriceCents),
-          costCents: item.costCents,
-          sellPriceCents: item.sellPriceCents,
-          approvalId: approval.id,
-          recordedAt: approvedAt,
-        };
-        return { item, approval, priceHistory };
-      });
-      sessionCatalogue.clear();
-      for (const [id, item] of stagedCatalogue) sessionCatalogue.set(id, item);
-      sessionApprovals.push(...published.map(({ approval }) => approval));
-      sessionPriceHistory.push(
-        ...published.map(({ priceHistory }) => priceHistory),
+      batchIds.add(item.id);
+      batchNumbers.add(item.itemNumber);
+      const itemNumberOwner = [...stagedCatalogue.values()].find(
+        (existing) => existing.itemNumber === item.itemNumber && existing.id !== item.id,
       );
-      return platformOk(published);
-    };
+      if (itemNumberOwner) {
+        return platformFail(
+          'conflict',
+          'The item number already belongs to another catalogue item.',
+        );
+      }
+      // Integer cents and half-up rounding: cost * 1.30, rounded to cents.
+      const minimumSellCents = Math.trunc((item.costCents * 130 + 50) / 100);
+      if (item.sellPriceCents < minimumSellCents) {
+        return platformFail(
+          'invalid_input',
+          'The proposed sell price is below the required 30 percent markup floor.',
+        );
+      }
+      stagedCatalogue.set(item.id, item);
+    }
 
-  const createBackup = async (
-    reason: BackupReason,
-  ): Promise<PlatformResult<BackupSummary>> => {
+    const published = parsed.data.map(({ item, approvedBy, reason }) => {
+      const approvedAt = new Date().toISOString();
+      const approval: ApprovalRecord = {
+        id: crypto.randomUUID(),
+        itemId: item.id,
+        approvedBy,
+        proposedSellCents: item.sellPriceCents,
+        reason,
+        approvedAt,
+      };
+      const priceHistory: PriceHistoryVersion = {
+        id: crypto.randomUUID(),
+        itemId: item.id,
+        cost: centsToAud(item.costCents),
+        sellPrice: centsToAud(item.sellPriceCents),
+        costCents: item.costCents,
+        sellPriceCents: item.sellPriceCents,
+        approvalId: approval.id,
+        recordedAt: approvedAt,
+      };
+      return { item, approval, priceHistory };
+    });
+    sessionCatalogue.clear();
+    for (const [id, item] of stagedCatalogue) sessionCatalogue.set(id, item);
+    sessionApprovals.push(...published.map(({ approval }) => approval));
+    sessionPriceHistory.push(...published.map(({ priceHistory }) => priceHistory));
+    return platformOk(published);
+  };
+
+  const createBackup = async (reason: BackupReason): Promise<PlatformResult<BackupSummary>> => {
     void reason;
     const envelope = await buildConfigurationEnvelope(storage);
     const id = crypto.randomUUID();
     const summary: BackupSummary = {
       id,
-      filename: `${envelope.exportedAt.slice(0, 10).replaceAll("-", "")}-SWL-Web-Configuration.json`,
+      filename: `${envelope.exportedAt.slice(0, 10).replaceAll('-', '')}-SWL-Web-Configuration.json`,
       createdAt: envelope.exportedAt,
       applicationVersion: APP_VERSION,
       schemaVersion: envelope.schemaVersion,
@@ -462,41 +466,39 @@ export function createWebPlatformService(
   };
 
   const service: PlatformService = {
-    kind: "web",
+    kind: 'web',
     capabilities: {
       nativeFiles: false,
       nativePersistence: false,
       protectedCredentials: false,
       recovery: true,
-      liveSearch: !sessionOnly,
+      liveSearch: liveSearchEnabled,
     },
-    rawImportPersistence: "never",
-    manualEvidencePersistence: "catalogue-reference-or-session",
+    rawImportPersistence: 'never',
+    manualEvidencePersistence: 'catalogue-reference-or-session',
 
     appearance: {
       setTheme: async () => platformOk(undefined),
     },
 
     health: () =>
-      sessionOnly
+      !liveSearchEnabled
         ? Promise.resolve(
             platformOk({
               ok: true,
-              provider: "manual-only",
+              provider: 'manual-only',
               liveSearchConfigured: false,
               fixtureMode: false,
               schemaVersion: 1,
             }),
           )
-        : (requestJson("/api/health", LiveHealthSchema) as Promise<
-            PlatformResult<LiveHealth>
-          >),
+        : (requestJson('/api/health', LiveHealthSchema) as Promise<PlatformResult<LiveHealth>>),
 
     catalogue: {
       async list() {
         if (sessionOnly) return platformOk([...sessionCatalogue.values()]);
         const result = await requestJson(
-          "/api/items",
+          '/api/items',
           z.array(WebCatalogueItemSchema).max(100_000),
         );
         if (!result.ok) return result;
@@ -509,7 +511,7 @@ export function createWebPlatformService(
             description: item.description,
             costCents: item.costCents,
             sellPriceCents: item.sellPriceCents,
-            gstBasis: item.gstBasis ?? "unknown",
+            gstBasis: item.gstBasis ?? 'unknown',
             updatedAt: item.updatedAt,
           };
           const parsed = CatalogueItemSchema.safeParse(canonical);
@@ -517,23 +519,19 @@ export function createWebPlatformService(
         });
         return items.some((item) => item === null)
           ? platformFail(
-              "integrity_failed",
-              "The catalogue contains an invalid record and cannot be loaded safely.",
+              'integrity_failed',
+              'The catalogue contains an invalid record and cannot be loaded safely.',
             )
           : platformOk(items as CatalogueItem[]);
       },
       publishApproved: (changes) =>
         sessionOnly
           ? publishSessionChanges(changes)
-          : requestJson(
-              "/api/publish-approved-changes",
-              z.array(PublishedChangeSchema),
-              {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ changes }),
-              },
-            ),
+          : requestJson('/api/publish-approved-changes', z.array(PublishedChangeSchema), {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ changes }),
+            }),
     },
     approvals: {
       async list(itemId) {
@@ -545,14 +543,12 @@ export function createWebPlatformService(
           );
         }
         const result = await requestJson(
-          "/api/approvals",
+          '/api/approvals',
           z.array(ApprovalRecordSchema).max(500_000),
         );
         return result.ok
           ? platformOk(
-              itemId
-                ? result.value.filter((item) => item.itemId === itemId)
-                : result.value,
+              itemId ? result.value.filter((item) => item.itemId === itemId) : result.value,
             )
           : result;
       },
@@ -568,7 +564,7 @@ export function createWebPlatformService(
               ),
             )
           : requestJson(
-              `/api/price-history${itemId ? `?itemId=${encodeURIComponent(itemId)}` : ""}`,
+              `/api/price-history${itemId ? `?itemId=${encodeURIComponent(itemId)}` : ''}`,
               z.array(PriceHistoryVersionSchema).max(1_000_000),
             ),
     },
@@ -583,24 +579,24 @@ export function createWebPlatformService(
               ),
             )
           : requestJson(
-              `/api/references${itemId ? `?itemId=${encodeURIComponent(itemId)}` : ""}`,
+              `/api/references${itemId ? `?itemId=${encodeURIComponent(itemId)}` : ''}`,
               z.array(CompetitorReferenceRecordSchema).max(1_000_000),
-            )) as ReturnType<PlatformService["references"]["list"]>,
+            )) as ReturnType<PlatformService['references']['list']>,
       async attach(itemId, observation) {
         const parsed = z
           .union([LiveSearchResultSchema, CompetitorObservationSchema])
           .safeParse(observation);
         if (!parsed.success) {
           return platformFail(
-            "invalid_input",
-            "The competitor evidence contains unsupported or unsafe fields.",
+            'invalid_input',
+            'The competitor evidence contains unsupported or unsafe fields.',
           );
         }
         if (sessionOnly) {
           if (!sessionCatalogue.has(itemId)) {
             return platformFail(
-              "conflict",
-              "Competitor evidence requires an approved catalogue item.",
+              'conflict',
+              'Competitor evidence requires an approved catalogue item.',
             );
           }
           const reference: CompetitorReferenceRecord = {
@@ -610,66 +606,52 @@ export function createWebPlatformService(
             attachedAt: new Date().toISOString(),
           };
           if (!CompetitorReferenceRecordSchema.safeParse(reference).success) {
-            return platformFail(
-              "invalid_input",
-              "The competitor reference is invalid.",
-            );
+            return platformFail('invalid_input', 'The competitor reference is invalid.');
           }
           sessionReferences.push(reference);
           return platformOk(reference);
         }
-        return requestJson("/api/references", CompetitorReferenceRecordSchema, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
+        return requestJson('/api/references', CompetitorReferenceRecordSchema, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ itemId, observation: parsed.data }),
-        }) as ReturnType<PlatformService["references"]["attach"]>;
+        }) as ReturnType<PlatformService['references']['attach']>;
       },
     },
     sources: {
       async list() {
         if (sessionOnly) return platformOk(structuredClone(sessionSources));
-        const result = await requestJson(
-          "/api/sources",
-          z.array(WebSourceSchema).max(1000),
-        );
+        const result = await requestJson('/api/sources', z.array(WebSourceSchema).max(1000));
         if (!result.ok) return result;
         if (result.value.length === 0) return platformOk(defaultSources());
         const sources: CompetitorSource[] = result.value.map((source) => ({
           id: source.id,
           name: source.name,
           accessMethod: source.accessMethod,
-          automatedAccessNote: source.automatedAccessNote ?? source.note ?? "",
+          automatedAccessNote: source.automatedAccessNote ?? source.note ?? '',
           enabled: source.enabled,
         }));
         const parsed = z.array(CompetitorSourceSchema).safeParse(sources);
+        const productionSources = parsed.success ? withoutLegacySyntheticSources(parsed.data) : [];
         return parsed.success
-          ? platformOk(parsed.data)
-          : platformFail(
-              "integrity_failed",
-              "The source registry response is invalid.",
-            );
+          ? platformOk(productionSources.length === 0 ? defaultSources() : productionSources)
+          : platformFail('integrity_failed', 'The source registry response is invalid.');
       },
       async replace(sources) {
         if (sessionOnly) {
-          const parsed = z
-            .array(CompetitorSourceSchema)
-            .max(1000)
-            .safeParse(sources);
+          const parsed = z.array(CompetitorSourceSchema).max(1000).safeParse(sources);
           if (
             !parsed.success ||
             new Set(parsed.data.map(({ id }) => id)).size !== parsed.data.length
           ) {
-            return platformFail(
-              "invalid_input",
-              "The source registry is invalid.",
-            );
+            return platformFail('invalid_input', 'The source registry is invalid.');
           }
           sessionSources = structuredClone(parsed.data);
           return platformOk(structuredClone(sessionSources));
         }
-        return requestJson("/api/sources", z.array(CompetitorSourceSchema), {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
+        return requestJson('/api/sources', z.array(CompetitorSourceSchema), {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
           body: JSON.stringify(sources),
         });
       },
@@ -680,26 +662,20 @@ export function createWebPlatformService(
           return platformOk(await storage.listProfiles());
         } catch {
           return platformFail(
-            "integrity_failed",
-            "Stored mapping profiles could not be read safely.",
+            'integrity_failed',
+            'Stored mapping profiles could not be read safely.',
           );
         }
       },
       async save(profile) {
         const parsed = MappingProfileSchema.safeParse(profile);
         if (!parsed.success)
-          return platformFail(
-            "invalid_input",
-            "The mapping profile is invalid.",
-          );
+          return platformFail('invalid_input', 'The mapping profile is invalid.');
         try {
           await storage.saveProfile(profile);
           return platformOk(profile);
         } catch {
-          return platformFail(
-            "integrity_failed",
-            "The mapping profile could not be saved safely.",
-          );
+          return platformFail('integrity_failed', 'The mapping profile could not be saved safely.');
         }
       },
       async delete(id) {
@@ -708,8 +684,8 @@ export function createWebPlatformService(
           return platformOk(undefined);
         } catch {
           return platformFail(
-            "integrity_failed",
-            "The mapping profile could not be deleted safely.",
+            'integrity_failed',
+            'The mapping profile could not be deleted safely.',
           );
         }
       },
@@ -720,26 +696,19 @@ export function createWebPlatformService(
           return platformOk(await storage.listAliases());
         } catch {
           return platformFail(
-            "integrity_failed",
-            "Stored approved aliases could not be read safely.",
+            'integrity_failed',
+            'Stored approved aliases could not be read safely.',
           );
         }
       },
       async save(alias) {
         const parsed = AliasRecordSchema.safeParse(alias);
-        if (!parsed.success)
-          return platformFail(
-            "invalid_input",
-            "The approved alias is invalid.",
-          );
+        if (!parsed.success) return platformFail('invalid_input', 'The approved alias is invalid.');
         try {
           await storage.saveAlias(alias);
           return platformOk(alias);
         } catch {
-          return platformFail(
-            "integrity_failed",
-            "The approved alias could not be saved safely.",
-          );
+          return platformFail('integrity_failed', 'The approved alias could not be saved safely.');
         }
       },
       async delete(supplierCode) {
@@ -748,8 +717,8 @@ export function createWebPlatformService(
           return platformOk(undefined);
         } catch {
           return platformFail(
-            "integrity_failed",
-            "The approved alias could not be deleted safely.",
+            'integrity_failed',
+            'The approved alias could not be deleted safely.',
           );
         }
       },
@@ -759,25 +728,19 @@ export function createWebPlatformService(
         try {
           return platformOk(await storage.loadSettings());
         } catch {
-          return platformFail(
-            "integrity_failed",
-            "Stored settings could not be read safely.",
-          );
+          return platformFail('integrity_failed', 'Stored settings could not be read safely.');
         }
       },
       async save(settings) {
         const parsed = SettingsSchema.safeParse(settings);
         if (!parsed.success) {
-          return platformFail("invalid_input", "The settings are invalid.");
+          return platformFail('invalid_input', 'The settings are invalid.');
         }
         try {
           await storage.saveSettings(parsed.data);
           return platformOk(parsed.data);
         } catch {
-          return platformFail(
-            "integrity_failed",
-            "The settings could not be saved safely.",
-          );
+          return platformFail('integrity_failed', 'The settings could not be saved safely.');
         }
       },
     },
@@ -787,8 +750,8 @@ export function createWebPlatformService(
       },
       async exportToSelectedFolder() {
         return platformFail(
-          "unavailable",
-          "Native folder export is available only in the Windows application.",
+          'unavailable',
+          'Native folder export is available only in the Windows application.',
         );
       },
       async previewImport(serialised) {
@@ -797,10 +760,7 @@ export function createWebPlatformService(
         const current = await storage.readConfigurationSnapshot();
         const previewToken = crypto.randomUUID();
         importPreviews.set(previewToken, validation.value);
-        const conflicts = configurationConflicts(
-          current,
-          validation.value.data,
-        );
+        const conflicts = configurationConflicts(current, validation.value.data);
         const validationMessages = conflictMessages(conflicts);
         const preview: ConfigurationPreview = {
           previewToken,
@@ -814,26 +774,23 @@ export function createWebPlatformService(
       },
       async applyImport(previewToken) {
         const envelope = importPreviews.get(previewToken);
-        if (!envelope)
-          return platformFail(
-            "invalid_input",
-            "The import preview has expired.",
-          );
+        if (!envelope) return platformFail('invalid_input', 'The import preview has expired.');
         const current = await storage.readConfigurationSnapshot();
         const conflicts = configurationConflicts(current, envelope.data);
         if (conflictMessages(conflicts).length > 0) {
           return platformFail(
-            "conflict",
-            "The live configuration now conflicts with this preview. No data was changed.",
+            'conflict',
+            'The live configuration now conflicts with this preview. No data was changed.',
           );
         }
-        await createBackup("import");
+        await createBackup('import');
         const merged = {
           profiles: [
             ...new Map(
-              [...current.profiles, ...envelope.data.profiles].map(
-                (profile) => [profile.id, profile],
-              ),
+              [...current.profiles, ...envelope.data.profiles].map((profile) => [
+                profile.id,
+                profile,
+              ]),
             ).values(),
           ],
           aliases: [
@@ -856,8 +813,7 @@ export function createWebPlatformService(
           legacyConfigurationFound:
             snapshot.profiles.length > 0 ||
             snapshot.aliases.length > 0 ||
-            JSON.stringify(snapshot.settings) !==
-              JSON.stringify(DEFAULT_SETTINGS),
+            JSON.stringify(snapshot.settings) !== JSON.stringify(DEFAULT_SETTINGS),
           alreadyImported: false,
           counts: {
             profiles: snapshot.profiles.length,
@@ -871,8 +827,8 @@ export function createWebPlatformService(
       },
       async previewLegacyImport() {
         return platformFail(
-          "unavailable",
-          "Legacy import is only needed inside the Windows desktop application.",
+          'unavailable',
+          'Legacy import is only needed inside the Windows desktop application.',
         );
       },
     },
@@ -882,14 +838,9 @@ export function createWebPlatformService(
         return platformOk([...backups.values()].map((entry) => entry.summary));
       },
       async previewRestore(backupId) {
-        const selected = backupId
-          ? backups.get(backupId)
-          : [...backups.values()].at(-1);
+        const selected = backupId ? backups.get(backupId) : [...backups.values()].at(-1);
         if (!selected) {
-          return platformFail(
-            "unavailable",
-            "No browser configuration backup is available.",
-          );
+          return platformFail('unavailable', 'No browser configuration backup is available.');
         }
         const preview: RestorePreview = {
           ...selected.summary,
@@ -900,12 +851,8 @@ export function createWebPlatformService(
       },
       async restore(previewToken) {
         const backup = backups.get(previewToken);
-        if (!backup)
-          return platformFail(
-            "invalid_input",
-            "The restore preview has expired.",
-          );
-        await createBackup("restore");
+        if (!backup) return platformFail('invalid_input', 'The restore preview has expired.');
+        await createBackup('restore');
         await storage.replaceConfigurationSnapshot(backup.envelope.data);
         return platformOk(backup.summary);
       },
@@ -914,7 +861,7 @@ export function createWebPlatformService(
         const preview: ResetPreview = {
           resetToken: crypto.randomUUID(),
           confirmationPhrase: RESET_CONFIRMATION,
-          scope: ["mapping profiles", "approved aliases", "settings"],
+          scope: ['mapping profiles', 'approved aliases', 'settings'],
           recordCounts: {
             ...emptyRecordCounts(),
             profiles: envelope.counts.profiles,
@@ -932,30 +879,23 @@ export function createWebPlatformService(
       async reset(resetToken, confirmation) {
         const pending = resetPreviews.get(resetToken);
         if (!pending || confirmation !== pending.preview.confirmationPhrase) {
-          return platformFail(
-            "invalid_input",
-            "The reset confirmation did not match the preview.",
-          );
+          return platformFail('invalid_input', 'The reset confirmation did not match the preview.');
         }
         const current = await storage.readConfigurationSnapshot();
         if (!configurationRecordEqual(current, pending.snapshot)) {
           resetPreviews.delete(resetToken);
           return platformFail(
-            "conflict",
-            "Stored configuration changed after the reset preview. Nothing was erased.",
+            'conflict',
+            'Stored configuration changed after the reset preview. Nothing was erased.',
           );
         }
-        const backup = await createBackup("reset");
+        const backup = await createBackup('reset');
         if (!backup.ok) return backup;
-        if (
-          !(await storage.deleteConfigurationSnapshotIfUnchanged(
-            pending.snapshot,
-          ))
-        ) {
+        if (!(await storage.deleteConfigurationSnapshotIfUnchanged(pending.snapshot))) {
           resetPreviews.delete(resetToken);
           return platformFail(
-            "conflict",
-            "Stored configuration changed after backup. Nothing was erased.",
+            'conflict',
+            'Stored configuration changed after backup. Nothing was erased.',
           );
         }
         resetPreviews.delete(resetToken);
@@ -964,12 +904,12 @@ export function createWebPlatformService(
     },
     search: {
       async status() {
-        if (sessionOnly) {
+        if (!liveSearchEnabled) {
           return platformOk({
-            provider: "manual-only",
-            state: "not_configured",
+            provider: 'manual-only',
+            state: 'not_configured',
             paidCallsEnabled: false,
-            costCeilingAud: "0.00",
+            costCeilingAud: '0.00',
             costCeilingCents: 0,
             costPerCallCents: 0,
             spentCents: 0,
@@ -981,30 +921,52 @@ export function createWebPlatformService(
         const health = await service.health();
         return health.ok ? platformOk(webProviderStatus(health.value)) : health;
       },
-      async query(query) {
-        if (sessionOnly) {
+      async query(query, candidateToken) {
+        if (!liveSearchEnabled) {
           return {
-            state: "not_configured",
+            state: 'not_configured',
             query,
-            queryKind: query.trim() ? "free-text" : "empty",
-            provider: "manual-only",
+            queryKind: query.trim() ? 'free-text' : 'empty',
+            provider: 'manual-only',
+            candidates: [],
             results: [],
             band: null,
             detail:
-              "The static Pages demonstration is manual-only and makes no network search request.",
+              'The static Pages demonstration is manual-only and makes no network search request.',
           };
         }
-        const result = await requestJson(
-          `/api/competitor-search?q=${encodeURIComponent(query)}`,
-          LiveSearchOutcomeSchema,
-        );
+        const result = await requestJson('/api/competitor-search', LiveSearchOutcomeSchema, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            ...(candidateToken ? { candidateToken } : {}),
+          }),
+        });
         if (result.ok) return result.value as LiveSearchOutcome;
         return {
           state:
-            result.error.code === "timeout" ? "timeout" : "server_unreachable",
+            result.error.code === 'timeout'
+              ? 'timeout'
+              : result.error.code === 'rate_limited'
+                ? 'rate_limited'
+                : result.error.code === 'conflict'
+                  ? 'search_in_progress'
+                  : result.error.code === 'selection_expired'
+                    ? 'selection_expired'
+                    : result.error.code === 'quota_exhausted'
+                      ? 'quota_exhausted'
+                      : result.error.code === 'invalid_input'
+                        ? 'invalid_query'
+                        : result.error.code === 'permission_denied'
+                          ? 'not_configured'
+                          : result.error.code === 'provider_error'
+                            ? 'provider_error'
+                            : 'server_unreachable',
           query,
-          queryKind: query.trim() ? "free-text" : "empty",
-          provider: "unknown",
+          queryKind: query.trim() ? 'free-text' : 'empty',
+          provider: 'unknown',
+          candidates: [],
           results: [],
           band: null,
           detail: result.error.message,
@@ -1012,43 +974,57 @@ export function createWebPlatformService(
       },
       setPaidCallsEnabled: async () =>
         platformFail(
-          "unavailable",
-          "Paid provider calls are configured on the web server.",
+          'unavailable',
+          sessionOnly
+            ? 'Static Pages has no live provider service or paid-call setting.'
+            : 'Paid provider calls are configured in the local Node service environment and cannot be changed from the browser.',
         ),
       configureCredential: async () =>
         platformFail(
-          "unavailable",
-          "Web provider credentials are configured on the web server.",
+          'unavailable',
+          sessionOnly
+            ? 'Static Pages has no provider credential and makes no live search request.'
+            : 'Provider credentials are configured in the local Node service environment and cannot be changed from the browser.',
         ),
-      validateCredential: async () => service.search.status(),
+      validateCredential: async () =>
+        platformFail(
+          'unavailable',
+          sessionOnly
+            ? 'Static Pages has no provider credential to validate.'
+            : 'Provider credential availability is checked by the local Node service and cannot be validated from the browser.',
+        ),
       replaceCredential: async () =>
         platformFail(
-          "unavailable",
-          "Web provider credentials are configured on the web server.",
+          'unavailable',
+          sessionOnly
+            ? 'Static Pages has no provider credential and makes no live search request.'
+            : 'Provider credentials are configured in the local Node service environment and cannot be changed from the browser.',
         ),
       removeCredential: async () =>
         platformFail(
-          "unavailable",
-          "Web provider credentials are configured on the web server.",
+          'unavailable',
+          sessionOnly
+            ? 'Static Pages has no provider credential and makes no live search request.'
+            : 'Provider credentials are configured in the local Node service environment and cannot be changed from the browser.',
         ),
     },
     files: {
       async chooseInputFile() {
         return platformFail(
-          "unavailable",
-          "Browser input files are selected through the visible file control.",
+          'unavailable',
+          'Browser input files are selected through the visible file control.',
         );
       },
       async chooseOutputDestination() {
         return platformFail(
-          "unavailable",
-          "Native output folders are available in the Windows application.",
+          'unavailable',
+          'Native output folders are available in the Windows application.',
         );
       },
       async saveOutputs() {
         return platformFail(
-          "unavailable",
-          "Native output folders are available in the Windows application.",
+          'unavailable',
+          'Native output folders are available in the Windows application.',
         );
       },
       async openVerifiedSource(url) {
@@ -1056,15 +1032,15 @@ export function createWebPlatformService(
         try {
           parsed = new URL(url);
         } catch {
-          return platformFail("invalid_input", "The source link is invalid.");
+          return platformFail('invalid_input', 'The source link is invalid.');
         }
-        if (parsed.protocol !== "https:") {
+        if (parsed.protocol !== 'https:') {
           return platformFail(
-            "permission_denied",
-            "Only verified HTTPS source links may be opened.",
+            'permission_denied',
+            'Only verified HTTPS source links may be opened.',
           );
         }
-        window.open(parsed.href, "_blank", "noopener,noreferrer");
+        window.open(parsed.href, '_blank', 'noopener,noreferrer');
         return platformOk(undefined);
       },
     },

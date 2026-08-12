@@ -1,0 +1,86 @@
+{
+  "search_metadata": {
+    "id": "synthetic-shopping-search",
+    "status": "Success",
+    "created_at": "2026-08-10 23:00:00 UTC",
+    "processed_at": "2026-08-10 23:00:02 UTC"
+  },
+  "search_parameters": {
+    "engine": "google_shopping",
+    "q": "Synthetic lock",
+    "google_domain": "google.com.au",
+    "gl": "au",
+    "hl": "en",
+    "location": "Geelong, Victoria, Australia"
+  },
+  "shopping_results": [
+    {
+      "position": 1,
+      "title": "Lockwood 001 Double Cylinder Deadlatch",
+      "product_id": "product-main",
+      "product_link": "https://www.google.com.au/shopping/product/product-main?gl=au",
+      "immersive_product_page_token": "token-main",
+      "serpapi_immersive_product_api": "https://serpapi.com/search.json?engine=google_immersive_product&page_token=token-main",
+      "source": "Headline merchant",
+      "multiple_sources": true,
+      "price": "A$129.00",
+      "extracted_price": 129,
+      "delivery": "Delivery available"
+    }
+  ],
+  "inline_shopping_results": [
+    {
+      "position": 2,
+      "block_position": "top",
+      "title": "Lockwood 001 Double Cylinder Deadlatch Display Pack",
+      "link": "https://inline-merchant.example.test/products/lockwood-001",
+      "tracking_link": "https://www.google.com/aclk?synthetic-test-only",
+      "source": "Inline headline merchant",
+      "price": "$135.50",
+      "extracted_price": 135.5
+    },
+    {
+      "position": 22,
+      "block_position": "top",
+      "title": "Direct inline advertisement without a product token",
+      "price": "$99.00",
+      "extracted_price": 99,
+      "link": "https://merchant.example.test/direct-ad"
+    }
+  ],
+  "categorized_shopping_results": [
+    {
+      "title": "Related locks",
+      "shopping_results": [
+        {
+          "position": 3,
+          "title": "Used Lockwood 001 Double Cylinder Deadlatch",
+          "product_id": "product-used",
+          "product_link": "https://www.google.com.au/shopping/product/product-used?gl=au",
+          "immersive_product_page_token": "token-used",
+          "source": "Second-hand headline merchant",
+          "multiple_sources": false,
+          "price": "$80.00",
+          "extracted_price": 80,
+          "second_hand_condition": "Used"
+        }
+      ]
+    },
+    {
+      "title": "Duplicate cluster",
+      "shopping_results": [
+        {
+          "position": 4,
+          "title": "Lockwood 001 Double Cylinder Deadlatch",
+          "product_id": "product-main",
+          "product_link": "https://www.google.com.au/shopping/product/product-main?gl=au",
+          "immersive_product_page_token": "token-main",
+          "source": "Duplicate headline merchant",
+          "multiple_sources": true,
+          "price": "A$129.00",
+          "extracted_price": 129
+        }
+      ]
+    }
+  ]
+}

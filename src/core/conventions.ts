@@ -25,7 +25,7 @@ export interface TaxConvention {
 
 /**
  * The documented fallback: price excludes GST and GST is applied on income.
- * This is internally consistent — a tax-exclusive price with a tax rate that
+ * This is internally consistent - a tax-exclusive price with a tax rate that
  * ServiceM8 applies at invoice time.
  */
 export const FALLBACK_CONVENTION = { includesTaxes: false, taxRate: GST_ON_INCOME } as const;
@@ -90,7 +90,7 @@ export function describeTaxConvention(convention: TaxConvention): string {
   const basis = convention.includesTaxes ? 'includes GST' : 'excludes GST';
   const rate = convention.taxRate === '' ? 'no tax rate' : convention.taxRate;
   if (convention.fallback) {
-    return `Price ${basis}, ${rate} (documented fallback — the ServiceM8 file provided no usable rows).`;
+    return `Price ${basis}, ${rate} (documented fallback - the ServiceM8 file provided no usable rows).`;
   }
   return `Price ${basis}, ${rate} (used by ${convention.support} of ${convention.total} existing ServiceM8 items).`;
 }

@@ -273,6 +273,236 @@ function validateHttpsUrl(value, name) {
   return sourceUrl;
 }
 
+function validateMoneyPair(centsValue, amountValue, name, nullable = false) {
+  if (nullable && centsValue === null && amountValue === null) return null;
+  if (nullable && (centsValue === null || amountValue === null)) {
+    throw new PublicationValidationError(`${name} representations disagree.`);
+  }
+  assertCents(centsValue, name);
+  if (assertEvidenceMoney(amountValue, name, true) !== centsValue) {
+    throw new PublicationValidationError(`${name} representations disagree.`);
+  }
+  return centsValue;
+}
+
+function validateStructuredLiveReferenceObservation(observation) {
+  const requiredKeys = [
+    "availability",
+    "comparisonEligible",
+    "comparisonPriceAud",
+    "comparisonPriceCents",
+    "condition",
+    "currency",
+    "currencyBasis",
+    "estimatedTaxAud",
+    "estimatedTaxCents",
+    "exclusionReasons",
+    "financing",
+    "gstBasis",
+    "itemPriceAud",
+    "itemPriceCents",
+    "originalPriceText",
+    "packSize",
+    "priceAud",
+    "priceBasis",
+    "priceCents",
+    "retrievedAt",
+    "seller",
+    "shippingAud",
+    "shippingCents",
+    "sourceDomain",
+    "title",
+    "totalPriceAud",
+    "totalPriceCents",
+    "url",
+  ];
+  const provenanceKeys = [
+    "searchQuery",
+    "selectedProductTitle",
+    "selectedProductBrand",
+    "selectedProductId",
+  ];
+  assertAllowedKeys(
+    observation,
+    requiredKeys,
+    provenanceKeys,
+    "Competitor observation",
+  );
+  const presentProvenance = provenanceKeys.filter((key) =>
+    Object.hasOwn(observation, key),
+  );
+  if (
+    presentProvenance.length !== 0 &&
+    presentProvenance.length !== provenanceKeys.length
+  ) {
+    throw new PublicationValidationError(
+      "Observation selected-product provenance is incomplete.",
+    );
+  }
+  if (presentProvenance.length === provenanceKeys.length) {
+    assertText(observation.searchQuery, "Observation search query", 512);
+    assertText(
+      observation.selectedProductTitle,
+      "Observation selected product title",
+      1_000,
+    );
+    for (const [field, label, limit] of [
+      ["selectedProductBrand", "Observation selected product brand", 512],
+      ["selectedProductId", "Observation selected product identifier", 512],
+    ]) {
+      if (observation[field] !== null) {
+        assertText(observation[field], label, limit);
+      }
+    }
+  }
+  assertText(observation.title, "Observation title", 1_000);
+  validateMoneyPair(
+    observation.itemPriceCents,
+    observation.itemPriceAud,
+    "Observation item price",
+  );
+  validateMoneyPair(
+    observation.priceCents,
+    observation.priceAud,
+    "Observation price",
+  );
+  if (
+    observation.priceCents !== observation.itemPriceCents ||
+    observation.priceAud !== observation.itemPriceAud
+  ) {
+    throw new PublicationValidationError(
+      "Observation item-price aliases disagree.",
+    );
+  }
+  validateMoneyPair(
+    observation.shippingCents,
+    observation.shippingAud,
+    "Observation shipping",
+    true,
+  );
+  validateMoneyPair(
+    observation.estimatedTaxCents,
+    observation.estimatedTaxAud,
+    "Observation estimated tax",
+    true,
+  );
+  validateMoneyPair(
+    observation.totalPriceCents,
+    observation.totalPriceAud,
+    "Observation provider total",
+    true,
+  );
+  validateMoneyPair(
+    observation.comparisonPriceCents,
+    observation.comparisonPriceAud,
+    "Observation comparison total",
+    true,
+  );
+  if (observation.currency !== "AUD") {
+    throw new PublicationValidationError("Observation currency is invalid.");
+  }
+  if (
+    !["explicit-aud", "inferred-au-localisation"].includes(
+      observation.currencyBasis,
+    )
+  ) {
+    throw new PublicationValidationError(
+      "Observation currency basis is invalid.",
+    );
+  }
+  if (!["inc-gst", "ex-gst", "unknown"].includes(observation.gstBasis)) {
+    throw new PublicationValidationError("Observation GST basis is invalid.");
+  }
+  if (observation.packSize !== null) {
+    assertText(observation.packSize, "Observation pack size", 256, true);
+  }
+  if (!["new", "used", "unknown"].includes(observation.condition)) {
+    throw new PublicationValidationError("Observation condition is invalid.");
+  }
+  if (
+    !["in-stock", "out-of-stock", "unknown"].includes(observation.availability)
+  ) {
+    throw new PublicationValidationError(
+      "Observation availability is invalid.",
+    );
+  }
+  if (
+    typeof observation.financing !== "boolean" ||
+    typeof observation.comparisonEligible !== "boolean"
+  ) {
+    throw new PublicationValidationError(
+      "Observation comparison flags are invalid.",
+    );
+  }
+  if (
+    !Array.isArray(observation.exclusionReasons) ||
+    observation.exclusionReasons.length > 20 ||
+    observation.exclusionReasons.some((reason) => {
+      try {
+        assertText(reason, "Observation exclusion reason", 128);
+        return false;
+      } catch {
+        return true;
+      }
+    })
+  ) {
+    throw new PublicationValidationError(
+      "Observation exclusion reasons are invalid.",
+    );
+  }
+  if (
+    !["provider_total", "item_plus_shipping", "not_comparable"].includes(
+      observation.priceBasis,
+    )
+  ) {
+    throw new PublicationValidationError(
+      "Observation comparison basis is invalid.",
+    );
+  }
+  if (observation.comparisonEligible) {
+    if (
+      observation.exclusionReasons.length !== 0 ||
+      observation.comparisonPriceCents === null ||
+      observation.priceBasis === "not_comparable" ||
+      (observation.priceBasis === "provider_total" &&
+        observation.comparisonPriceCents !== observation.totalPriceCents) ||
+      (observation.priceBasis === "item_plus_shipping" &&
+        (observation.shippingCents === null ||
+          observation.comparisonPriceCents !==
+            observation.itemPriceCents + observation.shippingCents ||
+          (observation.estimatedTaxCents !== null &&
+            observation.estimatedTaxCents !== 0))) ||
+      observation.condition === "used" ||
+      observation.availability === "out-of-stock"
+    ) {
+      throw new PublicationValidationError(
+        "Observation comparison eligibility is invalid.",
+      );
+    }
+  } else if (
+    observation.exclusionReasons.length === 0 ||
+    observation.comparisonPriceCents !== null ||
+    observation.priceBasis !== "not_comparable"
+  ) {
+    throw new PublicationValidationError(
+      "Observation comparison exclusion is invalid.",
+    );
+  }
+  assertText(observation.originalPriceText, "Observation original price", 64);
+  assertText(observation.seller, "Observation seller", 512);
+  assertText(observation.sourceDomain, "Observation source domain", 253);
+  const sourceUrl = validateHttpsUrl(observation.url, "Observation URL");
+  if (
+    sourceUrl.hostname.toLowerCase() !== observation.sourceDomain.toLowerCase()
+  ) {
+    throw new PublicationValidationError(
+      "Observation URL is outside the safe HTTPS boundary.",
+    );
+  }
+  assertTimestamp(observation.retrievedAt, "Observation retrieval time");
+  return { ...observation, url: sourceUrl.href };
+}
+
 function validateLiveReferenceObservation(observation) {
   if (
     !observation ||
@@ -282,6 +512,9 @@ function validateLiveReferenceObservation(observation) {
     throw new PublicationValidationError(
       "The competitor observation is invalid.",
     );
+  }
+  if (Object.hasOwn(observation, "itemPriceCents")) {
+    return validateStructuredLiveReferenceObservation(observation);
   }
   assertExactKeys(
     observation,

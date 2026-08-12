@@ -35,7 +35,7 @@ export function FilesStep() {
         <FileDrop
           role="supplier"
           label="Supplier export"
-          hint="The price list exactly as the supplier sent it — CSV or XLSX, no editing needed."
+          hint="The price list exactly as the supplier sent it - CSV or XLSX, no editing needed."
           slot={state.supplier}
           nativePicker={platform.kind === "desktop"}
           onChooseFile={() => void chooseNativeFile("supplier")}
@@ -49,7 +49,7 @@ export function FilesStep() {
         <FileDrop
           role="servicem8"
           label="ServiceM8 export"
-          hint="Your current ServiceM8 Materials & Services export or import template — CSV or XLSX."
+          hint="Your current ServiceM8 Materials & Services export or import template - CSV or XLSX."
           slot={state.servicem8}
           nativePicker={platform.kind === "desktop"}
           onChooseFile={() => void chooseNativeFile("servicem8")}

@@ -5,7 +5,7 @@ import { usePlatform } from './platform/context';
 import { STEP_ORDER, STEP_TITLES, useAppDispatch, useAppState, type StepId } from './state/store';
 import { useActions } from './state/useActions';
 import { AppearanceControl } from './ui/AppearanceControl';
-import { BrandLockup, BrandMark, timeOfDayGreeting } from './ui/Brand';
+import { BrandLockup, BrandMark } from './ui/Brand';
 import { PrivacyDialog } from './ui/PrivacyDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { RecoveryPanel, SettingsPage } from './ui/pages/ConfigPages';
@@ -224,7 +224,6 @@ export default function App() {
   const appearanceSavingRef = useRef(false);
   const settingsRef = useRef(state.settings);
   const pageTitle = ROUTES.find(([id]) => id === route)?.[1] ?? 'Dashboard';
-  const greeting = timeOfDayGreeting();
   const totalRecords = state.comparison?.rows.length ?? 0;
   const approvedCount = Object.values(state.review.decisions).filter(
     (decision) => decision.state === 'approved',
@@ -330,45 +329,53 @@ export default function App() {
         <a className="skip-link" href="#main-content">
           Skip to main content
         </a>
-        <main id="main-content">
-          <Page
-            title={
-              state.configurationHydration.status === 'loading'
-                ? 'Loading stored configuration'
-                : 'Stored configuration unavailable'
-            }
-          >
-            {state.configurationHydration.status === 'loading' ? (
-              <p role="status">
-                Verifying settings, mapping profiles, aliases and source registry before enabling
-                the workflow.
-              </p>
-            ) : (
-              <>
-                <div className="callout callout-danger" role="alert">
-                  <strong>The operational workflow is blocked.</strong>
-                  <p>{state.configurationHydration.error}</p>
-                  <p>
-                    Defaults have not been substituted. Retry after repairing or restoring the local
-                    configuration.
+        <div className="recovery-shell">
+          <main id="main-content" className="recovery-main">
+            <div className="recovery-brand">
+              <BrandLockup productName="Pricing &amp; Inventory" />
+              <span>Configuration recovery</span>
+            </div>
+            <div className="recovery-surface">
+              <Page
+                title={
+                  state.configurationHydration.status === 'loading'
+                    ? 'Loading stored configuration'
+                    : 'Stored configuration unavailable'
+                }
+              >
+                {state.configurationHydration.status === 'loading' ? (
+                  <p role="status">
+                    Verifying settings, mapping profiles, aliases and source registry before
+                    enabling the workflow.
                   </p>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => dispatch({ type: 'configuration-hydration-retry' })}
-                  >
-                    Retry verified configuration load
-                  </button>
-                </div>
-                <RecoveryPanel
-                  platform={platform}
-                  announce={actions.announce}
-                  afterRestore={actions.reloadAfterRestore}
-                />
-              </>
-            )}
-          </Page>
-        </main>
+                ) : (
+                  <>
+                    <div className="callout callout-danger" role="alert">
+                      <strong>The operational workflow is blocked.</strong>
+                      <p>{state.configurationHydration.error}</p>
+                      <p>
+                        Defaults have not been substituted. Retry after repairing or restoring the
+                        local configuration.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => dispatch({ type: 'configuration-hydration-retry' })}
+                      >
+                        Retry verified configuration load
+                      </button>
+                    </div>
+                    <RecoveryPanel
+                      platform={platform}
+                      announce={actions.announce}
+                      afterRestore={actions.reloadAfterRestore}
+                    />
+                  </>
+                )}
+              </Page>
+            </div>
+          </main>
+        </div>
         <div aria-live="polite" role="status" className="visually-hidden">
           {state.announcement}
         </div>
@@ -460,14 +467,7 @@ export default function App() {
             >
               Menu
             </button>
-            <div className="topbar-greeting">
-              <span className="greeting-line">{greeting}</span>
-              <span className="greeting-context">
-                {pageTitle}
-                {state.demoMode && ' · fictional demo data'}
-              </span>
-            </div>
-            <div className="topbar-search">
+            <div className={`topbar-search${state.demoMode ? ' demo-active' : ''}`}>
               <svg
                 className="search-icon"
                 viewBox="0 0 16 16"
@@ -493,6 +493,7 @@ export default function App() {
                     go('#/inventory', false);
                 }}
               />
+              {state.demoMode && <span className="demo-indicator">Fictional demo data</span>}
             </div>
             <div className="topbar-actions">
               <AppearanceControl
@@ -537,33 +538,35 @@ export default function App() {
             </div>
           </header>
           <main id="main-content">
-            {route === '#/dashboard' && <DashboardPage go={goRoute} />}
-            {route === '#/new-run' && <RunWorkspace />}
-            {route === '#/runs' && <RunsPage />}
-            {route === '#/inventory' && (
-              <SearchPage
-                query={searchQuery}
-                onQueryChange={setSearchQuery}
-                goToNewRun={() => go('#/new-run')}
-              />
-            )}
-            {route === '#/expansion' && (
-              <ExpansionCataloguePage goToNewRun={() => go('#/new-run')} />
-            )}
-            {route === '#/suppliers' && <SuppliersPage />}
-            {route === '#/mapping-profiles' && <MappingProfilesPage />}
-            {route === '#/pricing-rules' && <PricingRulesPage />}
-            {route === '#/competitors' && <CompetitorsPage />}
-            {route === '#/sources' && <SourcesPage />}
-            {route === '#/exceptions' && <ExceptionsPage />}
-            {route === '#/approvals' && <ApprovalsPage go={goRoute} />}
-            {route === '#/exports' && <ExportsPage />}
-            {route === '#/integrations' && <IntegrationsPage />}
-            {route === '#/audit' && <AuditPage />}
-            {route === '#/settings' && (
-              <SettingsPage openSettingsDialog={() => setSettingsOpen(true)} />
-            )}
-            {route === '#/help' && <HelpPage />}
+            <div className="route-view" key={route}>
+              {route === '#/dashboard' && <DashboardPage go={goRoute} />}
+              {route === '#/new-run' && <RunWorkspace />}
+              {route === '#/runs' && <RunsPage />}
+              {route === '#/inventory' && (
+                <SearchPage
+                  query={searchQuery}
+                  onQueryChange={setSearchQuery}
+                  goToNewRun={() => go('#/new-run')}
+                />
+              )}
+              {route === '#/expansion' && (
+                <ExpansionCataloguePage goToNewRun={() => go('#/new-run')} />
+              )}
+              {route === '#/suppliers' && <SuppliersPage />}
+              {route === '#/mapping-profiles' && <MappingProfilesPage />}
+              {route === '#/pricing-rules' && <PricingRulesPage />}
+              {route === '#/competitors' && <CompetitorsPage />}
+              {route === '#/sources' && <SourcesPage />}
+              {route === '#/exceptions' && <ExceptionsPage />}
+              {route === '#/approvals' && <ApprovalsPage go={goRoute} />}
+              {route === '#/exports' && <ExportsPage />}
+              {route === '#/integrations' && <IntegrationsPage />}
+              {route === '#/audit' && <AuditPage />}
+              {route === '#/settings' && (
+                <SettingsPage openSettingsDialog={() => setSettingsOpen(true)} />
+              )}
+              {route === '#/help' && <HelpPage />}
+            </div>
           </main>
           <footer className="app-footer">
             <span>

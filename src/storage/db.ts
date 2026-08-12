@@ -93,7 +93,7 @@ export async function deleteAlias(supplierCode: string): Promise<void> {
   await (await db()).delete("aliases", supplierCode);
 }
 
-/** "Delete saved profiles and aliases" — wipes every persisted store. */
+/** "Delete saved profiles and aliases" - wipes every persisted store. */
 export async function deleteAllStoredData(): Promise<void> {
   const database = await db();
   await database.clear("profiles");

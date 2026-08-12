@@ -65,7 +65,7 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
     <>
       <Dialog
         open={open}
-        title="Privacy — what is and is not stored"
+        title="Privacy - what is and is not stored"
         onClose={close}
       >
         <h3>Processing</h3>
@@ -92,12 +92,12 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
         </ul>
         <h3>Optional network search</h3>
         <p className="small">
-          Only the product text you type may leave the computer after an
-          explicit search.{" "}
+          An explicit search sends the product query you type and, after exact
+          selection, an opaque product token.{" "}
           {platform.kind === "desktop"
-            ? "The desktop application sends it through the native Rust service to its exact allowlisted HTTPS provider."
+            ? "The desktop application sends those search fields through the native Rust service to its exact allowlisted HTTPS provider."
             : platform.capabilities.liveSearch
-              ? "The server-backed web demonstration sends it through this application's Node service."
+              ? "The server-backed web demonstration sends those search fields through this application's Node service."
               : "Static Pages cannot make a provider request; manual evidence remains available."}{" "}
           Supplier cost, sell price, private notes, customer data and full
           imported rows are never included.
@@ -114,22 +114,31 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
               <li>Approved competitor references and source registry state</li>
             </>
           )}
-          <li>Mapping profiles — column layout names and positions only</li>
+          <li>Mapping profiles - column layout names and positions only</li>
           <li>
-            Approved aliases — supplier code → ServiceM8 item number pairs
+            Approved aliases - supplier code → ServiceM8 item number pairs
           </li>
-          <li>Settings — markup %, tax-handling selection, theme</li>
+          <li>Settings - markup %, tax-handling selection, theme</li>
         </ul>
+        <p className="small">
+          Clearing the active workflow removes imported files, mappings and
+          review decisions from the current run. It does not erase catalogue,
+          approval/history, competitor references, source state, configuration
+          or provider credentials and access tokens.
+        </p>
         <div className="btn-row" style={{ marginTop: "0.8rem" }}>
           <button
             type="button"
             className="btn"
             onClick={() => {
               dispatch({ type: "clear-session" });
+              actions.announce(
+                "Active workflow cleared. Operational records, configuration and provider credentials or access tokens were not erased.",
+              );
               close();
             }}
           >
-            Clear session data
+            Clear active workflow
           </button>
           <button
             type="button"

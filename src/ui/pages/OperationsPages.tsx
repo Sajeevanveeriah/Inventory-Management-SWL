@@ -9,6 +9,7 @@ import { triggerDownload } from '../../io/download';
 import { useAppDispatch, useAppState } from '../../state/store';
 import { useActions } from '../../state/useActions';
 import { usePlatform } from '../../platform/context';
+import { ConfirmDialog } from '../ConfirmDialog';
 import { StatusBadge } from '../StatusBadge';
 import { EmptyState, OperationalList, Page } from './PageChrome';
 
@@ -17,7 +18,7 @@ const MONTH_LABEL = new Intl.DateTimeFormat('en-AU', {
   year: '2-digit',
 });
 
-/** Average sell and cost per calendar month from persisted price history. */
+/** Average sell and cost per calendar month from the supplied price history. */
 function historySeries(history: PriceHistoryVersion[]): ChartSeries[] {
   const byMonth = new Map<number, { costCents: number[]; sellCents: number[] }>();
   for (const version of history) {
@@ -111,6 +112,9 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
   const series = useMemo(() => historySeries(history ?? []), [history]);
   const buckets = useMemo(() => priceBuckets(history ?? []), [history]);
   const hasHistory = (history?.length ?? 0) > 0;
+  const pagesSession = platform.kind === 'web' && !platform.capabilities.liveSearch;
+  const persistedHistory =
+    platform.kind === 'desktop' || (platform.kind === 'web' && platform.capabilities.liveSearch);
   const changed = rows.filter((r) => r.status === 'price-changed').length;
   const blocked = rows.filter((r) => r.status === 'ambiguous' || r.status === 'invalid').length;
   const approved = decisions.filter((d) => d.state === 'approved').length;
@@ -155,12 +159,16 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
       route: '#/runs',
       state: 'ok',
       note: hasHistory
-        ? 'append-only history'
+        ? persistedHistory
+          ? 'append-only history'
+          : 'current-tab history'
         : platform.kind === 'desktop'
           ? 'no approved versions yet'
-          : platform.capabilities.liveSearch
-            ? 'web service not seeded'
-            : 'session-only demo is empty',
+          : pagesSession
+            ? 'session-only demo is empty'
+            : platform.capabilities.liveSearch
+              ? 'web service not seeded'
+              : 'session-only demo is empty',
     },
     {
       label: 'Saved supplier profiles',
@@ -214,7 +222,11 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
           <section className="card">
             <LineChart
               series={series}
-              title="Average cost and sell price over time (AUD, from persisted price history)"
+              title={
+                persistedHistory
+                  ? 'Average cost and sell price over time (AUD, from persisted price history)'
+                  : 'Average cost and sell price over time (AUD, current tab only)'
+              }
               formatY={(y) => `$${Math.round(y)}`}
               formatX={(x) => MONTH_LABEL.format(new Date(x))}
             />
@@ -229,13 +241,21 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
         </div>
       ) : (
         <EmptyState
-          title={history === null ? 'Loading price history…' : 'No persisted price history yet'}
+          title={
+            history === null
+              ? 'Loading price history…'
+              : persistedHistory
+                ? 'No persisted price history yet'
+                : 'No price history in this tab yet'
+          }
           detail={
             platform.kind === 'desktop'
               ? 'The dashboard charts draw from append-only price history in the local SQLite database. Explicitly publish an approved price change through a run to create the first version.'
-              : platform.capabilities.liveSearch
-                ? "The dashboard charts draw from the web demonstration server's append-only price history. Seed fictional sample data with `npm run seed` (then refresh), or publish approved price versions through a run."
-                : 'Static Pages keeps approved fictional demonstration records only for this browser session. Publish an approved price version through a run; refreshing the page clears that session-only history.'
+              : pagesSession
+                ? 'GitHub Pages keeps approved price versions in this browser tab only. Publish an approved price version through a run to populate the chart; refreshing the page clears that session history.'
+                : platform.capabilities.liveSearch
+                  ? "The dashboard charts draw from the web demonstration server's append-only price history. Seed fictional sample data with `npm run seed` (then refresh), or publish approved price versions through a run."
+                  : 'Static Pages keeps approved fictional demonstration records only for this browser session. Publish an approved price version through a run; refreshing the page clears that session-only history.'
           }
         />
       )}
@@ -243,7 +263,7 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
       {state.comparison === null && (
         <EmptyState
           title="No run in progress"
-          detail={`Import a supplier price file and the current ServiceM8 export to compare costs, review proposed prices and produce a candidate import file. Business rows stay in ${
+          detail={`Import a supplier price file and the current ServiceM8 export to compare costs, review proposed prices and produce a ready-to-import Materials & Services CSV. Business rows stay in ${
             platform.kind === 'desktop' ? 'application memory' : 'this browser tab'
           }.`}
           action={
@@ -273,7 +293,7 @@ export function PricingRulesPage() {
           <dt>Strategy</dt>
           <dd>Markup on cost (not gross margin)</dd>
           <dt>Markup</dt>
-          <dd>{markup}% — change it in Settings with confirmation; the change is audit-logged</dd>
+          <dd>{markup}% - change it in Settings with confirmation; the change is audit-logged</dd>
           <dt>Rounding</dt>
           <dd>{ROUNDING_RULE_LABEL}</dd>
           <dt>Tax (GST)</dt>
@@ -428,7 +448,23 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
   const state = useAppState();
   const actions = useActions();
   const [pendingApprovalIds, setPendingApprovalIds] = useState<Set<string>>(() => new Set());
+  const [approvalToConfirm, setApprovalToConfirm] = useState<string | null>(null);
   const proposals = buildApprovalProposals(state.comparison, state.review.decisions);
+  const selectedProposal = proposals.find((proposal) => proposal.id === approvalToConfirm) ?? null;
+
+  const confirmApproval = () => {
+    if (approvalToConfirm === null) return;
+    const proposalId = approvalToConfirm;
+    setApprovalToConfirm(null);
+    setPendingApprovalIds((current) => new Set(current).add(proposalId));
+    void actions.approveRows([proposalId]).finally(() => {
+      setPendingApprovalIds((current) => {
+        const next = new Set(current);
+        next.delete(proposalId);
+        return next;
+      });
+    });
+  };
 
   if (state.comparison === null) {
     return (
@@ -456,8 +492,8 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
           detail="The comparison produced no price changes, new items or blocked records."
         />
       ) : (
-        <div className="table-scroll" role="region" aria-label="Proposals" tabIndex={0}>
-          <table>
+        <div className="table-scroll approval-table-scroll" role="region" aria-label="Proposals">
+          <table className="data-table approval-table">
             <thead>
               <tr>
                 <th scope="col">Status</th>
@@ -474,16 +510,22 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
                 const decision = state.review.decisions[proposal.id];
                 return (
                   <tr key={proposal.id}>
-                    <td>
+                    <td data-label="Status">
                       {STATUS_LABELS[proposal.exceptionState as keyof typeof STATUS_LABELS] ??
                         proposal.exceptionState}
                     </td>
-                    <td className="num">{proposal.oldValue || '-'}</td>
-                    <td className="num">{proposal.proposedValue || 'blocked'}</td>
-                    <td className="num">{proposal.markup}</td>
-                    <td>{proposal.reason}</td>
-                    <td>{decision?.state ?? 'pending'}</td>
-                    <td>
+                    <td className="num" data-label="Old sell">
+                      {proposal.oldValue || '-'}
+                    </td>
+                    <td className="num" data-label="Proposed sell">
+                      {proposal.proposedValue || 'blocked'}
+                    </td>
+                    <td className="num" data-label="Markup">
+                      {proposal.markup}
+                    </td>
+                    <td data-label="Reason">{proposal.reason}</td>
+                    <td data-label="Decision">{decision?.state ?? 'pending'}</td>
+                    <td data-label="Action">
                       {proposal.approvable ? (
                         decision?.state === 'approved' ? (
                           <span className="hint">Recorded, append-only</span>
@@ -492,16 +534,7 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
                             type="button"
                             className="btn btn-sm btn-primary"
                             disabled={pendingApprovalIds.has(proposal.id)}
-                            onClick={() => {
-                              setPendingApprovalIds((current) => new Set(current).add(proposal.id));
-                              void actions.approveRows([proposal.id]).finally(() => {
-                                setPendingApprovalIds((current) => {
-                                  const next = new Set(current);
-                                  next.delete(proposal.id);
-                                  return next;
-                                });
-                              });
-                            }}
+                            onClick={() => setApprovalToConfirm(proposal.id)}
                           >
                             {pendingApprovalIds.has(proposal.id) ? 'Recording...' : 'Approve'}
                           </button>
@@ -519,8 +552,26 @@ export function ApprovalsPage({ go }: { go: (route: string) => void }) {
       )}
       <p className="hint">
         Approval records and price versions are append-only in the active platform store. Approved
-        records are included in the candidate import file once every pre-export check passes.
+        records are included in the ServiceM8 import CSV once every pre-export check passes.
       </p>
+      <ConfirmDialog
+        open={selectedProposal !== null}
+        title="Confirm approval"
+        body={
+          selectedProposal === null ? null : (
+            <>
+              <p>
+                Record the {selectedProposal.proposedValue || 'proposed'} sell price as an explicit,
+                append-only approval?
+              </p>
+              <p className="hint">{selectedProposal.reason}</p>
+            </>
+          )
+        }
+        confirmLabel="Confirm approval"
+        onConfirm={confirmApproval}
+        onCancel={() => setApprovalToConfirm(null)}
+      />
     </Page>
   );
 }
@@ -622,17 +673,23 @@ export function AuditPage() {
 
 export function HelpPage() {
   const platform = usePlatform();
+  const competitorSearchBoundary =
+    platform.kind === 'desktop'
+      ? 'Optional competitor search sends only the typed query and selected opaque product token through the native Rust adapter.'
+      : platform.capabilities.liveSearch
+        ? 'Optional competitor search sends only the typed query and selected opaque product token to the supervised local Node service on the same origin.'
+        : 'Static GitHub Pages performs no live competitor search and sends no provider request.';
   return (
     <Page title="Help">
       <OperationalList
         items={[
           `Raw business files stay in ${
             platform.kind === 'desktop' ? 'application memory' : 'this browser tab'
-          } and are never uploaded. Optional competitor search sends only the text you type through the platform adapter.`,
+          } and are never uploaded. ${competitorSearchBoundary}`,
           'Workflow: Add files, Map columns, Validate and compare, Review, Pre-export checks, Export.',
           'Pricing: selling price = supplier cost x 1.30 (markup on cost), rounded half-up to 2 decimal places, AUD.',
           'Matching: exact code, then approved alias; description similarity only ever suggests, never matches.',
-          'The ServiceM8 output is a candidate import file until validated against a genuine template.',
+          'The ServiceM8 output uses the tested Materials & Services CSV contract and includes only reviewed, valid changes.',
           'ServiceM8 and Xero are file-handoff integrations: see the Integrations page for the adapter status.',
           'On the Windows desktop application, exports can be written straight to a chosen output folder.',
           'Keyboard: press / to focus search from anywhere.',

@@ -41,7 +41,7 @@ function identifierOf(row: ComparisonRow): string {
 function methodLabel(row: ComparisonRow): string {
   if (row.matchMethod === 'exact-code') return 'Exact code';
   if (row.matchMethod === 'alias') return 'Approved alias';
-  return '—';
+  return '-';
 }
 
 export function ReviewStep() {
@@ -187,7 +187,13 @@ export function ReviewStep() {
     setApprovalPending(true);
     try {
       const approved = await actions.approveRows(ids);
-      if (approved) setSelected(new Set());
+      if (approved) {
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const id of ids) next.delete(id);
+          return next;
+        });
+      }
     } finally {
       setApprovalPending(false);
     }
@@ -465,11 +471,11 @@ export function ReviewStep() {
                         <StatusBadge status={row.status} />
                       </td>
                       <td className="num">
-                        {row.supplier?.cost != null ? formatAmount(row.supplier.cost) : '—'}
+                        {row.supplier?.cost != null ? formatAmount(row.supplier.cost) : '-'}
                       </td>
                       {visibleCols.has('existingCost') && (
                         <td className="num">
-                          {row.s8?.existingCost != null ? formatAmount(row.s8.existingCost) : '—'}
+                          {row.s8?.existingCost != null ? formatAmount(row.s8.existingCost) : '-'}
                         </td>
                       )}
                       {visibleCols.has('delta') && (
@@ -489,13 +495,13 @@ export function ReviewStep() {
                               {formatAmount(row.costDelta)}
                             </span>
                           ) : (
-                            '—'
+                            '-'
                           )}
                         </td>
                       )}
                       {visibleCols.has('proposedSell') && (
                         <td className="num">
-                          {row.proposedSell !== null ? formatAmount(row.proposedSell) : '—'}
+                          {row.proposedSell !== null ? formatAmount(row.proposedSell) : '-'}
                         </td>
                       )}
                       {visibleCols.has('method') && <td>{methodLabel(row)}</td>}
@@ -668,7 +674,7 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
           <div className="cell">
             <span className="label">Before (ServiceM8)</span>
             <span className="value">
-              {row.s8.existingCost != null ? formatAmount(row.s8.existingCost) : '—'} cost
+              {row.s8.existingCost != null ? formatAmount(row.s8.existingCost) : '-'} cost
             </span>
             <div className="small muted">
               {row.s8.existingSell != null
@@ -679,7 +685,7 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
           <div className="cell">
             <span className="label">After (proposed)</span>
             <span className="value">
-              {row.supplier.cost != null ? formatAmount(row.supplier.cost) : '—'} cost
+              {row.supplier.cost != null ? formatAmount(row.supplier.cost) : '-'} cost
             </span>
             <div className="small muted">
               {row.proposedSell !== null ? `${formatAmount(row.proposedSell)} sell` : ''}
@@ -690,7 +696,7 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
       {row.pricing !== null && row.targetBasis !== null && (
         <div>
           <span className="small muted">
-            Pricing derivation ({comparison.markupPercent}% on the GST-exclusive cost, AUD — this
+            Pricing derivation ({comparison.markupPercent}% on the GST-exclusive cost, AUD - this
             ServiceM8 row stores a price that{' '}
             {row.targetBasis === 'including-gst' ? 'INCLUDES' : 'EXCLUDES'} GST):
           </span>
@@ -704,7 +710,7 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
           <>
             <dt>Supplier row</dt>
             <dd>
-              row {row.supplier.sourceRow} — “{row.supplier.description}”
+              row {row.supplier.sourceRow} - “{row.supplier.description}”
             </dd>
             <dt>Supplier cost</dt>
             <dd>
@@ -718,7 +724,7 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
           <>
             <dt>ServiceM8 row</dt>
             <dd>
-              row {row.s8.sourceRow} — “{row.s8.description}”
+              row {row.s8.sourceRow} - “{row.s8.description}”
             </dd>
           </>
         )}
@@ -750,7 +756,7 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
           <ul className="small" style={{ paddingLeft: '1.1rem', margin: '0 0 0.5rem' }}>
             {row.suggestions.map((s) => (
               <li key={s.itemNumber}>
-                <span className="mono">{s.itemNumber}</span> — {s.description} (
+                <span className="mono">{s.itemNumber}</span> - {s.description} (
                 {Math.round(s.similarity * 100)}%)
               </li>
             ))}
@@ -766,10 +772,10 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
               value={aliasTarget}
               onChange={(e) => setAliasTarget(e.target.value)}
             >
-              <option value="">— choose item —</option>
+              <option value="">- choose item -</option>
               {row.suggestions.map((s) => (
                 <option key={s.itemNumber} value={s.itemNumber}>
-                  {s.itemNumber} — {s.description}
+                  {s.itemNumber} - {s.description}
                 </option>
               ))}
             </select>

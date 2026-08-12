@@ -12,12 +12,12 @@ interface AdapterCard {
 const ADAPTERS: AdapterCard[] = [
   {
     name: "ServiceM8",
-    mode: "File handoff (candidate import workbook)",
+    mode: "File handoff (ServiceM8 Materials & Services CSV)",
     state: "file-handoff",
     detail:
-      "The export step produces a candidate Materials & Services import workbook that mirrors the exact headers of the loaded ServiceM8 export. Import it manually through ServiceM8 after checking the file.",
+      "The export step produces a ready-to-import Materials & Services CSV in the exact ServiceM8 column order. Choose one folder, write all outputs, then upload the servicem8-import CSV through ServiceM8 without copying rows or patching headers.",
     boundary:
-      "No ServiceM8 API credentials are configured and no ServiceM8 API call or write is possible. Optional competitor search is a separate, explicit native HTTPS integration with its own allowlist and protected credential boundary.",
+      "No ServiceM8 API credential is required. Existing rows retain every source column except the reviewed price and cost changes; the paired rollback CSV restores prior values in one import.",
   },
   {
     name: "Xero",
@@ -70,8 +70,8 @@ export function IntegrationsPage() {
           <dt>Shell</dt>
           <dd>
             {platform.kind === "desktop"
-              ? "Windows desktop application (Tauri) — exports can be written to a chosen folder via the native picker."
-              : "Web browser — exports are delivered as downloads. The Windows desktop application adds native folder output."}
+              ? "Windows desktop application (Tauri) - exports can be written to a chosen folder via the native picker."
+              : "Web browser - exports are delivered as downloads. The Windows desktop application adds native folder output."}
           </dd>
           <dt>Live external writes</dt>
           <dd>

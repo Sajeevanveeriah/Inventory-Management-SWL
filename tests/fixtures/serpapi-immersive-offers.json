@@ -1,0 +1,120 @@
+{
+  "search_metadata": {
+    "id": "synthetic-immersive-search",
+    "status": "Success",
+    "created_at": "2026-08-10 23:05:00 UTC",
+    "processed_at": "2026-08-10 23:05:03 UTC"
+  },
+  "search_parameters": {
+    "engine": "google_immersive_product",
+    "page_token": "token-main"
+  },
+  "product_results": {
+    "title": "Lockwood 001 Double Cylinder Deadlatch",
+    "brand": "Lockwood",
+    "stores": [
+      {
+        "name": "Merchant One",
+        "logo": "https://merchant-one.example.test/favicon.png",
+        "link": "https://merchant-one.example.test/products/lockwood-001",
+        "title": "Lockwood 001 Double Cylinder Deadlatch",
+        "rating": 4.8,
+        "reviews": 42,
+        "payment_methods": "Visa accepted",
+        "details_and_offers": ["In stock online", "Delivery available"],
+        "price": "A$100.00",
+        "extracted_price": 100,
+        "estimated_tax": "+ A$10.00",
+        "extracted_estimated_tax": 10,
+        "shipping": "+ A$10.00",
+        "shipping_extracted": 10,
+        "total": "A$120.00",
+        "extracted_total": 120
+      },
+      {
+        "name": "Merchant One",
+        "logo": "https://merchant-one.example.test/favicon.png",
+        "link": "https://merchant-one.example.test/products/lockwood-001",
+        "title": "Lockwood 001 Double Cylinder Deadlatch",
+        "rating": 4.8,
+        "reviews": 42,
+        "payment_methods": "Visa accepted",
+        "details_and_offers": ["In stock online", "Delivery available"],
+        "price": "A$100.00",
+        "extracted_price": 100,
+        "estimated_tax": "+ A$10.00",
+        "extracted_estimated_tax": 10,
+        "shipping": "+ A$10.00",
+        "shipping_extracted": 10,
+        "total": "A$120.00",
+        "extracted_total": 120
+      },
+      {
+        "name": "Merchant Two",
+        "link": "https://merchant-two.example.test/products/lockwood-001",
+        "title": "Lockwood 001 Double Cylinder Deadlatch",
+        "details_and_offers": ["In stock", "Free delivery"],
+        "price": "$105.00",
+        "extracted_price": 105,
+        "shipping": "Free",
+        "shipping_extracted": 0
+      },
+      {
+        "name": "Finance Merchant",
+        "link": "https://finance-merchant.example.test/products/lockwood-001",
+        "title": "Lockwood 001 Double Cylinder Deadlatch, 12 monthly payments",
+        "details_and_offers": ["In stock", "Free delivery"],
+        "price": "$10.00",
+        "extracted_price": 10,
+        "monthly_payment_duration": 12,
+        "installments_description": "12 monthly payments",
+        "down_payment": "$0.00",
+        "shipping": "Free",
+        "shipping_extracted": 0
+      },
+      {
+        "name": "Used Merchant",
+        "link": "https://used-merchant.example.test/products/lockwood-001",
+        "title": "Used Lockwood 001 Double Cylinder Deadlatch",
+        "details_and_offers": ["In stock", "Free delivery"],
+        "price": "$70.00",
+        "extracted_price": 70,
+        "shipping": "Free",
+        "shipping_extracted": 0,
+        "total": "$70.00",
+        "extracted_total": 70
+      },
+      {
+        "name": "Unknown Delivery Merchant",
+        "link": "https://unknown-delivery.example.test/products/lockwood-001",
+        "title": "Lockwood 001 Double Cylinder Deadlatch",
+        "details_and_offers": ["Availability unknown"],
+        "price": "$99.00",
+        "extracted_price": 99
+      },
+      {
+        "name": "Non-AUD Merchant",
+        "link": "https://non-aud.example.test/products/lockwood-001",
+        "title": "Lockwood 001 Double Cylinder Deadlatch",
+        "price": "EUR 60.00",
+        "extracted_price": 60,
+        "shipping": "Free",
+        "shipping_extracted": 0,
+        "total": "EUR 60.00",
+        "extracted_total": 60
+      },
+      {
+        "name": "Google cluster, not a direct merchant",
+        "link": "https://www.google.com/shopping/product/product-main",
+        "title": "Lockwood 001 Double Cylinder Deadlatch",
+        "price": "$90.00",
+        "extracted_price": 90,
+        "shipping": "Free",
+        "shipping_extracted": 0,
+        "total": "$90.00",
+        "extracted_total": 90
+      }
+    ],
+    "stores_next_page_token": "synthetic-next-page-token"
+  }
+}

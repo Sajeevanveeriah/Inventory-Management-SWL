@@ -1,5 +1,34 @@
 # SWL Pricing and Inventory Control
 
+## Browser application on GitHub Pages
+
+The public browser application is deployed only through GitHub Pages. A push to `main` runs
+`.github/workflows/deploy-pages.yml`, verifies the application, builds it for the
+`/Inventory-Management-SWL/` project path and publishes only the generated `dist/` directory.
+There is no Vercel, Netlify or other third-party hosting configuration in this repository.
+
+GitHub Pages is static hosting, so this deployment deliberately uses the browser-only adapter:
+
+- imports, comparison, review and exports run locally in the browser;
+- fictional demonstration records remain in the current browser session;
+- hash routes keep every application screen reload-safe beneath the repository path;
+- no Node server, provider credential or server-side API is deployed; and
+- optional live competitor-provider searches remain unavailable on Pages, with the offline and
+  manual evidence paths retained.
+
+To reproduce the exact Pages build locally:
+
+```bash
+npm ci
+VITE_BASE=/Inventory-Management-SWL/ VITE_STATIC_DEMO=true npm run build
+npm run check:pages
+npm run preview -- --host 127.0.0.1
+```
+
+After this workflow is present on the default branch, the repository owner must select
+**Settings > Pages > Source > GitHub Actions** once if GitHub has not already selected it. The
+workflow then owns subsequent Pages deployments.
+
 ## Windows desktop status
 
 The repository contains one React frontend with a Tauri 2 desktop target. The packaged target is designed to open in its own native WebView2 window without starting the Node demonstration server or a loopback listener. The browser demonstration remains available through the existing Node adapter. Each release candidate must still pass the native process, listener and installed-window checks in `docs/RELEASE-CHECKLIST.md` before that behaviour is claimed for an artefact.
@@ -12,9 +41,9 @@ New dated exports use `YYYYMMDD-<existing-remainder>.<ext>`. Existing files are 
 
 > **Outstanding security action.** A provider credential was committed to this repository's
 > history before the current safeguards existed (`npm run check:secrets` reports the reachable
-> blobs). The repository is private, but that key must be **rotated at the provider** and the old
-> one revoked. The working tree is clean and `.gitignore` blocks `.env`; rotation is the only
-> remaining step, and it cannot be done from inside the repository.
+> blobs). The tracked `.env` file has now been removed and `.gitignore` blocks it, but removing a
+> file from the latest revision does not remove it from Git history. Because this repository is
+> public, the exposed key must be **rotated at the provider** and the old one revoked immediately.
 
 Development requires Node 22.22.2, npm, Rust 1.89.0 and the Windows MSVC build prerequisites. Install project dependencies with `npm ci`, verify with `npm run verify`, and build the Windows package on native Windows x64 with `npm run desktop:build`. The installed computer does not require Node.js, Rust, npm or a repository checkout.
 
@@ -24,7 +53,7 @@ A local-first application with Windows desktop and browser surfaces for **Stan W
 Locksmiths** that compares an untouched
 supplier price export against the current ServiceM8 Materials & Services export, applies the
 confirmed **30% markup on the GST-exclusive cost**, and produces a controlled, operator-reviewed
-**ServiceM8 import CSV in ServiceM8's exact format** — together with change, exception, rollback
+**ServiceM8 import CSV in ServiceM8's exact format** - together with change, exception, rollback
 and audit reports.
 
 > **Proprietary software.** Copyright © 2026 Stan Wootton Locksmiths. All rights reserved.
@@ -43,14 +72,14 @@ Each changed item is emitted by copying its original ServiceM8 row verbatim and 
 format carrying the prior values, so an undo is a single import rather than a manual repair.
 
 **GST is handled per row.** ServiceM8 records each material's price against one of two bases in
-its `Price Includes Taxes` column, and a single marked-up number cannot serve both — writing the
+its `Price Includes Taxes` column, and a single marked-up number cannot serve both - writing the
 GST-exclusive figure into a tax-inclusive row under-prices it by the whole GST rate. The markup is
 therefore applied to the GST-exclusive cost, and GST is added only for rows that say their price
 includes it. How the SUPPLIER quotes its costs is the one fact the files cannot answer, so the
 operator states it in Configuration; until they do, a release gate blocks export.
 
 **Do not open the generated CSV in a spreadsheet.** Opening and saving it rewrites long item
-numbers and barcodes into scientific notation irreversibly — damage already visible in genuine
+numbers and barcodes into scientific notation irreversibly - damage already visible in genuine
 ServiceM8 exports, which the application detects and reports rather than matching on.
 
 To verify the whole pipeline against real files on your own computer, without ever putting
@@ -89,7 +118,7 @@ Key operational capabilities:
 - **Integrations** (`#/integrations`): honest adapter status for ServiceM8 (file handoff) and
   Xero (locked boundary). No live external writes are possible from the application.
 - **Competitor search** (`#/competitors`): optional explicit internet search for a typed-in product
-  name, part number, SKU, brand, partial description or barcode — no prior import required. The
+  name, part number, SKU, brand, partial description or barcode - no prior import required. The
   web demonstration calls its Node adapter on the same origin; the desktop adapter calls the Rust
   backend, which permits only the reviewed provider HTTPS endpoint and rejects redirects. Calls
   remain disabled until the operator stores and successfully validates the protected credential,
@@ -178,22 +207,28 @@ Configuration is represented by a versioned typed registry in `src/core/configRe
 
 ## Privacy model
 
-> **Network boundary.** The browser demonstration uses the existing Node adapter on its own
-> origin. The installed desktop application does not bundle or start that server. Optional
-> desktop search is initiated explicitly and is performed by Rust only through approved HTTPS
-> provider hosts; the WebView cannot contact provider endpoints directly.
+> **Network boundary.** Static GitHub Pages has no provider integration and makes no competitor
+> search request. The optional local browser demonstration sends an operator-initiated product
+> query and the subsequently selected opaque product token only to its same-origin Node service.
+> The installed desktop application does not bundle or start that server: desktop search is
+> performed by Rust only through approved HTTPS provider hosts, and the WebView cannot contact
+> provider endpoints directly.
 
 - **Business file processing stays in the shared UI's memory.** Imported supplier and ServiceM8
-  rows are never included in network requests. Only the operator's typed competitor query may
-  leave the computer: through Rust on desktop or the same-origin Node adapter in the web demo.
+  rows are never included in network requests. Static Pages performs no live search. An explicit
+  search sends only the operator's typed competitor query and, after exact selection, the opaque
+  product token: through Rust on desktop or the same-origin Node adapter in the supervised local
+  browser demonstration.
 - No analytics, no telemetry, no remote fonts and no CDN assets.
 - The desktop CSP permits bundled resources and the Tauri IPC bridge only; the WebView cannot
-  contact provider hosts. The web demonstration CSP permits its own origin only.
+  contact provider hosts. The local web demonstration and static Pages build both permit only
+  their own origin. The Pages build contains no provider endpoint or bearer token.
 - Uploaded files stay in memory. **Imported business rows are never persisted.**
 - The web demonstration stores operator-authored mapping profiles, approved aliases and settings
   in IndexedDB. The desktop adapter stores authorised operational records in SQLite under the
   stable per-user local-data directory. Raw imported rows remain memory-only on both platforms.
-- "Clear session data" wipes in-memory work. "Preview application data erasure…" shows an exact
+- "Clear active workflow" wipes the current imported files, mapping and review work but does not
+  erase operational records, configuration or credentials. "Preview application data erasure…" shows an exact
   scope, creates a verified backup and requires the displayed confirmation phrase before deleting
   authorised local records; uninstall remains separate and preserves application data. Desktop
   reset preserves legacy WebView IndexedDB configuration outside the native-store erasure scope so
@@ -208,7 +243,7 @@ See [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md).
   Example: supplier cost AUD 100.00 → selling price AUD 130.00. The floor is one named
   constant and one pure function (`MINIMUM_MARKUP_ON_COST`, `minimumSellPrice` in
   `src/core/money.ts`), unit-tested with `minimumSellPrice(100) === 130.00`.
-- Decimal-safe arithmetic via [big.js] — never binary floats. Rounding is **half-up to
+- Decimal-safe arithmetic via [big.js] - never binary floats. Rounding is **half-up to
   2 decimal places**, shown in the UI and audit report. Currency is displayed as AUD.
 - The original supplier cost is preserved separately from the calculated selling price, and the
   formula is shown wherever a proposed price appears.
@@ -222,7 +257,7 @@ See [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md).
 1. Exact normalised supplier code → ServiceM8 item number (trim + case-insensitive only;
    punctuation, internal spacing and **leading zeroes are preserved exactly**).
 2. Exact match through a previously operator-approved alias.
-3. Description similarity produces **suggestions for manual review only** — never an automatic
+3. Description similarity produces **suggestions for manual review only** - never an automatic
    match. A near-identical description on an unmatched code blocks the record as _ambiguous_.
 
 Duplicate identifiers in either file, and uncertain matches, are blocked as exceptions.
@@ -234,7 +269,7 @@ Duplicate identifiers in either file, and uncertain matches, are blocked as exce
 | Unchanged             | Supplier cost equals existing cost       | Excluded from import output by default     |
 | Price changed         | Supplier cost differs                    | Proposed price calculated and presented    |
 | New item              | Supplier code absent from ServiceM8      | Requires explicit approval                 |
-| Missing from supplier | ServiceM8 item absent from supplier file | Flagged only — **never deleted**           |
+| Missing from supplier | ServiceM8 item absent from supplier file | Flagged only - **never deleted**           |
 | Ambiguous             | Duplicates / uncertain matches           | Blocked from import                        |
 | Invalid               | Missing or malformed required value      | Blocked, with the exact error shown        |
 | Excluded              | Operator excluded with a reason          | Preserved in the audit report              |
@@ -242,19 +277,19 @@ Duplicate identifiers in either file, and uncertain matches, are blocked as exce
 
 ## The workflow
 
-1. **Start** — rules summary, saved profiles, demo mode.
-2. **Add files** — drag-and-drop or file picker for the supplier export and ServiceM8 export
+1. **Start** - rules summary, saved profiles, demo mode.
+2. **Add files** - drag-and-drop or file picker for the supplier export and ServiceM8 export
    (CSV or XLSX; limits: 25 MB/file, 50,000 rows, 100 columns, 20 sheets).
-3. **Map columns** — confirmed column mapping with automatic suggestions, sample values,
+3. **Map columns** - confirmed column mapping with automatic suggestions, sample values,
    duplicate-mapping detection and saveable supplier-specific profiles.
-4. **Validate & compare** — deterministic classification with a visual pipeline of counts.
-5. **Review** — searchable, sortable, filterable workspace with status tabs, bulk approve /
+4. **Validate & compare** - deterministic classification with a visual pipeline of counts.
+5. **Review** - searchable, sortable, filterable workspace with status tabs, bulk approve /
    exclude (with reasons), undo/redo, decision history and per-row detail (before/after values,
    markup formula, match method, messages, source rows).
-6. **Pre-export checks** — release checklist; export stays disabled until every blocking gate
+6. **Pre-export checks** - release checklist; export stays disabled until every blocking gate
    passes (no approved ambiguous/invalid records, no duplicate identifiers, valid prices, …).
-7. **Export** — five locally generated downloads:
-   1. **Candidate ServiceM8 import workbook** (approved, valid changes only)
+7. **Export** - five locally generated downloads:
+   1. **ServiceM8 Materials & Services import CSV** (approved, valid changes only)
    2. Detailed change report (all records, before/after, formulas, decisions)
    3. Exceptions workbook (ambiguous / invalid / missing)
    4. Rollback copy of the original ServiceM8 export
@@ -267,46 +302,52 @@ Filenames are deterministic and sanitised:
 value beginning with `=`, `+`, `-`, `@`, tab or carriage return is neutralised with a leading
 apostrophe and flagged.
 
-### "Candidate" import file
+### ServiceM8 import file
 
-The genuine ServiceM8 import template has not yet been supplied, so production column names are
-never invented. When a ServiceM8 export is loaded, the import workbook **adapts its header meanings
-and column order** (formula-like header text is neutralised; price-change rows re-emit the original
-row with only cost/sell replaced).
-The output is labelled a _candidate_ import file until it is validated against a real ServiceM8
-import template — see [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the
-adaptation workflow.
+The generated handoff is a CSV in ServiceM8's Materials & Services format. It uses the genuine
+nine-column contract or retains the loaded ServiceM8 export's complete compatible header row and
+extra columns. Existing rows are copied from the original export with only approved cost and sell
+values replaced. New rows use documented defaults, and the paired rollback CSV restores prior
+values for existing items in one import. See
+[docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) for the tested round-trip contract.
 
-## Browser demonstration shape
+## Browser deployment shape
 
-The secondary browser demonstration is **the shared SPA plus one small Node server** (`server/`,
-plain Node, zero extra runtime dependencies):
+The public frontend is a static GitHub Pages build with no provider integration. It contains no
+SerpAPI key, access token or cost-control secret and makes no live competitor-search request.
+Manual competitor evidence and the core comparison workflow remain available. The installed
+desktop performs optional live search through its native Rust client and Windows protected
+credential storage. Product discovery and merchant-offer retrieval remain separate calls, so
+Google Shopping product candidates are never presented as competitor offers.
+The repository also includes one small loopback Node server (`server/`) for local development:
 
 - the browser calls its own origin only; the server performs outbound provider searches and
   returns normalised results;
 - the server persists catalogue items, append-only price history, approval records, competitor
   reference prices and source-registry state in a JSON/JSONL directory store (`server/data/`,
   gitignored; configurable via `SWL_DATA_DIR`);
-- in production the same server serves the built SPA from `dist/`, so everything runs as a
-  single origin.
+- it can serve the built SPA from `dist/` for supervised local use.
 
-> **GitHub Pages is a session-only demonstration surface.** Its deterministic static build never
-> calls `/api`: approved catalogue records, approvals, price history, references and source changes
-> remain in memory for the current tab and disappear on refresh. Browser downloads and the complete
-> synthetic seven-stage workflow remain available; live search reports not configured and manual
-> evidence remains usable. Operator-authored profiles, aliases and settings continue to use
-> IndexedDB. Durable operational persistence and live search require the same-origin Node adapter.
+> **GitHub Pages remains session-only for operational records.** Approved catalogue records,
+> approvals, price history, references and source changes remain in memory for the current tab and
+> disappear on refresh. Operator-authored profiles, aliases and settings continue to use IndexedDB.
+> Live provider search is deliberately unavailable in this static build.
 
-### Live search API key
+### Live search provider keys
 
-Live search uses SerpAPI (Google Shopping, Australian region) behind a provider interface
-(`server/search/`) so the provider can be swapped. A key alone never authorises a paid call.
-The Node demonstration requires `SERPAPI_KEY`, `SWL_PAID_CALLS_ENABLED=true`, a positive integer
+The supervised Node service supports two zero-per-call-cost adapters and the existing licensed
+SerpAPI adapter behind `server/search/`. Set `SWL_SEARCH_PROVIDER=serper` with `SERPER_API_KEY`, or
+set `SWL_SEARCH_PROVIDER=ebay` with `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` and
+`EBAY_MARKETPLACE_ID=EBAY_AU`. The start scripts read these values from `.env` or the process
+environment; credentials remain server-side. Serper's finite free credits and eBay's official API
+quotas and terms still apply. Both adapters return direct AUD offers and visibly exclude results
+without a supported delivered total.
+
+For `SWL_SEARCH_PROVIDER=serpapi`, a key alone never authorises a paid call. The Node service also
+requires `SWL_PAID_CALLS_ENABLED=true`, a positive integer
 `SWL_PROVIDER_COST_CEILING_CENTS` and a positive integer
-`SWL_PROVIDER_COST_PER_CALL_CENTS`. Keep these values in the process environment and never commit
-them. Missing, partial, malformed or non-positive budget configuration fails closed as not configured.
-The in-memory budget reserves the declared per-call cents before every request and reports quota
-exhaustion when the ceiling is reached. The deterministic fixture is offline and exempt.
+`SWL_PROVIDER_COST_PER_CALL_CENTS`. Missing, partial, malformed or non-positive configuration fails
+closed. Deterministic fixtures are test-only, and GitHub Pages receives no provider configuration.
 
 ## Development and browser demonstration
 
@@ -365,7 +406,7 @@ npm run seed         # seed realistic fictional sample data into server/data/
 npm run server       # serves the app AND the API on http://127.0.0.1:8787 (.env auto-loaded)
 npm run dev          # development server (proxies /api to the Node server)
 npm run build        # type-check + production build (dist/)
-npm run server:fixture  # offline deterministic fixture provider (testing/demo)
+npm run server:fixture  # offline deterministic provider for automated/local testing only
 ```
 
 The `server` scripts allow only the exact loopback Vite development and preview origins in addition
@@ -451,24 +492,22 @@ excludable record. A "Fictional demo data" badge is shown while active.
 1. Export the supplier price list and the ServiceM8 Materials & Services list; do **not** edit them.
 2. Load both files, map the columns, and save a supplier-specific mapping profile.
 3. Review, approve and export as above. Keep the rollback workbook and audit summary.
-4. Validate the candidate import file against a real ServiceM8 import template (or a small trial
-   import) before importing in bulk.
+4. Import the generated `servicem8-import` CSV through ServiceM8 Materials & Services. A small trial
+   import remains prudent before a large production run.
 5. Never commit any of these files to this repository.
 
 ## Architecture, testing, releases
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — module layout and workflow diagram
-- [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md) — privacy guarantees and verification
-- [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) — input/output contracts and limits
-- [docs/TEST-STRATEGY.md](docs/TEST-STRATEGY.md) — test levels and how to run them
-- [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md) — gates before shipping a build
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - module layout and workflow diagram
+- [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md) - privacy guarantees and verification
+- [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) - input/output contracts and limits
+- [docs/TEST-STRATEGY.md](docs/TEST-STRATEGY.md) - test levels and how to run them
+- [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md) - gates before shipping a build
 
 ## Current limitations
 
-- The import output is a **candidate** file until verified against a genuine ServiceM8 import
-  template; exact ServiceM8 import requirements cannot be proven without it.
 - Phase 1 has no ServiceM8 or Xero API integration (deliberate).
-- Legacy `.xls` workbooks are not supported — re-save as `.xlsx`.
+- Legacy `.xls` workbooks are not supported - re-save as `.xlsx`.
 - Selecting a different worksheet re-reads the file from the in-memory copy; browsers may
   invalidate very large `File` handles if the file changes on disk mid-session.
 - GST/tax transformations are intentionally not implemented.
@@ -483,7 +522,7 @@ excludable record. A "Fictional demo data" badge is shown while active.
 | Symptom                                          | Cause / fix                                                                                                       |
 | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | "not a supported file type"                      | Only `.csv`/`.xlsx`. Re-save `.xls` files as `.xlsx`.                                                             |
-| "too large / too many rows/columns/sheets"       | Defensive limits — split the export or remove unused sheets.                                                      |
+| "too large / too many rows/columns/sheets"       | Defensive limits - split the export or remove unused sheets.                                                      |
 | "empty header row"                               | The first row of the sheet must contain column headings.                                                          |
 | Cost shown as invalid                            | Values must be numeric AUD amounts (`100`, `$100.00`, `1,234.56`); negatives are rejected.                        |
 | Comparison reset after changing mapping/settings | Intentional: business-rule changes invalidate results; decisions on unchanged rows are carried forward on re-run. |

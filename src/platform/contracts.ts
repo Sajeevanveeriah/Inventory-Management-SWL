@@ -22,6 +22,7 @@ export type PlatformErrorCode =
   | "provider_error"
   | "quota_exhausted"
   | "rate_limited"
+  | "selection_expired"
   | "timeout"
   | "unavailable"
   | "unsupported_version";
@@ -327,7 +328,7 @@ export interface PlatformService {
   };
   search: {
     status(): Promise<PlatformResult<ProviderStatus>>;
-    query(query: string): Promise<LiveSearchOutcome>;
+    query(query: string, candidateToken?: string): Promise<LiveSearchOutcome>;
     setPaidCallsEnabled(
       enabled: boolean,
       costCeilingCents?: number,

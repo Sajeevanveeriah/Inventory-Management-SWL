@@ -6,49 +6,47 @@ import {
   readFileSync,
   readdirSync,
   writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import {
   createStore,
   FloorViolationError,
   MissingApprovalError,
   MissingCatalogueItemError,
   PublicationValidationError,
-} from "../server/store/store.mjs";
+} from '../server/store/store.mjs';
 import {
   centsToAmount,
   minimumSellPriceCents,
   parseAmountToCents,
-} from "../server/lib/moneyCents.mjs";
+} from '../server/lib/moneyCents.mjs';
 
 function tempStore() {
-  const dir = mkdtempSync(join(tmpdir(), "swl-store-"));
+  const dir = mkdtempSync(join(tmpdir(), 'swl-store-'));
   return { dir, store: createStore(dir) };
 }
 
 function publicationFileSnapshot(dir: string) {
   return Object.fromEntries(
-    ["catalogue-items.json", "approvals.jsonl", "price-history.jsonl"].map(
-      (name) => {
-        const path = join(dir, name);
-        return [
-          name,
-          existsSync(path)
-            ? { exists: true, bytes: readFileSync(path).toString("base64") }
-            : { exists: false, bytes: "" },
-        ];
-      },
-    ),
+    ['catalogue-items.json', 'approvals.jsonl', 'price-history.jsonl'].map((name) => {
+      const path = join(dir, name);
+      return [
+        name,
+        existsSync(path)
+          ? { exists: true, bytes: readFileSync(path).toString('base64') }
+          : { exists: false, bytes: '' },
+      ];
+    }),
   );
 }
 
-function seedItem(store: ReturnType<typeof createStore>, id = "LW4570") {
+function seedItem(store: ReturnType<typeof createStore>, id = 'LW4570') {
   return store.putItem({
     id,
     sku: id,
-    description: "Lockwood 4570 keyed deadlatch",
+    description: 'Lockwood 4570 keyed deadlatch',
     costCents: 10000,
     sellPriceCents: 13000,
   });
@@ -56,70 +54,96 @@ function seedItem(store: ReturnType<typeof createStore>, id = "LW4570") {
 
 function syntheticObservation(overrides: Record<string, unknown> = {}) {
   return {
-    title: "Synthetic Lockwood 4570 deadlatch",
+    searchQuery: 'LW4570',
+    selectedProductTitle: 'Lockwood 4570 keyed deadlatch',
+    selectedProductBrand: 'Lockwood',
+    selectedProductId: 'product-lw4570',
+    title: 'Synthetic Lockwood 4570 deadlatch',
     priceCents: 9_500,
-    priceAud: "95.00",
-    currency: "AUD",
-    gstBasis: "inc-gst",
+    priceAud: '95.00',
+    itemPriceCents: 9_500,
+    itemPriceAud: '95.00',
+    shippingCents: 500,
+    shippingAud: '5.00',
+    estimatedTaxCents: null,
+    estimatedTaxAud: null,
+    totalPriceCents: 10_000,
+    totalPriceAud: '100.00',
+    comparisonPriceCents: 10_000,
+    comparisonPriceAud: '100.00',
+    priceBasis: 'provider_total',
+    originalPriceText: 'A$95.00',
+    currencyBasis: 'explicit-aud',
+    currency: 'AUD',
+    gstBasis: 'inc-gst',
     packSize: null,
-    seller: "Fictionville Security Supplies",
-    sourceDomain: "fictionville-security.example.com.au",
-    url: "https://fictionville-security.example.com.au/product/lw4570",
-    retrievedAt: "2026-08-09T00:00:00.000Z",
+    condition: 'new',
+    availability: 'in-stock',
+    financing: false,
+    comparisonEligible: true,
+    exclusionReasons: [],
+    seller: 'Fictionville Security Supplies',
+    sourceDomain: 'fictionville-security.example.com.au',
+    url: 'https://fictionville-security.example.com.au/product/lw4570',
+    retrievedAt: '2026-08-09T00:00:00.000Z',
     ...overrides,
+  };
+}
+
+function syntheticLegacyObservation() {
+  return {
+    title: 'Synthetic legacy Lockwood 4570 deadlatch',
+    priceCents: 9_500,
+    priceAud: '95.00',
+    currency: 'AUD',
+    gstBasis: 'inc-gst',
+    packSize: null,
+    seller: 'Fictionville Security Supplies',
+    sourceDomain: 'fictionville-security.example.com.au',
+    url: 'https://fictionville-security.example.com.au/product/legacy-lw4570',
+    retrievedAt: '2026-08-09T00:00:00.000Z',
   };
 }
 
 function syntheticManualObservation(overrides: Record<string, unknown> = {}) {
   return {
-    sku: "LW4570",
-    sourceName: "Synthetic manual evidence",
+    sku: 'LW4570',
+    sourceName: 'Synthetic manual evidence',
     approvedSource: true,
-    observedAt: "2026-08-09T00:00:00.000Z",
-    price: "95.00",
-    currency: "AUD",
-    gstBasis: "inc-gst",
-    shipping: "0.00",
-    stockStatus: "in-stock",
-    condition: "new",
+    observedAt: '2026-08-09T00:00:00.000Z',
+    price: '95.00',
+    currency: 'AUD',
+    gstBasis: 'inc-gst',
+    shipping: '0.00',
+    stockStatus: 'in-stock',
+    condition: 'new',
     packCompatible: true,
     productOnly: true,
     matchConfidence: 1,
-    reviewState: "accepted",
+    reviewState: 'accepted',
     ambiguousMatch: false,
-    url: "https://fictionville-security.example.com.au/manual/lw4570",
-    packSize: "each",
+    url: 'https://fictionville-security.example.com.au/manual/lw4570',
+    packSize: 'each',
     ...overrides,
   };
 }
 
-describe("server money path (integer minor units, no floats)", () => {
-  it("minimumSellPrice(100.00) is exactly 130.00 AUD, plus edge values", () => {
-    expect(
-      centsToAmount(minimumSellPriceCents(parseAmountToCents("100")!)),
-    ).toBe("130.00");
-    expect(centsToAmount(minimumSellPriceCents(parseAmountToCents("0")!))).toBe(
-      "0.00",
+describe('server money path (integer minor units, no floats)', () => {
+  it('minimumSellPrice(100.00) is exactly 130.00 AUD, plus edge values', () => {
+    expect(centsToAmount(minimumSellPriceCents(parseAmountToCents('100')!))).toBe('130.00');
+    expect(centsToAmount(minimumSellPriceCents(parseAmountToCents('0')!))).toBe('0.00');
+    expect(centsToAmount(minimumSellPriceCents(parseAmountToCents('0.01')!))).toBe('0.01');
+    expect(centsToAmount(minimumSellPriceCents(parseAmountToCents('9.99')!))).toBe('12.99');
+    expect(centsToAmount(minimumSellPriceCents(parseAmountToCents('1234567.89')!))).toBe(
+      '1604938.26',
     );
-    expect(
-      centsToAmount(minimumSellPriceCents(parseAmountToCents("0.01")!)),
-    ).toBe("0.01");
-    expect(
-      centsToAmount(minimumSellPriceCents(parseAmountToCents("9.99")!)),
-    ).toBe("12.99");
-    expect(
-      centsToAmount(minimumSellPriceCents(parseAmountToCents("1234567.89")!)),
-    ).toBe("1604938.26");
-    expect(parseAmountToCents("10000000.00")).toBe(1_000_000_000);
-    expect(parseAmountToCents("10000000.01")).toBeNull();
+    expect(parseAmountToCents('10000000.00')).toBe(1_000_000_000);
+    expect(parseAmountToCents('10000000.01')).toBeNull();
   });
 
-  it("uses no floating point arithmetic in the server money modules", () => {
-    for (const file of [
-      "server/lib/moneyCents.mjs",
-      "server/store/store.mjs",
-    ]) {
-      const source = readFileSync(file, "utf8");
+  it('uses no floating point arithmetic in the server money modules', () => {
+    for (const file of ['server/lib/moneyCents.mjs', 'server/store/store.mjs']) {
+      const source = readFileSync(file, 'utf8');
       expect(source).not.toMatch(/parseFloat|Number\.EPSILON|toPrecision/);
       expect(source).not.toMatch(/[\s(][\d.]+\s*\*\s*1\.3/);
       expect(source).not.toMatch(/\/\s*100(?!n)/); // only BigInt division by 100n
@@ -127,59 +151,59 @@ describe("server money path (integer minor units, no floats)", () => {
   });
 });
 
-describe("publication guards", () => {
-  it("exposes one atomic web publication route and no split mutation routes", () => {
-    const server = readFileSync("server/index.mjs", "utf8");
-    expect(server).toContain("POST /api/publish-approved-changes");
-    expect(server).not.toContain("POST /api/approvals");
-    expect(server).not.toContain("POST /api/price-history");
+describe('publication guards', () => {
+  it('exposes one atomic web publication route and no split mutation routes', () => {
+    const server = readFileSync('server/index.mjs', 'utf8');
+    expect(server).toContain('POST /api/publish-approved-changes');
+    expect(server).not.toContain('POST /api/approvals');
+    expect(server).not.toContain('POST /api/price-history');
   });
 
-  it("refuses any published price below the item floor", () => {
+  it('refuses any published price below the item floor', () => {
     const { store } = tempStore();
     seedItem(store);
     const approval = store.appendApproval({
-      itemId: "LW4570",
-      approvedBy: "Test operator",
+      itemId: 'LW4570',
+      approvedBy: 'Test operator',
       proposedSellCents: 12999,
     });
     expect(() =>
       store.appendPriceVersion({
-        itemId: "LW4570",
+        itemId: 'LW4570',
         costCents: 10000,
         sellPriceCents: 12999,
         approvalId: approval.id,
       }),
     ).toThrow(FloorViolationError);
-    expect(store.listPriceHistory("LW4570")).toHaveLength(0);
+    expect(store.listPriceHistory('LW4570')).toHaveLength(0);
   });
 
-  it("refuses to publish without an approval record (asserted, not assumed)", () => {
+  it('refuses to publish without an approval record (asserted, not assumed)', () => {
     const { store } = tempStore();
     seedItem(store);
     expect(() =>
       store.appendPriceVersion({
-        itemId: "LW4570",
+        itemId: 'LW4570',
         costCents: 10000,
         sellPriceCents: 13000,
-        approvalId: "no-such-approval",
+        approvalId: 'no-such-approval',
       }),
     ).toThrow(MissingApprovalError);
     expect(store.listPriceHistory()).toHaveLength(0);
   });
 
-  it("records who approved and when on the publish path", () => {
+  it('records who approved and when on the publish path', () => {
     const { store } = tempStore();
     seedItem(store);
     const approval = store.appendApproval({
-      itemId: "LW4570",
-      approvedBy: "Test operator",
+      itemId: 'LW4570',
+      approvedBy: 'Test operator',
       proposedSellCents: 13500,
     });
-    expect(approval.approvedBy).toBe("Test operator");
+    expect(approval.approvedBy).toBe('Test operator');
     expect(approval.approvedAt).toBeTruthy();
     const version = store.appendPriceVersion({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       costCents: 10000,
       sellPriceCents: 13500,
       approvalId: approval.id,
@@ -187,17 +211,17 @@ describe("publication guards", () => {
     expect(version.approvalId).toBe(approval.id);
   });
 
-  it("rejects an approval that names a different proposed sell price", () => {
+  it('rejects an approval that names a different proposed sell price', () => {
     const { store } = tempStore();
     seedItem(store);
     const approval = store.appendApproval({
-      itemId: "LW4570",
-      approvedBy: "Test operator",
+      itemId: 'LW4570',
+      approvedBy: 'Test operator',
       proposedSellCents: 13_500,
     });
     expect(() =>
       store.appendPriceVersion({
-        itemId: "LW4570",
+        itemId: 'LW4570',
         costCents: 10_000,
         sellPriceCents: 13_501,
         approvalId: approval.id,
@@ -206,60 +230,55 @@ describe("publication guards", () => {
     expect(store.listPriceHistory()).toHaveLength(0);
   });
 
-  it("publishes a validated batch with catalogue, approval and history parity", () => {
+  it('publishes a validated batch with catalogue, approval and history parity', () => {
     const { store } = tempStore();
     const published = store.publishApprovedChanges([
       {
         item: {
-          id: "000123",
-          itemNumber: "000123",
-          description: "Synthetic restricted key",
+          id: '000123',
+          itemNumber: '000123',
+          description: 'Synthetic restricted key',
           costCents: 10_000,
           sellPriceCents: 13_000,
-          gstBasis: "unknown",
-          updatedAt: "2026-08-09T00:00:00.000Z",
+          gstBasis: 'unknown',
+          updatedAt: '2026-08-09T00:00:00.000Z',
         },
-        approvedBy: "Synthetic operator",
-        reason: "Explicit test approval",
+        approvedBy: 'Synthetic operator',
+        reason: 'Explicit test approval',
       },
       {
         item: {
-          id: "000124",
-          itemNumber: "000124",
-          description: "Synthetic padlock",
+          id: '000124',
+          itemNumber: '000124',
+          description: 'Synthetic padlock',
           costCents: 9_999,
           sellPriceCents: 12_999,
-          gstBasis: "inc-gst",
-          updatedAt: "2026-08-09T00:00:00.000Z",
+          gstBasis: 'inc-gst',
+          updatedAt: '2026-08-09T00:00:00.000Z',
         },
-        approvedBy: "Synthetic operator",
-        reason: "Explicit test approval",
+        approvedBy: 'Synthetic operator',
+        reason: 'Explicit test approval',
       },
     ]);
 
     expect(published).toHaveLength(2);
     expect(Object.keys(published[0].item).sort()).toEqual([
-      "costCents",
-      "description",
-      "gstBasis",
-      "id",
-      "itemNumber",
-      "sellPriceCents",
-      "updatedAt",
+      'costCents',
+      'description',
+      'gstBasis',
+      'id',
+      'itemNumber',
+      'sellPriceCents',
+      'updatedAt',
     ]);
-    expect(published[0].item).not.toHaveProperty("sku");
-    expect(store.listItems().map((item: { id: string }) => item.id)).toEqual([
-      "000123",
-      "000124",
-    ]);
+    expect(published[0].item).not.toHaveProperty('sku');
+    expect(store.listItems().map((item: { id: string }) => item.id)).toEqual(['000123', '000124']);
     expect(store.listApprovals()).toHaveLength(2);
     expect(store.listPriceHistory()).toHaveLength(2);
-    expect(store.listPriceHistory("000123")[0].approvalId).toBe(
-      published[0].approval.id,
-    );
+    expect(store.listPriceHistory('000123')[0].approvalId).toBe(published[0].approval.id);
   });
 
-  it("validates the complete batch before mutation", () => {
+  it('validates the complete batch before mutation', () => {
     const { store } = tempStore();
     seedItem(store);
     const before = {
@@ -271,27 +290,27 @@ describe("publication guards", () => {
       store.publishApprovedChanges([
         {
           item: {
-            id: "GOOD",
-            itemNumber: "GOOD",
-            description: "First synthetic item",
+            id: 'GOOD',
+            itemNumber: 'GOOD',
+            description: 'First synthetic item',
             costCents: 10_000,
             sellPriceCents: 13_000,
-            gstBasis: "unknown",
+            gstBasis: 'unknown',
           },
-          approvedBy: "Synthetic operator",
-          reason: "Explicit test approval",
+          approvedBy: 'Synthetic operator',
+          reason: 'Explicit test approval',
         },
         {
           item: {
-            id: "BAD",
-            itemNumber: "BAD",
-            description: "Below-floor synthetic item",
+            id: 'BAD',
+            itemNumber: 'BAD',
+            description: 'Below-floor synthetic item',
             costCents: 10_000,
             sellPriceCents: 12_999,
-            gstBasis: "unknown",
+            gstBasis: 'unknown',
           },
-          approvedBy: "Synthetic operator",
-          reason: "Explicit test approval",
+          approvedBy: 'Synthetic operator',
+          reason: 'Explicit test approval',
         },
       ]),
     ).toThrow(FloorViolationError);
@@ -302,105 +321,97 @@ describe("publication guards", () => {
 
   it.each([
     [
-      "duplicate catalogue identifiers",
+      'duplicate catalogue identifiers',
       [
-        { id: "DUP", itemNumber: "NUMBER-A" },
-        { id: "DUP", itemNumber: "NUMBER-B" },
+        { id: 'DUP', itemNumber: 'NUMBER-A' },
+        { id: 'DUP', itemNumber: 'NUMBER-B' },
       ],
     ],
     [
-      "duplicate item numbers",
+      'duplicate item numbers',
       [
-        { id: "ITEM-A", itemNumber: "DUP-NUMBER" },
-        { id: "ITEM-B", itemNumber: "DUP-NUMBER" },
+        { id: 'ITEM-A', itemNumber: 'DUP-NUMBER' },
+        { id: 'ITEM-B', itemNumber: 'DUP-NUMBER' },
       ],
     ],
-  ])(
-    "rejects %s across a batch before changing any file",
-    (_case, identities) => {
-      const { dir, store } = tempStore();
-      seedItem(store);
-      const before = publicationFileSnapshot(dir);
-      expect(() =>
-        store.publishApprovedChanges(
-          identities.map((identity) => ({
-            item: {
-              ...identity,
-              description: "Synthetic duplicate-guard item",
-              costCents: 10_000,
-              sellPriceCents: 13_000,
-              gstBasis: "unknown",
-            },
-            approvedBy: "Synthetic operator",
-            reason: "Synthetic duplicate guard",
-          })),
-        ),
-      ).toThrow(PublicationValidationError);
-      expect(publicationFileSnapshot(dir)).toEqual(before);
-    },
-  );
+  ])('rejects %s across a batch before changing any file', (_case, identities) => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const before = publicationFileSnapshot(dir);
+    expect(() =>
+      store.publishApprovedChanges(
+        identities.map((identity) => ({
+          item: {
+            ...identity,
+            description: 'Synthetic duplicate-guard item',
+            costCents: 10_000,
+            sellPriceCents: 13_000,
+            gstBasis: 'unknown',
+          },
+          approvedBy: 'Synthetic operator',
+          reason: 'Synthetic duplicate guard',
+        })),
+      ),
+    ).toThrow(PublicationValidationError);
+    expect(publicationFileSnapshot(dir)).toEqual(before);
+  });
 
   it.each([
-    ["raw imported row", { rawSupplierRow: { cost: "not-a-real-value" } }],
-    ["secret field", { credential: "not-a-real-placeholder" }],
-  ])(
-    "rejects catalogue %s without persisting any part of it",
-    (_case, extra) => {
-      const { dir, store } = tempStore();
-      const existing = seedItem(store);
-      const before = publicationFileSnapshot(dir);
-      expect(() => store.putItem({ ...existing, ...extra })).toThrow(
-        PublicationValidationError,
-      );
-      expect(() =>
-        store.publishApprovedChanges([
-          {
-            item: {
-              id: "STRICT",
-              itemNumber: "STRICT",
-              description: "Synthetic strict-schema item",
-              costCents: 10_000,
-              sellPriceCents: 13_000,
-              gstBasis: "unknown",
-              ...extra,
-            },
-            approvedBy: "Synthetic operator",
-            reason: "Synthetic strict-schema guard",
+    ['raw imported row', { rawSupplierRow: { cost: 'not-a-real-value' } }],
+    ['secret field', { credential: 'not-a-real-placeholder' }],
+  ])('rejects catalogue %s without persisting any part of it', (_case, extra) => {
+    const { dir, store } = tempStore();
+    const existing = seedItem(store);
+    const before = publicationFileSnapshot(dir);
+    expect(() => store.putItem({ ...existing, ...extra })).toThrow(PublicationValidationError);
+    expect(() =>
+      store.publishApprovedChanges([
+        {
+          item: {
+            id: 'STRICT',
+            itemNumber: 'STRICT',
+            description: 'Synthetic strict-schema item',
+            costCents: 10_000,
+            sellPriceCents: 13_000,
+            gstBasis: 'unknown',
+            ...extra,
           },
-        ]),
-      ).toThrow(PublicationValidationError);
-      expect(publicationFileSnapshot(dir)).toEqual(before);
-    },
-  );
+          approvedBy: 'Synthetic operator',
+          reason: 'Synthetic strict-schema guard',
+        },
+      ]),
+    ).toThrow(PublicationValidationError);
+    expect(publicationFileSnapshot(dir)).toEqual(before);
+  });
 
-  it("blocks direct new-item and money mutation through metadata updates", () => {
+  it('blocks direct new-item and money mutation through metadata updates', () => {
     const { store } = tempStore();
     const existing = seedItem(store);
     expect(() =>
       store.updateItemMetadata({
         ...existing,
-        id: "NEW",
-        sku: "NEW",
-        itemNumber: "NEW",
+        id: 'NEW',
+        sku: 'NEW',
+        itemNumber: 'NEW',
       }),
     ).toThrow(PublicationValidationError);
     expect(() =>
       store.updateItemMetadata({
         ...existing,
-        itemNumber: "LW4570",
+        itemNumber: 'LW4570',
         sellPriceCents: existing.sellPriceCents + 1,
       }),
     ).toThrow(PublicationValidationError);
-    expect(store.getItem("LW4570")?.sellPriceCents).toBe(13_000);
+    expect(store.getItem('LW4570')?.sellPriceCents).toBe(13_000);
   });
 
-  it("recovers the prior files from an interrupted publication journal on restart", () => {
+  it('recovers the prior files from an interrupted publication journal on restart', () => {
     const { dir, store } = tempStore();
     seedItem(store);
     const fileNames = {
-      items: "catalogue-items.json",
-      approvals: "approvals.jsonl",
-      history: "price-history.jsonl",
+      items: 'catalogue-items.json',
+      approvals: 'approvals.jsonl',
+      history: 'price-history.jsonl',
     } as const;
     const before = Object.fromEntries(
       Object.entries(fileNames).map(([name, file]) => {
@@ -408,114 +419,152 @@ describe("publication guards", () => {
         return [
           name,
           existsSync(path)
-            ? { existed: true, content: readFileSync(path, "utf8") }
-            : { existed: false, content: "" },
+            ? { existed: true, content: readFileSync(path, 'utf8') }
+            : { existed: false, content: '' },
         ];
       }),
     );
     writeFileSync(
-      join(dir, ".catalogue-publication-rollback.json"),
+      join(dir, '.catalogue-publication-rollback.json'),
       JSON.stringify({ version: 1, before }),
     );
-    writeFileSync(join(dir, "catalogue-items.json"), "[]");
-    writeFileSync(join(dir, "approvals.jsonl"), '{"partial":true}\n');
-    writeFileSync(join(dir, "price-history.jsonl"), '{"partial":true}\n');
+    writeFileSync(join(dir, 'catalogue-items.json'), '[]');
+    writeFileSync(join(dir, 'approvals.jsonl'), '{"partial":true}\n');
+    writeFileSync(join(dir, 'price-history.jsonl'), '{"partial":true}\n');
 
     const reopened = createStore(dir);
     expect(reopened.listItems()).toHaveLength(1);
     expect(reopened.listApprovals()).toEqual([]);
     expect(reopened.listPriceHistory()).toEqual([]);
-    expect(existsSync(join(dir, ".catalogue-publication-rollback.json"))).toBe(
-      false,
-    );
+    expect(existsSync(join(dir, '.catalogue-publication-rollback.json'))).toBe(false);
   });
 
-  it("validates every recovery snapshot before changing any live file", () => {
+  it('validates every recovery snapshot before changing any live file', () => {
     const { dir, store } = tempStore();
     seedItem(store);
     const approval = store.appendApproval({
-      itemId: "LW4570",
-      approvedBy: "Synthetic operator",
+      itemId: 'LW4570',
+      approvedBy: 'Synthetic operator',
       proposedSellCents: 13_000,
     });
     store.appendPriceVersion({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       costCents: 10_000,
       sellPriceCents: 13_000,
       approvalId: approval.id,
     });
     const fileNames = {
-      items: "catalogue-items.json",
-      approvals: "approvals.jsonl",
-      history: "price-history.jsonl",
+      items: 'catalogue-items.json',
+      approvals: 'approvals.jsonl',
+      history: 'price-history.jsonl',
     } as const;
     const liveBytes: Record<keyof typeof fileNames, string> = {
-      items: readFileSync(join(dir, fileNames.items)).toString("base64"),
-      approvals: readFileSync(join(dir, fileNames.approvals)).toString(
-        "base64",
-      ),
-      history: readFileSync(join(dir, fileNames.history)).toString("base64"),
+      items: readFileSync(join(dir, fileNames.items)).toString('base64'),
+      approvals: readFileSync(join(dir, fileNames.approvals)).toString('base64'),
+      history: readFileSync(join(dir, fileNames.history)).toString('base64'),
     };
     const before = {
       items: {
         existed: true,
-        content: readFileSync(join(dir, fileNames.items), "utf8"),
+        content: readFileSync(join(dir, fileNames.items), 'utf8'),
       },
       approvals: {
         existed: true,
-        content: readFileSync(join(dir, fileNames.approvals), "utf8"),
+        content: readFileSync(join(dir, fileNames.approvals), 'utf8'),
       },
       history: {
         existed: true,
-        content: readFileSync(join(dir, fileNames.history), "utf8"),
+        content: readFileSync(join(dir, fileNames.history), 'utf8'),
       },
     };
     const orphanApproval = JSON.parse(before.approvals.content.trim());
-    orphanApproval.itemId = "missing-item";
+    orphanApproval.itemId = 'missing-item';
     before.approvals.content = `${JSON.stringify(orphanApproval)}\n`;
-    const journalPath = join(dir, ".catalogue-publication-rollback.json");
+    const journalPath = join(dir, '.catalogue-publication-rollback.json');
     writeFileSync(journalPath, JSON.stringify({ version: 1, before }));
 
     expect(() => createStore(dir)).toThrow(PublicationValidationError);
-    for (const name of Object.keys(fileNames) as Array<
-      keyof typeof fileNames
-    >) {
-      expect(readFileSync(join(dir, fileNames[name])).toString("base64")).toBe(
-        liveBytes[name],
-      );
+    for (const name of Object.keys(fileNames) as Array<keyof typeof fileNames>) {
+      expect(readFileSync(join(dir, fileNames[name])).toString('base64')).toBe(liveBytes[name]);
     }
     expect(existsSync(journalPath)).toBe(true);
   });
 });
 
-describe("competitor references are provably inert", () => {
-  it("rejects an orphan reference for a missing catalogue item", () => {
+describe('competitor references are provably inert', () => {
+  it('rejects an orphan reference for a missing catalogue item', () => {
     const { store } = tempStore();
-    expect(() =>
-      store.appendReference({ itemId: "missing", observation: {} }),
-    ).toThrow(MissingCatalogueItemError);
+    expect(() => store.appendReference({ itemId: 'missing', observation: {} })).toThrow(
+      MissingCatalogueItemError,
+    );
   });
-  it("attaching a reference leaves the catalogue item byte-identical", () => {
+
+  it('continues to read legacy live references while storing the structured offer contract', () => {
     const { dir, store } = tempStore();
     seedItem(store);
-    const itemsPath = join(dir, "catalogue-items.json");
+    const structured = store.appendReference({
+      itemId: 'LW4570',
+      observation: syntheticObservation(),
+    });
+    const legacyStructuredObservation = {
+      ...syntheticObservation(),
+    } as Record<string, unknown>;
+    delete legacyStructuredObservation.searchQuery;
+    delete legacyStructuredObservation.selectedProductTitle;
+    delete legacyStructuredObservation.selectedProductBrand;
+    delete legacyStructuredObservation.selectedProductId;
+    const legacyStructured = store.appendReference({
+      itemId: 'LW4570',
+      observation: legacyStructuredObservation,
+    });
+    const legacy = {
+      id: 'legacy-reference',
+      itemId: 'LW4570',
+      observation: syntheticLegacyObservation(),
+      attachedAt: '2026-08-09T01:00:00.000Z',
+    };
+    const path = join(dir, 'competitor-references.jsonl');
+    writeFileSync(path, `${readFileSync(path, 'utf8')}${JSON.stringify(legacy)}\n`);
+
+    expect(createStore(dir).listReferences()).toEqual([structured, legacyStructured, legacy]);
+  });
+
+  it('round-trips immutable query and selected-product provenance', () => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const observation = syntheticObservation();
+    const stored = store.appendReference({ itemId: 'LW4570', observation });
+
+    expect(stored.observation).toMatchObject({
+      searchQuery: 'LW4570',
+      selectedProductTitle: 'Lockwood 4570 keyed deadlatch',
+      selectedProductBrand: 'Lockwood',
+      selectedProductId: 'product-lw4570',
+    });
+    expect(createStore(dir).listReferences('LW4570')).toEqual([stored]);
+  });
+
+  it('attaching a reference leaves the catalogue item byte-identical', () => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const itemsPath = join(dir, 'catalogue-items.json');
     const before = readFileSync(itemsPath);
     store.appendReference({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       // Deliberately below cost: reference evidence must still change nothing.
       observation: syntheticObservation(),
     });
     const after = readFileSync(itemsPath);
     expect(Buffer.compare(before, after)).toBe(0); // byte-identical
-    expect(store.listPriceHistory("LW4570")).toHaveLength(0);
-    expect(store.listReferences("LW4570")).toHaveLength(1);
+    expect(store.listPriceHistory('LW4570')).toHaveLength(0);
+    expect(store.listReferences('LW4570')).toHaveLength(1);
   });
 
-  it("accepts the strict bounded manual-evidence shape used by the shared frontend", () => {
+  it('accepts the strict bounded manual-evidence shape used by the shared frontend', () => {
     const { store } = tempStore();
     seedItem(store);
     const stored = store.appendReference({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       observation: syntheticManualObservation(),
     });
     expect(stored.observation).toEqual(syntheticManualObservation());
@@ -523,82 +572,74 @@ describe("competitor references are provably inert", () => {
   });
 
   it.each([
+    ['unknown imported-row field', syntheticObservation({ supplierCostCents: 10_000 })],
+    ['secret-like field', syntheticObservation({ apiKey: 'not-a-real-placeholder' })],
     [
-      "unknown imported-row field",
-      syntheticObservation({ supplierCostCents: 10_000 }),
-    ],
-    [
-      "secret-like field",
-      syntheticObservation({ apiKey: "not-a-real-placeholder" }),
-    ],
-    [
-      "non-HTTPS URL",
+      'non-HTTPS URL',
       syntheticObservation({
-        url: "http://fictionville-security.example.com.au/x",
+        url: 'http://fictionville-security.example.com.au/x',
       }),
     ],
     [
-      "credential-bearing URL",
+      'credential-bearing URL',
       syntheticObservation({
-        url: "https://not-a-real-placeholder@fictionville-security.example.com.au/x",
+        url: 'https://not-a-real-placeholder@fictionville-security.example.com.au/x',
       }),
     ],
+    ['source-domain mismatch', syntheticObservation({ sourceDomain: 'other.example.test' })],
+    ['unsupported currency', syntheticObservation({ currency: 'USD' })],
+    ['unsupported GST state', syntheticObservation({ gstBasis: 'inferred' })],
+    ['inconsistent amount', syntheticObservation({ priceAud: '95.01' })],
+    ['invalid timestamp', syntheticObservation({ retrievedAt: 'not-a-date' })],
     [
-      "source-domain mismatch",
-      syntheticObservation({ sourceDomain: "other.example.test" }),
+      'incomplete selected-product provenance',
+      syntheticObservation({ selectedProductId: undefined }),
     ],
-    ["unsupported currency", syntheticObservation({ currency: "USD" })],
-    ["unsupported GST state", syntheticObservation({ gstBasis: "inferred" })],
-    ["inconsistent amount", syntheticObservation({ priceAud: "95.01" })],
-    ["invalid timestamp", syntheticObservation({ retrievedAt: "not-a-date" })],
     [
-      "normalised invalid calendar date",
-      syntheticObservation({ retrievedAt: "2026-02-30T00:00:00.000Z" }),
+      'normalised invalid calendar date',
+      syntheticObservation({ retrievedAt: '2026-02-30T00:00:00.000Z' }),
     ],
-  ])(
-    "rejects %s without creating or changing reference data",
-    (_case, observation) => {
-      const { dir, store } = tempStore();
-      seedItem(store);
-      const referencePath = join(dir, "competitor-references.jsonl");
-      expect(existsSync(referencePath)).toBe(false);
-      expect(() =>
-        store.appendReference({ itemId: "LW4570", observation }),
-      ).toThrow(PublicationValidationError);
-      expect(existsSync(referencePath)).toBe(false);
-      expect(store.listReferences()).toEqual([]);
-    },
-  );
+  ])('rejects %s without creating or changing reference data', (_case, observation) => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const referencePath = join(dir, 'competitor-references.jsonl');
+    expect(existsSync(referencePath)).toBe(false);
+    expect(() => store.appendReference({ itemId: 'LW4570', observation })).toThrow(
+      PublicationValidationError,
+    );
+    expect(existsSync(referencePath)).toBe(false);
+    expect(store.listReferences()).toEqual([]);
+  });
 
-  it("rejects unknown reference envelope fields without mutating the store", () => {
+  it('rejects unknown reference envelope fields without mutating the store', () => {
     const { dir, store } = tempStore();
     seedItem(store);
     expect(() =>
       store.appendReference({
-        itemId: "LW4570",
+        itemId: 'LW4570',
         observation: syntheticObservation(),
-        privateNotes: "not-a-real-placeholder",
+        privateNotes: 'not-a-real-placeholder',
       }),
     ).toThrow(PublicationValidationError);
-    expect(existsSync(join(dir, "competitor-references.jsonl"))).toBe(false);
+    expect(existsSync(join(dir, 'competitor-references.jsonl'))).toBe(false);
   });
 
-  it("keeps an existing reference file byte-identical after a rejected full-row payload", () => {
+  it('keeps an existing reference file byte-identical after a rejected full-row payload', () => {
     const { dir, store } = tempStore();
     seedItem(store);
     store.appendReference({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       observation: syntheticObservation(),
     });
-    const referencePath = join(dir, "competitor-references.jsonl");
+    const referencePath = join(dir, 'competitor-references.jsonl');
     const before = readFileSync(referencePath);
     expect(() =>
       store.appendReference({
-        itemId: "LW4570",
+        itemId: 'LW4570',
         observation: syntheticManualObservation({
           rawSupplierRow: {
-            supplierCost: "not-a-real-value",
-            credential: "synthetic-placeholder",
+            supplierCost: 'not-a-real-value',
+            credential: 'synthetic-placeholder',
           },
         }),
       }),
@@ -607,68 +648,41 @@ describe("competitor references are provably inert", () => {
   });
 
   it.each([
-    [
-      "full imported row",
-      syntheticManualObservation({ supplierRow: { cost: "100.00" } }),
-    ],
-    [
-      "secret field",
-      syntheticManualObservation({ accessToken: "not-a-real-placeholder" }),
-    ],
-    [
-      "credential URL",
-      syntheticManualObservation({ url: "https://user:pass@example.test/x" }),
-    ],
-    ["HTTP URL", syntheticManualObservation({ url: "http://example.test/x" })],
-    ["unsupported currency", syntheticManualObservation({ currency: "USD" })],
-    ["invalid GST", syntheticManualObservation({ gstBasis: "inferred" })],
-    [
-      "invalid stock state",
-      syntheticManualObservation({ stockStatus: "back-order" }),
-    ],
-    [
-      "invalid condition",
-      syntheticManualObservation({ condition: "refurbished" }),
-    ],
-    [
-      "invalid review state",
-      syntheticManualObservation({ reviewState: "pending" }),
-    ],
-    [
-      "invalid confidence",
-      syntheticManualObservation({ matchConfidence: 1.01 }),
-    ],
-    [
-      "oversized evidence text",
-      syntheticManualObservation({ sourceName: "x".repeat(257) }),
-    ],
-    ["invalid money", syntheticManualObservation({ price: "95.001" })],
-  ])(
-    "rejects manual evidence with %s without changing the store",
-    (_case, observation) => {
-      const { dir, store } = tempStore();
-      seedItem(store);
-      const referencePath = join(dir, "competitor-references.jsonl");
-      expect(() =>
-        store.appendReference({ itemId: "LW4570", observation }),
-      ).toThrow(PublicationValidationError);
-      expect(existsSync(referencePath)).toBe(false);
-      expect(store.listReferences()).toEqual([]);
-    },
-  );
+    ['full imported row', syntheticManualObservation({ supplierRow: { cost: '100.00' } })],
+    ['secret field', syntheticManualObservation({ accessToken: 'not-a-real-placeholder' })],
+    ['credential URL', syntheticManualObservation({ url: 'https://user:pass@example.test/x' })],
+    ['HTTP URL', syntheticManualObservation({ url: 'http://example.test/x' })],
+    ['unsupported currency', syntheticManualObservation({ currency: 'USD' })],
+    ['invalid GST', syntheticManualObservation({ gstBasis: 'inferred' })],
+    ['invalid stock state', syntheticManualObservation({ stockStatus: 'back-order' })],
+    ['invalid condition', syntheticManualObservation({ condition: 'refurbished' })],
+    ['invalid review state', syntheticManualObservation({ reviewState: 'pending' })],
+    ['invalid confidence', syntheticManualObservation({ matchConfidence: 1.01 })],
+    ['oversized evidence text', syntheticManualObservation({ sourceName: 'x'.repeat(257) })],
+    ['invalid money', syntheticManualObservation({ price: '95.001' })],
+  ])('rejects manual evidence with %s without changing the store', (_case, observation) => {
+    const { dir, store } = tempStore();
+    seedItem(store);
+    const referencePath = join(dir, 'competitor-references.jsonl');
+    expect(() => store.appendReference({ itemId: 'LW4570', observation })).toThrow(
+      PublicationValidationError,
+    );
+    expect(existsSync(referencePath)).toBe(false);
+    expect(store.listReferences()).toEqual([]);
+  });
 });
 
-describe("price history persists across an application restart", () => {
+describe('price history persists across an application restart', () => {
   it('writes with one store instance, "restarts" by creating a new instance on the same directory, and reads back', () => {
     const { dir, store } = tempStore();
     seedItem(store);
     const approval = store.appendApproval({
-      itemId: "LW4570",
-      approvedBy: "Test operator",
+      itemId: 'LW4570',
+      approvedBy: 'Test operator',
       proposedSellCents: 13000,
     });
     store.appendPriceVersion({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       costCents: 10000,
       sellPriceCents: 13000,
       approvalId: approval.id,
@@ -676,65 +690,60 @@ describe("price history persists across an application restart", () => {
 
     // Restart: a brand-new store instance with no shared in-memory state.
     const reopened = createStore(dir);
-    const history = reopened.listPriceHistory("LW4570");
+    const history = reopened.listPriceHistory('LW4570');
     expect(history).toHaveLength(1);
-    expect(history[0].sellPrice).toBe("130.00");
+    expect(history[0].sellPrice).toBe('130.00');
     expect(history[0].approvalId).toBe(approval.id);
-    expect(reopened.getItem("LW4570")?.sellPriceCents).toBe(13000);
+    expect(reopened.getItem('LW4570')?.sellPriceCents).toBe(13000);
     expect(reopened.listApprovals()).toHaveLength(1);
   });
 
-  it("history is append-only: the store exposes no update or delete for versions", () => {
+  it('history is append-only: the store exposes no update or delete for versions', () => {
     const { store } = tempStore();
-    const historyMethods = Object.keys(store).filter((k) =>
-      /history|version/i.test(k),
-    );
-    expect(historyMethods.sort()).toEqual([
-      "appendPriceVersion",
-      "listPriceHistory",
-    ]);
+    const historyMethods = Object.keys(store).filter((k) => /history|version/i.test(k));
+    expect(historyMethods.sort()).toEqual(['appendPriceVersion', 'listPriceHistory']);
   });
 });
 
-describe("stored Node records are validated before read or publication", () => {
-  it("rejects duplicate, orphan and unknown stored records without rewriting them", () => {
+describe('stored Node records are validated before read or publication', () => {
+  it('rejects duplicate, orphan and unknown stored records without rewriting them', () => {
     const { dir, store } = tempStore();
     seedItem(store);
     const approval = store.appendApproval({
-      itemId: "LW4570",
-      approvedBy: "Synthetic operator",
+      itemId: 'LW4570',
+      approvedBy: 'Synthetic operator',
       proposedSellCents: 13_000,
     });
     store.appendPriceVersion({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       costCents: 10_000,
       sellPriceCents: 13_000,
       approvalId: approval.id,
     });
     store.appendReference({
-      itemId: "LW4570",
+      itemId: 'LW4570',
       observation: syntheticObservation(),
     });
     const source = {
-      id: "synthetic-source",
-      name: "Synthetic source",
-      accessMethod: "manual-entry",
-      automatedAccessNote: "No automated access",
+      id: 'synthetic-source',
+      name: 'Synthetic source',
+      accessMethod: 'manual-entry',
+      automatedAccessNote: 'No automated access',
       enabled: true,
     };
     store.putSources([source]);
 
     const paths = {
-      approvals: join(dir, "approvals.jsonl"),
-      history: join(dir, "price-history.jsonl"),
-      references: join(dir, "competitor-references.jsonl"),
-      sources: join(dir, "source-registry.json"),
+      approvals: join(dir, 'approvals.jsonl'),
+      history: join(dir, 'price-history.jsonl'),
+      references: join(dir, 'competitor-references.jsonl'),
+      sources: join(dir, 'source-registry.json'),
     };
     const originals = {
-      approvals: readFileSync(paths.approvals, "utf8"),
-      history: readFileSync(paths.history, "utf8"),
-      references: readFileSync(paths.references, "utf8"),
-      sources: readFileSync(paths.sources, "utf8"),
+      approvals: readFileSync(paths.approvals, 'utf8'),
+      history: readFileSync(paths.history, 'utf8'),
+      references: readFileSync(paths.references, 'utf8'),
+      sources: readFileSync(paths.sources, 'utf8'),
     };
     const originalByPath = new Map(
       Object.keys(paths).map((name) => [
@@ -753,12 +762,12 @@ describe("stored Node records are validated before read or publication", () => {
       },
       {
         path: paths.approvals,
-        content: `${JSON.stringify({ ...approvalRecord, itemId: "missing-item" })}\n`,
+        content: `${JSON.stringify({ ...approvalRecord, itemId: 'missing-item' })}\n`,
         read: () => store.listApprovals(),
       },
       {
         path: paths.approvals,
-        content: `${JSON.stringify({ ...approvalRecord, credential: "not-a-real-placeholder" })}\n`,
+        content: `${JSON.stringify({ ...approvalRecord, credential: 'not-a-real-placeholder' })}\n`,
         read: () => store.listApprovals(),
       },
       {
@@ -768,7 +777,7 @@ describe("stored Node records are validated before read or publication", () => {
       },
       {
         path: paths.history,
-        content: `${JSON.stringify({ ...historyRecord, approvalId: "missing-approval" })}\n`,
+        content: `${JSON.stringify({ ...historyRecord, approvalId: 'missing-approval' })}\n`,
         read: () => store.listPriceHistory(),
       },
       {
@@ -778,7 +787,7 @@ describe("stored Node records are validated before read or publication", () => {
       },
       {
         path: paths.references,
-        content: `${JSON.stringify({ ...referenceRecord, itemId: "missing-item" })}\n`,
+        content: `${JSON.stringify({ ...referenceRecord, itemId: 'missing-item' })}\n`,
         read: () => store.listReferences(),
       },
       {
@@ -790,31 +799,28 @@ describe("stored Node records are validated before read or publication", () => {
 
     for (const testCase of cases) {
       writeFileSync(testCase.path, testCase.content);
-      const corruptedBytes = readFileSync(testCase.path).toString("base64");
+      const corruptedBytes = readFileSync(testCase.path).toString('base64');
       expect(testCase.read).toThrow(PublicationValidationError);
-      expect(readFileSync(testCase.path).toString("base64")).toBe(
-        corruptedBytes,
-      );
+      expect(readFileSync(testCase.path).toString('base64')).toBe(corruptedBytes);
       const original = originalByPath.get(testCase.path);
-      if (original === undefined)
-        throw new Error("Test path has no original snapshot.");
+      if (original === undefined) throw new Error('Test path has no original snapshot.');
       writeFileSync(testCase.path, original);
     }
   });
 
-  it("refuses publication before mutation when stored approvals are corrupt", () => {
+  it('refuses publication before mutation when stored approvals are corrupt', () => {
     const { dir, store } = tempStore();
     seedItem(store);
-    const approvalsPath = join(dir, "approvals.jsonl");
+    const approvalsPath = join(dir, 'approvals.jsonl');
     writeFileSync(
       approvalsPath,
       `${JSON.stringify({
-        id: "orphan-approval",
-        itemId: "missing-item",
-        approvedBy: "Synthetic operator",
+        id: 'orphan-approval',
+        itemId: 'missing-item',
+        approvedBy: 'Synthetic operator',
         proposedSellCents: 13_000,
-        reason: "",
-        approvedAt: "2026-08-09T00:00:00.000Z",
+        reason: '',
+        approvedAt: '2026-08-09T00:00:00.000Z',
       })}\n`,
     );
     const before = publicationFileSnapshot(dir);
@@ -822,102 +828,72 @@ describe("stored Node records are validated before read or publication", () => {
       store.publishApprovedChanges([
         {
           item: {
-            id: "SAFE",
-            itemNumber: "SAFE",
-            description: "Synthetic item",
+            id: 'SAFE',
+            itemNumber: 'SAFE',
+            description: 'Synthetic item',
             costCents: 10_000,
             sellPriceCents: 13_000,
-            gstBasis: "unknown",
+            gstBasis: 'unknown',
           },
-          approvedBy: "Synthetic operator",
-          reason: "Synthetic publication",
+          approvedBy: 'Synthetic operator',
+          reason: 'Synthetic publication',
         },
       ]),
     ).toThrow(PublicationValidationError);
     expect(publicationFileSnapshot(dir)).toEqual(before);
-    expect(existsSync(join(dir, ".catalogue-publication-rollback.json"))).toBe(
-      false,
-    );
+    expect(existsSync(join(dir, '.catalogue-publication-rollback.json'))).toBe(false);
   });
 });
 
-describe("source registry validation and atomic replacement", () => {
+describe('source registry validation and atomic replacement', () => {
   const source = (id: string) => ({
     id,
     name: `Synthetic source ${id}`,
-    accessMethod: "manual-entry",
-    automatedAccessNote: "Entered manually in a synthetic test.",
+    accessMethod: 'manual-entry',
+    automatedAccessNote: 'Entered manually in a synthetic test.',
     enabled: true,
   });
 
-  it("validates, atomically persists and reloads a bounded unique registry", () => {
+  it('validates, atomically persists and reloads a bounded unique registry', () => {
     const { dir, store } = tempStore();
-    expect(store.putSources([source("one"), source("two")])).toEqual([
-      source("one"),
-      source("two"),
+    expect(store.putSources([source('one'), source('two')])).toEqual([
+      source('one'),
+      source('two'),
     ]);
-    expect(createStore(dir).getSources()).toEqual([
-      source("one"),
-      source("two"),
-    ]);
-    expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual(
-      [],
-    );
+    expect(createStore(dir).getSources()).toEqual([source('one'), source('two')]);
+    expect(readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
   it.each([
-    ["non-array", { arbitrary: true }],
-    ["duplicate identifiers", [source("same"), source("same")]],
-    [
-      "unsupported access method",
-      [{ ...source("bad-method"), accessMethod: "scrape" }],
-    ],
-    [
-      "non-boolean enabled state",
-      [{ ...source("bad-enabled"), enabled: "yes" }],
-    ],
-    [
-      "unexpected fields",
-      [{ ...source("extra"), credential: "not-a-real-placeholder" }],
-    ],
-    ["control characters", [{ ...source("control"), name: "bad\u0000name" }]],
-    [
-      "too many records",
-      Array.from({ length: 1_001 }, (_, index) => source(`s-${index}`)),
-    ],
-  ])(
-    "rejects %s without changing the live source registry",
-    (_case, invalid) => {
-      const { dir, store } = tempStore();
-      store.putSources([source("existing")]);
-      const registryPath = join(dir, "source-registry.json");
-      const before = readFileSync(registryPath);
-      expect(() => store.putSources(invalid)).toThrow(
-        PublicationValidationError,
-      );
-      expect(Buffer.compare(before, readFileSync(registryPath))).toBe(0);
-      expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual(
-        [],
-      );
-    },
-  );
-
-  it("cleans its task-created temporary file when atomic rename fails", () => {
+    ['non-array', { arbitrary: true }],
+    ['duplicate identifiers', [source('same'), source('same')]],
+    ['unsupported access method', [{ ...source('bad-method'), accessMethod: 'scrape' }]],
+    ['non-boolean enabled state', [{ ...source('bad-enabled'), enabled: 'yes' }]],
+    ['unexpected fields', [{ ...source('extra'), credential: 'not-a-real-placeholder' }]],
+    ['control characters', [{ ...source('control'), name: 'bad\u0000name' }]],
+    ['too many records', Array.from({ length: 1_001 }, (_, index) => source(`s-${index}`))],
+  ])('rejects %s without changing the live source registry', (_case, invalid) => {
     const { dir, store } = tempStore();
-    mkdirSync(join(dir, "source-registry.json"));
-    expect(() => store.putSources([source("one")])).toThrow();
-    expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual(
-      [],
-    );
-    expect(existsSync(join(dir, "source-registry.json"))).toBe(true);
+    store.putSources([source('existing')]);
+    const registryPath = join(dir, 'source-registry.json');
+    const before = readFileSync(registryPath);
+    expect(() => store.putSources(invalid)).toThrow(PublicationValidationError);
+    expect(Buffer.compare(before, readFileSync(registryPath))).toBe(0);
+    expect(readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
-  it("maps invalid source-registry requests to a validation response", () => {
-    const sourceText = readFileSync("server/index.mjs", "utf8");
-    expect(sourceText).toContain(
-      'if (req.method === "PUT" && url.pathname === "/api/sources")',
-    );
-    expect(sourceText).toContain("error instanceof PublicationValidationError");
-    expect(sourceText).toContain("sendJson(res, 422");
+  it('cleans its task-created temporary file when atomic rename fails', () => {
+    const { dir, store } = tempStore();
+    mkdirSync(join(dir, 'source-registry.json'));
+    expect(() => store.putSources([source('one')])).toThrow();
+    expect(readdirSync(dir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    expect(existsSync(join(dir, 'source-registry.json'))).toBe(true);
+  });
+
+  it('maps invalid source-registry requests to a validation response', () => {
+    const sourceText = readFileSync('server/index.mjs', 'utf8');
+    expect(sourceText).toContain("if (req.method === 'PUT' && url.pathname === '/api/sources')");
+    expect(sourceText).toContain('error instanceof PublicationValidationError');
+    expect(sourceText).toContain('sendJson(res, 422');
   });
 });
