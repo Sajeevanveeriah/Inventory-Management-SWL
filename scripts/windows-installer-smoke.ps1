@@ -133,7 +133,7 @@ $installRoot = Join-Path $env:RUNNER_TEMP ("swl-installed-" + [Guid]::NewGuid().
 # hosted runner contain no spaces; reject rather than silently changing syntax.
 if ($installRoot.Contains(' ')) { throw 'The scripted NSIS destination contains a space.' }
 $install = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installRoot") -Wait -PassThru
-if ($install.ExitCode -ne 0) throw "Silent current-user installation failed with exit code $($install.ExitCode)."
+if ($install.ExitCode -ne 0) { throw "Silent current-user installation failed with exit code $($install.ExitCode)." }
 $manifestImmediatelyAfterInstall = @(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress
 if ($manifestImmediatelyAfterInstall -ne $preinstallDataManifestJson) {
   throw 'Installation changed the existing synthetic application-data manifest before launch.'
@@ -336,9 +336,9 @@ if ($databaseEvidenceBeforeJson -ne $preinstallDatabaseEvidenceJson) {
 $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -Filter '*.exe' | Where-Object {
   $_.Name -match '^unins|uninstall'
 })
-if ($uninstallers.Count -ne 1) throw "Expected one uninstaller; found $($uninstallers.Count)."
+if ($uninstallers.Count -ne 1) { throw "Expected one uninstaller; found $($uninstallers.Count)." }
 $uninstall = Start-Process -FilePath $uninstallers[0].FullName -ArgumentList '/S' -Wait -PassThru
-if ($uninstall.ExitCode -ne 0) throw "Silent uninstall failed with exit code $($uninstall.ExitCode)."
+if ($uninstall.ExitCode -ne 0) { throw "Silent uninstall failed with exit code $($uninstall.ExitCode)." }
 
 $uninstallDeadline = (Get-Date).AddSeconds(45)
 do {
@@ -370,7 +370,7 @@ if (($databaseEvidenceAfterUninstall | ConvertTo-Json -Depth 7 -Compress) -ne $d
 $linksBeforeReinstall = @(Get-SwlStartMenuLinks -Root $startMenuRoot | ForEach-Object { $_.FullName })
 $entriesBeforeReinstall = @(Get-SwlUninstallEntries | ForEach-Object { $_.RegistryPath })
 $reinstall = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$installRoot") -Wait -PassThru
-if ($reinstall.ExitCode -ne 0) throw "Silent reinstall failed with exit code $($reinstall.ExitCode)."
+if ($reinstall.ExitCode -ne 0) { throw "Silent reinstall failed with exit code $($reinstall.ExitCode)." }
 
 $reinstalledExecutables = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -Filter '*.exe' | Where-Object {
   $_.Name -notmatch '^unins|uninstall|WebView2|MicrosoftEdge'
@@ -540,7 +540,7 @@ $secondUninstallers = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -
 })
 if ($secondUninstallers.Count -ne 1) { throw "Expected one reinstalled uninstaller; found $($secondUninstallers.Count)." }
 $secondUninstall = Start-Process -FilePath $secondUninstallers[0].FullName -ArgumentList '/S' -Wait -PassThru
-if ($secondUninstall.ExitCode -ne 0) throw "Second silent uninstall failed with exit code $($secondUninstall.ExitCode)."
+if ($secondUninstall.ExitCode -ne 0) { throw "Second silent uninstall failed with exit code $($secondUninstall.ExitCode)." }
 $secondUninstallDeadline = (Get-Date).AddSeconds(45)
 do {
   $reinstalledLinkRemains = Test-Path -LiteralPath $reinstalledLink.FullName
