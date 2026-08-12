@@ -149,8 +149,17 @@ test('dashboard, catalogue search and approvals with demo data', async ({ page }
 test('dark theme keeps contrast on the review screen', async ({ page }) => {
   await demoToValidate(page);
   await page.getByRole('button', { name: 'Open settings' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Dark appearance' }).click();
+  const settingsDialog = page.getByRole('dialog');
+  await settingsDialog.getByRole('button', { name: 'Dark appearance' }).click();
+  // The dialog deliberately ignores Escape while an appearance save is in
+  // flight, so wait for the save to land before dismissing it.
+  await expect(settingsDialog.getByRole('button', { name: 'Dark appearance' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(settingsDialog.getByRole('button', { name: 'Close' })).toBeEnabled();
   await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'Review changes' }).click();
   await expectNoAccessibilityViolations(page, 'review-dark');

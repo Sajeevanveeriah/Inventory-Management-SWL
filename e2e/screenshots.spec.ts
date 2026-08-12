@@ -122,8 +122,17 @@ test.describe('desktop 1440px light', () => {
 
     await demoToValidate(page);
     await page.getByRole('button', { name: 'Open settings' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Dark appearance' }).click();
+    const settingsDialog = page.getByRole('dialog');
+    await settingsDialog.getByRole('button', { name: 'Dark appearance' }).click();
+    // The dialog deliberately ignores Escape while an appearance save is in
+    // flight, so wait for the save to land before dismissing it.
+    await expect(settingsDialog.getByRole('button', { name: 'Dark appearance' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(settingsDialog.getByRole('button', { name: 'Close' })).toBeEnabled();
     await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('cell', { name: 'FIC-002', exact: true }).click();
     await shot(page, '17-review-dark');
@@ -245,7 +254,7 @@ test.describe('operations shell', () => {
 
     await searchBox.fill('fixture-quota');
     await page.getByRole('button', { name: 'Run fixture search' }).click();
-    await expect(page.getByText('Provider quota is exhausted')).toBeVisible();
+    await expect(page.getByText('Approved search allowance is exhausted')).toBeVisible();
     await shot(page, '35-competitor-search-quota');
 
     await page.getByRole('button', { name: 'Source registry' }).click();

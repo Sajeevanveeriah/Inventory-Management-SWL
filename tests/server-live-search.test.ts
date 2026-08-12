@@ -68,20 +68,45 @@ function validProviderResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe("live search integration against the fixture provider (offline, no key)", () => {
-  it("fails closed for legacy item-only rows without exposing them as evidence", async () => {
+  it("returns structured delivered-price evidence for catalogue queries", async () => {
     const outcome = await fixtureService().search("LW4570");
-    expect(outcome.state).toBe("provider_error");
+    expect(outcome.state).toBe("ok");
     expect(outcome.queryKind).toBe("identifier");
-    expect(outcome.results).toEqual([]);
-    expect(outcome.band).toBeNull();
-    expect(outcome.coverage.comparableOffers).toBe(0);
-    expect(outcome.coverage.excludedOffers).toBe(0);
-    expect(outcome.detail).toContain("legacy item-price payload");
+    expect(outcome.selectedProduct).toEqual({
+      title: "LW4570",
+      brand: null,
+      productId: null,
+    });
+    expect(outcome.results).toHaveLength(4);
+    expect(outcome.results[0]).toMatchObject({
+      title: "Lockwood 4570 Keyed Deadlatch Satin Chrome",
+      itemPriceCents: 14_350,
+      shippingCents: 0,
+      totalPriceCents: 14_350,
+      comparisonPriceCents: 14_350,
+      priceBasis: "item_plus_shipping",
+      currencyBasis: "explicit-aud",
+      comparisonEligible: true,
+      currency: "AUD",
+    });
+    expect(outcome.band).toMatchObject({
+      lowestCents: 12_995,
+      highestCents: 26_500,
+      pricedResults: 4,
+    });
+    expect(outcome.coverage).toMatchObject({
+      providerQueried: "fixture",
+      parsedOffers: 4,
+      comparableOffers: 4,
+      excludedOffers: 0,
+    });
+    expect(() => LiveSearchOutcomeSchema.parse(outcome)).not.toThrow();
   });
 
-  it("also fails closed for an empty legacy array payload", async () => {
+  it('reports the deliberate no-candidate state as "empty"', async () => {
     const outcome = await fixtureService().search("fixture-none");
-    expect(outcome.state).toBe("provider_error");
+    expect(outcome.state).toBe("empty");
+    expect(outcome.candidates).toEqual([]);
     expect(outcome.results).toEqual([]);
     expect(outcome.band).toBeNull();
   });
@@ -876,8 +901,8 @@ describe("rate limiting and caching", () => {
     const service = fixtureService({
       rateLimiter: createRateLimiter({ capacity: 2 }),
     });
-    expect((await service.search("query one")).state).toBe("provider_error");
-    expect((await service.search("query two")).state).toBe("provider_error");
+    expect((await service.search("query one")).state).toBe("ok");
+    expect((await service.search("query two")).state).toBe("ok");
     const third = await service.search("query three");
     expect(third.state).toBe("rate_limited");
   });
@@ -988,7 +1013,7 @@ describe("paid provider cost ceiling", () => {
       provider: createFixtureProvider(),
       paidCallBudget: budget,
     }).search("LW4570");
-    expect(outcome.state).toBe("provider_error");
+    expect(outcome.state).toBe("ok");
     expect(budget.status()).toMatchObject({
       state: "disabled",
       reservedCents: 0,
