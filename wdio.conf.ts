@@ -40,14 +40,31 @@ export const config: WebdriverIO.Config = {
     random: false,
   },
   /**
-   * The attached WebView2 debug endpoint can expose more than one top-level
-   * target (for example an initial blank context) and the session may start
-   * on the wrong one, where every application selector fails. Select the
-   * window handle that serves the application origin before any spec runs.
+   * The attached WebView2 debug endpoint has been observed to report the
+   * session's only top-level target as about:blank even though the native
+   * window is live. Select the window handle serving the application origin
+   * when one exists; otherwise drive the attached webview to the embedded
+   * application origin directly and wait for the shell to mount. Boot
+   * diagnostics print to stdout either way so a failure leaves its cause in
+   * the step log.
    */
   before: async () => {
     const applicationOrigin = /^https?:\/\/tauri\.localhost/u;
+    const consoleEntries: string[] = [];
+    try {
+      await browser.sessionSubscribe({ events: ["log.entryAdded"] });
+      browser.on(
+        "log.entryAdded",
+        (entry: { level?: string; text?: string | null }) => {
+          consoleEntries.push(`[${entry.level ?? "log"}] ${entry.text ?? ""}`);
+        },
+      );
+    } catch {
+      consoleEntries.push("[meta] console subscription unavailable");
+    }
+
     const observedUrls: string[] = [];
+    let onApplicationOrigin: boolean;
     try {
       await browser.waitUntil(
         async () => {
@@ -62,61 +79,75 @@ export const config: WebdriverIO.Config = {
           }
           return false;
         },
-        { timeout: 30_000, interval: 500 },
+        { timeout: 15_000, interval: 500 },
+      );
+      onApplicationOrigin = true;
+    } catch {
+      onApplicationOrigin = false;
+    }
+    console.log(
+      `[swl-acceptance] window URLs observed: ${JSON.stringify(observedUrls)}; onApplicationOrigin=${onApplicationOrigin}`,
+    );
+
+    if (!onApplicationOrigin) {
+      // The embedded custom-protocol handler serves the compiled frontend for
+      // this origin regardless of which side initiates the navigation.
+      await browser.url("http://tauri.localhost/index.html");
+    }
+
+    type BootState = {
+      href: string;
+      readyState: string;
+      theme: string | null;
+      rootChildren: number;
+      bodyPreview: string;
+    };
+    const snapshot = async (): Promise<BootState> =>
+      (await browser.execute(() => {
+        const runtime = globalThis as unknown as {
+          location: { href: string };
+          document: {
+            readyState: string;
+            documentElement: { dataset: { theme?: string } };
+            getElementById: (
+              id: string,
+            ) => { childElementCount: number } | null;
+            body: { innerText?: string } | null;
+          };
+        };
+        return {
+          href: runtime.location.href,
+          readyState: runtime.document.readyState,
+          theme: runtime.document.documentElement.dataset.theme ?? null,
+          rootChildren:
+            runtime.document.getElementById("root")?.childElementCount ?? -1,
+          bodyPreview: (runtime.document.body?.innerText ?? "").slice(0, 300),
+        };
+      })) as unknown as BootState;
+
+    try {
+      await browser.waitUntil(
+        async () => {
+          const state = await snapshot();
+          return state.rootChildren > 0 && state.theme !== null;
+        },
+        { timeout: 30_000, interval: 1_000 },
       );
     } catch (cause) {
+      const finalState = await snapshot();
+      console.log(
+        `[swl-acceptance] boot snapshot: ${JSON.stringify(finalState)}`,
+      );
+      console.log(
+        `[swl-acceptance] console entries: ${JSON.stringify(consoleEntries.slice(0, 50))}`,
+      );
       throw new Error(
-        `No WebView2 window served the application origin http://tauri.localhost; observed URLs: ${JSON.stringify(observedUrls)}`,
+        `The application shell did not mount at the served origin; final state: ${JSON.stringify(finalState)}`,
         { cause },
       );
     }
     console.log(
-      `[swl-acceptance] window URLs observed: ${JSON.stringify(observedUrls)}`,
-    );
-
-    // Boot diagnostics: capture the application's own console output across a
-    // reload, then print a DOM snapshot, so a frontend that fails to mount
-    // leaves its error in the step log rather than only inside the artefact.
-    const consoleEntries: string[] = [];
-    try {
-      await browser.sessionSubscribe({ events: ["log.entryAdded"] });
-      browser.on(
-        "log.entryAdded",
-        (entry: { level?: string; text?: string | null }) => {
-          consoleEntries.push(`[${entry.level ?? "log"}] ${entry.text ?? ""}`);
-        },
-      );
-    } catch {
-      consoleEntries.push("[meta] console subscription unavailable");
-    }
-    await browser.execute(() => {
-      (
-        globalThis as unknown as { location: { reload: () => void } }
-      ).location.reload();
-    });
-    await browser.pause(8_000);
-    const bootSnapshot = await browser.execute(() => {
-      const runtime = globalThis as unknown as {
-        document: {
-          readyState: string;
-          documentElement: { dataset: { theme?: string } };
-          getElementById: (id: string) => { childElementCount: number } | null;
-          body: { innerText?: string } | null;
-        };
-      };
-      return {
-        readyState: runtime.document.readyState,
-        theme: runtime.document.documentElement.dataset.theme ?? null,
-        rootChildren:
-          runtime.document.getElementById("root")?.childElementCount ?? -1,
-        bodyPreview: (runtime.document.body?.innerText ?? "").slice(0, 400),
-      };
-    });
-    console.log(
-      `[swl-acceptance] boot snapshot: ${JSON.stringify(bootSnapshot)}`,
-    );
-    console.log(
-      `[swl-acceptance] console entries: ${JSON.stringify(consoleEntries.slice(0, 50))}`,
+      `[swl-acceptance] boot snapshot: ${JSON.stringify(await snapshot())}`,
     );
   },
 };
