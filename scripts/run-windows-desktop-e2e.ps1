@@ -20,6 +20,7 @@ $applicationProcess = $null
 $driverProcess = $null
 $webViewDebugPort = 9515
 $edgeDriverPort = 4444
+$webViewPolicyKey = 'Registry::HKEY_CURRENT_USER\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
 
 function Wait-ForLoopbackPort {
   param(
@@ -334,17 +335,36 @@ try {
   } -ArgumentList $application, $stopSentinel, $monitorEvidencePath
 
   # Launch the unmodified release binary with the WebView2 remote-debugging
-  # loopback port supplied through the documented loader environment variable,
-  # which is appended to the application's own browser arguments. The variable
-  # is removed immediately after launch so nothing else inherits it.
-  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$webViewDebugPort"
+  # loopback port supplied through both documented loader override channels:
+  # the process environment variable and the per-executable policy registry
+  # value. Both carry the identical value, are scoped to this run and are
+  # removed afterwards.
+  $debugArguments = "--remote-debugging-port=$webViewDebugPort"
+  New-Item -Path $webViewPolicyKey -Force | Out-Null
+  Set-ItemProperty -Path $webViewPolicyKey -Name ([IO.Path]::GetFileName($application)) -Value $debugArguments
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $debugArguments
   try {
     $applicationProcess = Start-Process -FilePath $application -PassThru
   }
   finally {
     Remove-Item Env:\WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
   }
-  Wait-ForLoopbackPort -Port $webViewDebugPort -Label 'application WebView2 debug endpoint' -OwnerProcess $applicationProcess
+  try {
+    Wait-ForLoopbackPort -Port $webViewDebugPort -Label 'application WebView2 debug endpoint' -OwnerProcess $applicationProcess
+  }
+  catch {
+    # Preserve exactly what WebView2 launched with so a failed wait leaves
+    # decisive evidence of whether the debugging override was applied.
+    $webViewDiagnostics = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction SilentlyContinue |
+      ForEach-Object { [ordered]@{ processId = $_.ProcessId; parentProcessId = $_.ParentProcessId; commandLine = $_.CommandLine } })
+    [ordered]@{
+      scope = 'WebView2 browser processes visible when the sanctioned debug endpoint failed to open'
+      requestedDebugArguments = $debugArguments
+      applicationExited = $applicationProcess.HasExited
+      webViewProcesses = $webViewDiagnostics
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $evidenceRoot 'WEBVIEW2-LAUNCH-DIAGNOSTICS.json') -Encoding utf8
+    throw
+  }
 
   # Microsoft Edge WebDriver attaches to the already-running WebView2 through
   # ms:edgeOptions.debuggerAddress; it never launches the application itself.
@@ -382,6 +402,23 @@ finally {
     catch {
       [void]$cleanupFailures.Add('application-stop')
     }
+  }
+
+  try {
+    if (Test-Path -Path $webViewPolicyKey) {
+      Remove-Item -Path $webViewPolicyKey -Recurse -Force -ErrorAction Stop
+    }
+  }
+  catch {
+    [void]$cleanupFailures.Add('webview-policy-remove')
+  }
+  try {
+    if (Test-Path -Path $webViewPolicyKey) {
+      [void]$cleanupFailures.Add('webview-policy-verify')
+    }
+  }
+  catch {
+    [void]$cleanupFailures.Add('webview-policy-verify')
   }
 
   try {

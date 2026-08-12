@@ -170,7 +170,13 @@ describe('production WDIO driver boundary', () => {
     expect(wdio).toContain('browserName: "webview2"');
     expect(wdio).toContain('debuggerAddress: `127.0.0.1:${webViewDebugPort}`');
     expect(desktopRunner).toContain(
-      '$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$webViewDebugPort"',
+      '$debugArguments = "--remote-debugging-port=$webViewDebugPort"',
+    );
+    expect(desktopRunner).toContain(
+      '$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $debugArguments',
+    );
+    expect(desktopRunner).toContain(
+      "Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments",
     );
     expect(desktopRunner).toContain(
       'Start-Process -FilePath $edgeDriver.FullName -ArgumentList "--port=$edgeDriverPort"',
