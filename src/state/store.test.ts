@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../core/settings";
 import { defaultSources } from "../core/sources";
 import type { GeneratedOutput } from "../io/exportWorkbooks";
-import { INITIAL_STATE, reducer } from "./store";
+import { INITIAL_STATE, reducer, resolveAppearanceTheme } from "./store";
 
 const syntheticOutput: GeneratedOutput = {
   filename: "20260809-Synthetic-Audit.txt",
@@ -83,5 +83,14 @@ describe("workflow invalidation guards", () => {
     });
     expect(hydrated.outputs).toBeNull();
     expect(hydrated.outputRevision).toBe(11);
+  });
+});
+
+describe("appearance resolution", () => {
+  it("uses the operating-system preference only in system mode", () => {
+    expect(resolveAppearanceTheme("system", false)).toBe("light");
+    expect(resolveAppearanceTheme("system", true)).toBe("dark");
+    expect(resolveAppearanceTheme("light", true)).toBe("light");
+    expect(resolveAppearanceTheme("dark", false)).toBe("dark");
   });
 });

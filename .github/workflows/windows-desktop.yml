@@ -38,7 +38,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 90
     env:
-      CI: "true"
+      CI: 'true'
       SWL_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       SWL_LEGACY_SOURCE_SHA: e36ec72ae8c53b0f9af7eeb0ef3f605b9f5dab9a
     steps:
@@ -185,7 +185,16 @@ jobs:
         shell: pwsh
         run: ./scripts/prepare-webview2-offline-installer.ps1 -PayloadPath "$env:RUNNER_TEMP/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" -EvidencePath "$env:RUNNER_TEMP/swl-diagnostics/WebView2-Prevalidation.json"
       - name: Build canonical unsigned NSIS package
-        run: npm run desktop:build
+        shell: pwsh
+        run: |
+          if (![string]::IsNullOrEmpty($env:SWL_DESKTOP_ACCEPTANCE_FIXTURES)) {
+            throw 'The canonical package build must not enable desktop acceptance fixtures.'
+          }
+          if (![string]::IsNullOrEmpty($env:SWL_DESKTOP_LOCAL_TEST_PROFILE)) {
+            throw 'The canonical package build must not select the local-test desktop profile.'
+          }
+          npm run desktop:build
+          if ($LASTEXITCODE -ne 0) { throw 'The canonical unsigned NSIS package failed to build.' }
       - name: Prove the Rust lock was not changed by the desktop build
         run: git diff --exit-code -- src-tauri/Cargo.lock
       - name: Resolve the single current NSIS installer
@@ -200,7 +209,7 @@ jobs:
       - name: Configure deterministic former-source checkout
         shell: pwsh
         run: git config --global core.autocrlf false
-      # actions/checkout v7.0.1 — immutable 1.0.0 application source, isolated for upgrade acceptance
+      # actions/checkout v7.0.1: immutable 1.0.0 application source, isolated for upgrade acceptance
       - name: Check out the immutable former 1.0.0 source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -390,6 +399,9 @@ jobs:
           "SWL_TAURI_DRIVER_BINARY=$($driverExecutable.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $driverDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Build isolated unbundled release-profile desktop acceptance binary
+        env:
+          SWL_DESKTOP_ACCEPTANCE_FIXTURES: '1'
+          SWL_DESKTOP_LOCAL_TEST_PROFILE: '1'
         shell: pwsh
         run: |
           $productionBinaryPath = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE 'src-tauri/target/release/swl-pricing-desktop.exe'))
@@ -431,6 +443,7 @@ jobs:
             cargoFeature = 'tauri/devtools'
             acceptanceWebViewDebugPort = 9515
             acceptanceConfigMerge = 'TAURI_CONFIG additionalBrowserArgs for the acceptance build only; production configuration is untouched'
+            acceptanceFixturesCompileTime = true
             distributed = $false
             canonicalProductionSha256Before = $productionHashBefore
             canonicalProductionSha256After = $productionHashAfter

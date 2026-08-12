@@ -31,7 +31,12 @@ import {
   type AttachedReference,
   type CompetitorSource,
 } from '../core/sources';
-import { DEFAULT_SETTINGS, type Settings, type SettingsChangeLogEntry } from '../core/settings';
+import {
+  DEFAULT_SETTINGS,
+  type AppearanceTheme,
+  type Settings,
+  type SettingsChangeLogEntry,
+} from '../core/settings';
 import type { FileRole, ParsedTable } from '../core/table';
 import type { GeneratedOutput } from '../io/exportWorkbooks';
 import type { AliasRecord } from '../platform/contracts';
@@ -561,6 +566,14 @@ export async function loadPersistentConfiguration(
   };
 }
 
+export function resolveAppearanceTheme(
+  preference: AppearanceTheme,
+  systemPrefersDark: boolean,
+): 'light' | 'dark' {
+  if (preference === 'system') return systemPrefersDark ? 'dark' : 'light';
+  return preference;
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
@@ -585,8 +598,37 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [platform, state.configurationHydration.attempt]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = state.settings.theme;
-  }, [state.settings.theme]);
+    const media =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null;
+    const applyAppearance = () => {
+      const resolvedTheme = resolveAppearanceTheme(state.settings.theme, media?.matches ?? false);
+      const root = document.documentElement;
+      root.dataset.theme = resolvedTheme;
+      root.dataset.themePreference = state.settings.theme;
+      root.dataset.glassTint = state.settings.glassTint;
+      root.style.colorScheme = resolvedTheme;
+    };
+    applyAppearance();
+    if (state.settings.theme !== 'system' || media === null) return undefined;
+    media.addEventListener('change', applyAppearance);
+    return () => media.removeEventListener('change', applyAppearance);
+  }, [state.settings.glassTint, state.settings.theme]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void platform.appearance.setTheme(state.settings.theme).then((result) => {
+      if (cancelled || result.ok) return;
+      dispatch({
+        type: 'announce',
+        message: `The native window appearance could not be updated. ${result.error.message}`,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, state.settings.theme]);
 
   const stateValue = useMemo(() => state, [state]);
   return (

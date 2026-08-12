@@ -140,6 +140,15 @@ describe('isolated release-profile desktop acceptance binary', () => {
     expect(workflow).toContain('-ApplicationPath $env:SWL_DESKTOP_ACCEPTANCE_BINARY');
     expect(workflow).not.toContain('-ApplicationPath $env:SWL_DESKTOP_BINARY');
     expect(desktopRunner).toContain('Exact unbundled release-profile acceptance application');
+    const resolvedApplication = desktopRunner.indexOf(
+      '$application = (Resolve-Path -LiteralPath $ApplicationPath).Path',
+    );
+    const wdioApplication = desktopRunner.indexOf('$env:SWL_DESKTOP_BINARY = $application');
+    const desktopTest = desktopRunner.indexOf('& npm run e2e:desktop');
+    expect(resolvedApplication).toBeGreaterThan(-1);
+    expect(wdioApplication).toBeGreaterThan(resolvedApplication);
+    expect(desktopTest).toBeGreaterThan(wdioApplication);
+    expect(desktopRunner).not.toContain('$env:SWL_DESKTOP_BINARY = $ApplicationPath');
   });
 });
 

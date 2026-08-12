@@ -391,6 +391,29 @@ describe("desktop adapter command mapping", () => {
     expect(calls).not.toContain("append_price_history");
   });
 
+  it("maps desktop appearance preferences to the narrowly scoped native theme command", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+    const service = createDesktopPlatformService(
+      async <T>(command: string, args?: Record<string, unknown>) => {
+        calls.push(args ? { command, args } : { command });
+        return undefined as T;
+      },
+    );
+
+    expect(await service.appearance.setTheme("dark")).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(await service.appearance.setTheme("system")).toEqual({
+      ok: true,
+      value: undefined,
+    });
+    expect(calls).toEqual([
+      { command: "plugin:app|set_app_theme", args: { theme: "dark" } },
+      { command: "plugin:app|set_app_theme", args: { theme: null } },
+    ]);
+  });
+
   it("rejects invalid search and credential arguments before IPC", async () => {
     const calls: string[] = [];
     const service = createDesktopPlatformService(async <T>(command: string) => {
@@ -835,6 +858,7 @@ describe("web configuration transfer", () => {
           markupPercent: "30",
           taxHandling: "prices-inc-gst" as const,
           theme: "dark" as const,
+          glassTint: "clear" as const,
         },
       },
     };
@@ -842,7 +866,7 @@ describe("web configuration transfer", () => {
     const digest = await sha256Hex(new TextEncoder().encode(payload).buffer);
 
     expect(digest).toBe(
-      "ce4e8f4d1ac8f70c3056420ddbb5a6c8faea8ea8a17993a9e5e97ac7ec7ce7a4",
+      "191fe976bdf67000bc94b0399b7c072df8ba0bb2f4876829c1547cc73a75c415",
     );
     expect(payload.indexOf('"supplierCode":0')).toBeLessThan(
       payload.indexOf('"supplierCost":1'),

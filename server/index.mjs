@@ -12,6 +12,7 @@ import {
   optionalProviderRegistry,
   publicProviderStatus,
 } from "./search/providerRegistry.mjs";
+import { createFixtureProvider } from "./search/fixtureProvider.mjs";
 import {
   createStore,
   FloorViolationError,
@@ -51,10 +52,12 @@ const argValues = (name) =>
 
 const port = Number(argValue("--port") ?? process.env.PORT ?? 8787);
 const dataDir = process.env.SWL_DATA_DIR ?? join(HERE, "data");
-if (
-  args.includes("--fixture") ||
-  process.env.SWL_SEARCH_PROVIDER === "fixture"
-) {
+const fixtureRequested =
+  args.includes("--fixture") || process.env.SWL_SEARCH_PROVIDER === "fixture";
+// Fixture search stays unavailable from the production entry point. The local
+// test platform must pair the fixture request with an explicit SWL_LOCAL_TEST
+// acknowledgement, so a misconfigured deployment can never serve fixtures.
+if (fixtureRequested && process.env.SWL_LOCAL_TEST !== "1") {
   throw new Error(
     "Fixture search is unavailable from the production server entry point.",
   );
@@ -62,10 +65,13 @@ if (
 const testProviderFactory =
   globalThis.__SWL_TEST_ONLY_SEARCH_PROVIDER_FACTORY__;
 delete globalThis.__SWL_TEST_ONLY_SEARCH_PROVIDER_FACTORY__;
-const fixtureMode = typeof testProviderFactory === "function";
-const provider = fixtureMode
-  ? testProviderFactory()
-  : createProviderFromEnvironment(process.env);
+const fixtureMode = fixtureRequested || typeof testProviderFactory === "function";
+const provider =
+  typeof testProviderFactory === "function"
+    ? testProviderFactory()
+    : fixtureRequested
+      ? createFixtureProvider()
+      : createProviderFromEnvironment(process.env);
 const paidCallBudget = createPaidCallBudgetFromEnvironment(process.env);
 const searchService = createSearchService({ provider, paidCallBudget });
 const store = createStore(dataDir);

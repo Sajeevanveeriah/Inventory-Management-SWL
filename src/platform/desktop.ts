@@ -385,6 +385,13 @@ export function createDesktopPlatformService(
     rawImportPersistence: "never",
     manualEvidencePersistence: "catalogue-reference-or-session",
 
+    appearance: {
+      setTheme: (theme) =>
+        invokeVoid(invoke, "plugin:app|set_app_theme", {
+          theme: theme === "system" ? null : theme,
+        }),
+    },
+
     health: () =>
       invokeParsed(invoke, "desktop_health", LiveHealthSchema) as Promise<
         PlatformResult<LiveHealth>

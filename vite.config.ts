@@ -30,6 +30,9 @@ const productionCsp = () =>
   ].join("; ");
 
 export default defineConfig(({ mode }) => ({
+  // The no-install test launchers must not load repository .env files. Their
+  // fixture providers and data directories are supplied explicitly instead.
+  envDir: process.env.SWL_LOCAL_TEST === "1" ? false : undefined,
   // Local use serves from the root. Hosted deployments (e.g. GitHub Pages
   // project sites) set VITE_BASE, e.g. VITE_BASE=/Inventory-Management-SWL/.
   base: process.env.VITE_BASE ?? "/",

@@ -4,6 +4,7 @@
   "description": "Main window: bundled UI and narrowly scoped SWL commands only.",
   "windows": ["main"],
   "permissions": [
+    "core:app:allow-set-app-theme",
     "allow-swl-read",
     "allow-swl-write",
     "allow-swl-recovery",

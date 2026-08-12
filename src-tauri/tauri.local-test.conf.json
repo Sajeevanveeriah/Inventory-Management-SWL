@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SWL Pricing and Inventory Control - Local Test",
+  "identifier": "au.com.stanwoottonlocksmiths.swl-pricing.local-test",
+  "app": {
+    "windows": [
+      {
+        "title": "SWL Local Test Initialising",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 390,
+        "minHeight": 600,
+        "resizable": true,
+        "center": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

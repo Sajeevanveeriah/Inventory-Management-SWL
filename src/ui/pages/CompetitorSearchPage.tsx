@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CompetitorObservation } from "../../core/competitors";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CompetitorObservation } from '../../core/competitors';
 import {
   centsToAud,
   type LiveHealth,
@@ -7,19 +7,23 @@ import {
   type LiveSearchOutcome,
   type LiveSearchResult,
   type LiveSearchState,
-} from "../../core/liveSearch";
-import { formatAmount, parseMoney } from "../../core/money";
-import { priceBand, searchEvidence } from "../../core/sources";
-import { useAppDispatch, useAppState } from "../../state/store";
-import { useActions } from "../../state/useActions";
-import { usePlatform } from "../../platform/context";
-import type { CatalogueItem, ProviderStatus } from "../../platform/contracts";
-import { EmptyState, Page } from "./PageChrome";
+} from '../../core/liveSearch';
+import { formatAmount, parseMoney } from '../../core/money';
+import { priceBand, searchEvidence } from '../../core/sources';
+import {
+  createBrowserTestSearchOutcome,
+  type BrowserTestSearchScenario,
+} from '../../demo/browserTestSearch';
+import { useAppDispatch, useAppState } from '../../state/store';
+import { useActions } from '../../state/useActions';
+import { usePlatform } from '../../platform/context';
+import type { CatalogueItem, ProviderStatus } from '../../platform/contracts';
+import { EmptyState, Page } from './PageChrome';
 
-const MELBOURNE_TIME = new Intl.DateTimeFormat("en-AU", {
-  timeZone: "Australia/Melbourne",
-  dateStyle: "medium",
-  timeStyle: "short",
+const MELBOURNE_TIME = new Intl.DateTimeFormat('en-AU', {
+  timeZone: 'Australia/Melbourne',
+  dateStyle: 'medium',
+  timeStyle: 'short',
 });
 
 export function ProviderPaidCallsControl({
@@ -27,26 +31,17 @@ export function ProviderPaidCallsControl({
   onToggle,
 }: {
   status: ProviderStatus | null;
-  onToggle: (
-    enabled: boolean,
-    costCeilingCents?: number,
-    costPerCallCents?: number,
-  ) => void;
+  onToggle: (enabled: boolean, costCeilingCents?: number, costPerCallCents?: number) => void;
 }) {
   const enabled = status?.paidCallsEnabled === true;
-  const [ceilingInput, setCeilingInput] = useState("");
-  const [perCallInput, setPerCallInput] = useState("");
+  const [ceilingInput, setCeilingInput] = useState('');
+  const [perCallInput, setPerCallInput] = useState('');
   const ceiling = parsePositiveBudgetCents(ceilingInput);
   const perCall = parsePositiveBudgetCents(perCallInput);
   const validBudget =
-    ceiling !== null &&
-    perCall !== null &&
-    perCall <= ceiling &&
-    ceiling <= 1_000_000_000;
+    ceiling !== null && perCall !== null && perCall <= ceiling && ceiling <= 1_000_000_000;
   const canEnable =
-    status?.credentialConfigured === true &&
-    status.lastValidatedAt !== null &&
-    validBudget;
+    status?.credentialConfigured === true && status.lastValidatedAt !== null && validBudget;
 
   return (
     <div>
@@ -75,25 +70,21 @@ export function ProviderPaidCallsControl({
       <div className="btn-row">
         <button
           type="button"
-          className={enabled ? "btn btn-danger" : "btn"}
+          className={enabled ? 'btn btn-danger' : 'btn'}
           aria-pressed={enabled}
           disabled={!status || (!enabled && !canEnable)}
           onClick={() =>
-            enabled
-              ? onToggle(false)
-              : onToggle(true, ceiling ?? undefined, perCall ?? undefined)
+            enabled ? onToggle(false) : onToggle(true, ceiling ?? undefined, perCall ?? undefined)
           }
         >
-          {enabled
-            ? "Disable paid provider calls"
-            : "Enable paid provider calls within budget"}
+          {enabled ? 'Disable paid provider calls' : 'Enable paid provider calls within budget'}
         </button>
         <span className="hint" role="status">
           {enabled && status
             ? `AUD ${centsToAud(status.spentCents)} reserved of AUD ${status.costCeilingAud}; AUD ${centsToAud(status.costPerCallCents)} is reserved before each attempt.`
             : status?.credentialConfigured && status.lastValidatedAt === null
-              ? "Validate the protected credential before enabling paid calls."
-              : "Paid calls are disabled by default. Enter a positive ceiling and per-call reservation; calls stop before the ceiling can be exceeded."}
+              ? 'Validate the protected credential before enabling paid calls.'
+              : 'Paid calls are disabled by default. Enter a positive ceiling and per-call reservation; calls stop before the ceiling can be exceeded.'}
         </span>
       </div>
     </div>
@@ -102,153 +93,153 @@ export function ProviderPaidCallsControl({
 
 function parsePositiveBudgetCents(raw: string): number | null {
   const parsed = parseMoney(raw);
-  if (!parsed.ok || parsed.amount === "0.00") return null;
-  const [whole = "0", fraction = "00"] = parsed.amount.split(".");
+  if (!parsed.ok || parsed.amount === '0.00') return null;
+  const [whole = '0', fraction = '00'] = parsed.amount.split('.');
   const cents = Number(whole) * 100 + Number(fraction);
-  return Number.isSafeInteger(cents) && cents > 0 && cents <= 1_000_000_000
-    ? cents
-    : null;
+  return Number.isSafeInteger(cents) && cents > 0 && cents <= 1_000_000_000 ? cents : null;
 }
 
 function retrievedLabel(iso: string): string {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return iso;
-  const ageHours = Math.max(
-    0,
-    Math.floor((Date.now() - at.getTime()) / 3600000),
-  );
+  const ageHours = Math.max(0, Math.floor((Date.now() - at.getTime()) / 3600000));
   const age =
     ageHours < 1
-      ? "under 1 h ago"
+      ? 'under 1 h ago'
       : ageHours < 48
         ? `${ageHours} h ago`
         : `${Math.floor(ageHours / 24)} d ago`;
   return `${MELBOURNE_TIME.format(at)} (${age})`;
 }
 
-const GST_LABELS: Record<CompetitorObservation["gstBasis"], string> = {
-  "inc-gst": "inc GST",
-  "ex-gst": "ex GST",
-  unknown: "GST unknown",
+const GST_LABELS: Record<CompetitorObservation['gstBasis'], string> = {
+  'inc-gst': 'inc GST',
+  'ex-gst': 'ex GST',
+  unknown: 'GST unknown',
 };
 
 /** Distinct, visible copy for every non-result search state. Never one blank screen. */
 type SearchStateCopy = {
   title: string;
-  tone: "info" | "warn" | "error";
+  tone: 'info' | 'warn' | 'error';
   detail: string;
 };
 
 function stateCopy(
   state: LiveSearchState,
-  platformKind: "desktop" | "web",
+  platformKind: 'desktop' | 'web',
   liveSearchSupported: boolean,
 ): SearchStateCopy | undefined {
   if (!liveSearchSupported) {
     return {
-      title: "Live provider search is unavailable in Static Pages",
-      tone: "info",
+      title: 'Live provider search is unavailable in Static Pages',
+      tone: 'info',
       detail:
-        "Static Pages has no Node service and makes no provider request. Manual evidence and the core comparison workflow remain available.",
+        'Static Pages has no Node service and makes no provider request. Manual evidence and the core comparison workflow remain available.',
     };
   }
   const copy: Partial<Record<LiveSearchState, SearchStateCopy>> = {
     not_configured: {
-      title: "Live search is not configured",
-      tone: "warn",
+      title: 'Live search is not configured',
+      tone: 'warn',
       detail:
-        platformKind === "desktop"
-          ? "No provider credential is configured. Use the protected provider controls below. Manual entry works now."
-          : "No provider is configured for the web search service. Manual entry works now.",
+        platformKind === 'desktop'
+          ? 'No provider credential is configured. Use the protected provider controls below. Manual entry works now.'
+          : 'No provider is configured for the web search service. Manual entry works now.',
     },
     offline: {
-      title: "The computer is offline",
-      tone: "warn",
+      title: 'The computer is offline',
+      tone: 'warn',
       detail:
-        "No network search was attempted successfully. Manual evidence and the full core workflow remain available.",
+        'No network search was attempted successfully. Manual evidence and the full core workflow remain available.',
     },
     timeout: {
-      title: "The search provider timed out",
-      tone: "error",
+      title: 'The search provider timed out',
+      tone: 'error',
       detail:
-        "The provider did not answer in time. This is a provider-side delay, not an empty result. Try again shortly, or record the price manually below.",
+        'The provider did not answer in time. This is a provider-side delay, not an empty result. Try again shortly, or record the price manually below.',
     },
     provider_error: {
-      title: "The search provider returned an error",
-      tone: "error",
+      title: 'The search provider returned an error',
+      tone: 'error',
       detail:
-        "The provider rejected or failed the request. This is a failure, not an empty result.",
+        'The provider rejected or failed the request. This is a failure, not an empty result.',
     },
     quota_exhausted: {
-      title: "Approved search allowance is exhausted",
-      tone: "warn",
+      title: 'Approved search allowance is exhausted',
+      tone: 'warn',
       detail:
-        "The approved local cost ceiling or provider plan quota cannot authorise another search. Review the displayed budget and provider account before retrying.",
+        'The approved local cost ceiling or provider plan quota cannot authorise another search. Review the displayed budget and provider account before retrying.',
     },
     rate_limited: {
-      title: "Local rate limit reached",
-      tone: "warn",
+      title: 'Local rate limit reached',
+      tone: 'warn',
       detail:
-        platformKind === "desktop"
-          ? "The native application limits its own outbound searches. Wait about a minute and retry; manual evidence remains available."
-          : "The web service limits its own outbound searches. Wait about a minute and retry; no provider result was returned for this attempt.",
+        platformKind === 'desktop'
+          ? 'The native application limits its own outbound searches. Wait about a minute and retry; manual evidence remains available.'
+          : 'The web service limits its own outbound searches. Wait about a minute and retry; no provider result was returned for this attempt.',
     },
     search_in_progress: {
-      title: "This search is already in progress",
-      tone: "info",
+      title: 'This search is already in progress',
+      tone: 'info',
       detail:
-        "An identical live request is already retrieving merchant evidence. Wait briefly, then retry so the completed cached result can be reused.",
+        'An identical live request is already retrieving merchant evidence. Wait briefly, then retry so the completed cached result can be reused.',
     },
     selection_expired: {
-      title: "The selected product has expired",
-      tone: "info",
+      title: 'The selected product has expired',
+      tone: 'info',
       detail:
-        "Run the product search again, then select the exact product from the new candidates. No merchant comparison was made from the expired selection.",
+        'Run the product search again, then select the exact product from the new candidates. No merchant comparison was made from the expired selection.',
     },
     server_unreachable: {
       title:
-        platformKind === "desktop"
-          ? "The native search service is not reachable"
-          : "The web search service is not reachable",
-      tone: "error",
+        platformKind === 'desktop'
+          ? 'The native search service is not reachable'
+          : 'The web search service is not reachable',
+      tone: 'error',
       detail:
-        platformKind === "desktop"
-          ? "The native search service did not respond. Manual entry and the core comparison workflow still work without it."
-          : "The web search service did not respond. Manual entry and the core comparison workflow still work without it.",
+        platformKind === 'desktop'
+          ? 'The native search service did not respond. Manual entry and the core comparison workflow still work without it.'
+          : 'The web search service did not respond. Manual entry and the core comparison workflow still work without it.',
     },
     invalid_query: {
-      title: "The search query is invalid",
-      tone: "warn",
-      detail:
-        "Enter a bounded product identifier or short product description and try again.",
+      title: 'The search query is invalid',
+      tone: 'warn',
+      detail: 'Enter a bounded product identifier or short product description and try again.',
     },
   };
   return copy[state];
 }
 
-type SortKey = "price" | "seller" | "title";
+type SortKey = 'price' | 'seller' | 'title';
 
 function ResultsTable({
   results,
   attachEnabled,
   onAttach,
   onOpenSource,
+  onReview,
+  resultsLabel = 'Live search results',
+  sourceActionLabel = 'Open source page',
 }: {
   results: LiveSearchResult[];
   attachEnabled: boolean;
   onAttach: (result: LiveSearchResult) => void;
   onOpenSource: (url: string) => void;
+  onReview?: (result: LiveSearchResult) => void;
+  resultsLabel?: string;
+  sourceActionLabel?: string;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>("price");
+  const [sortKey, setSortKey] = useState<SortKey>('price');
   const [ascending, setAscending] = useState(true);
   const sorted = useMemo(() => {
     const copy = [...results];
     copy.sort((a, b) => {
       const delta =
-        sortKey === "price"
+        sortKey === 'price'
           ? (a.comparisonPriceCents ?? Number.MAX_SAFE_INTEGER) -
             (b.comparisonPriceCents ?? Number.MAX_SAFE_INTEGER)
-          : sortKey === "seller"
+          : sortKey === 'seller'
             ? a.seller.localeCompare(b.seller)
             : a.title.localeCompare(b.title);
       return ascending ? delta : -delta;
@@ -257,15 +248,10 @@ function ResultsTable({
   }, [results, sortKey, ascending]);
 
   const header = (key: SortKey, label: string, numeric = false) => (
-    <th
-      scope="col"
-      aria-sort={
-        sortKey === key ? (ascending ? "ascending" : "descending") : "none"
-      }
-    >
+    <th scope="col" aria-sort={sortKey === key ? (ascending ? 'ascending' : 'descending') : 'none'}>
       <button
         type="button"
-        className={`th-sort${numeric ? " th-num" : ""}`}
+        className={`th-sort${numeric ? ' th-num' : ''}`}
         onClick={() => {
           if (sortKey === key) setAscending(!ascending);
           else {
@@ -276,31 +262,27 @@ function ResultsTable({
       >
         {label}
         <span aria-hidden="true" className="sort-arrow">
-          {sortKey === key ? (ascending ? "▴" : "▾") : ""}
+          {sortKey === key ? (ascending ? '▴' : '▾') : ''}
         </span>
       </button>
     </th>
   );
 
   return (
-    <div
-      className="table-scroll"
-      role="region"
-      aria-label="Live search results"
-      tabIndex={0}
-    >
+    <div className="table-scroll" role="region" aria-label={resultsLabel} tabIndex={0}>
       <table className="data-table">
         <thead>
           <tr>
-            {header("title", "Product")}
-            {header("price", "Observed total (AUD)", true)}
+            {header('title', 'Product')}
+            {header('price', 'Observed total (AUD)', true)}
             <th scope="col">Item and shipping</th>
             <th scope="col">Comparison basis</th>
             <th scope="col">GST</th>
             <th scope="col">Unit / pack</th>
-            {header("seller", "Seller")}
+            {header('seller', 'Seller')}
             <th scope="col">Retrieved (Melbourne time)</th>
             <th scope="col">Link</th>
+            {onReview && <th scope="col">Review</th>}
             <th scope="col">Attach</th>
           </tr>
         </thead>
@@ -313,64 +295,59 @@ function ResultsTable({
               <td data-label="Observed total (AUD)" className="num">
                 {result.comparisonPriceAud
                   ? formatAmount(result.comparisonPriceAud)
-                  : "not comparable"}
+                  : 'not comparable'}
               </td>
               <td data-label="Item and shipping">
                 Item {formatAmount(result.itemPriceAud)}
                 <span className="hint-block">
-                  Shipping{" "}
-                  {result.shippingAud === null
-                    ? "unknown"
-                    : formatAmount(result.shippingAud)}
+                  Shipping{' '}
+                  {result.shippingAud === null ? 'unknown' : formatAmount(result.shippingAud)}
                 </span>
                 <span className="hint-block">
-                  Provider total{" "}
+                  Provider total{' '}
                   {result.totalPriceAud === null
-                    ? "not supplied"
+                    ? 'not supplied'
                     : formatAmount(result.totalPriceAud)}
                 </span>
               </td>
               <td data-label="Comparison basis">
-                <span
-                  className={`pill ${result.comparisonEligible ? "pill-ok" : "pill-warn"}`}
-                >
-                  {result.comparisonEligible ? "comparable" : "excluded"}
+                <span className={`pill ${result.comparisonEligible ? 'pill-ok' : 'pill-warn'}`}>
+                  {result.comparisonEligible ? 'comparable' : 'excluded'}
                 </span>
-                <span className="hint-block">
-                  {result.priceBasis.replaceAll("_", " ")}
-                </span>
+                <span className="hint-block">{result.priceBasis.replaceAll('_', ' ')}</span>
                 {!result.comparisonEligible && (
                   <span className="hint-block">
-                    {result.exclusionReasons.join(", ") || "basis unknown"}
+                    {result.exclusionReasons.join(', ') || 'basis unknown'}
                   </span>
                 )}
               </td>
               <td data-label="GST">
-                <span
-                  className={`pill ${result.gstBasis === "unknown" ? "pill-warn" : "pill-ok"}`}
-                >
+                <span className={`pill ${result.gstBasis === 'unknown' ? 'pill-warn' : 'pill-ok'}`}>
                   {GST_LABELS[result.gstBasis]}
                 </span>
               </td>
-              <td data-label="Unit / pack">
-                {result.packSize ?? "not stated"}
-              </td>
+              <td data-label="Unit / pack">{result.packSize ?? 'not stated'}</td>
               <td data-label="Seller">
                 {result.seller}
                 <span className="hint-block">{result.sourceDomain}</span>
               </td>
-              <td data-label="Retrieved">
-                {retrievedLabel(result.retrievedAt)}
-              </td>
+              <td data-label="Retrieved">{retrievedLabel(result.retrievedAt)}</td>
               <td data-label="Link">
                 <button
                   type="button"
                   className="btn btn-sm"
                   onClick={() => onOpenSource(result.url)}
                 >
-                  Open source page
+                  {sourceActionLabel}
                 </button>
               </td>
+              {onReview && (
+                <td data-label="Review">
+                  <button type="button" className="btn btn-sm" onClick={() => onReview(result)}>
+                    Review result
+                  </button>
+                </td>
+              )}
               <td data-label="Attach">
                 <button
                   type="button"
@@ -402,20 +379,13 @@ function ProductCandidates({
 }) {
   return (
     <section className="card" aria-labelledby="product-candidates-title">
-      <h2 id="product-candidates-title">
-        Select the exact product before comparing stores
-      </h2>
+      <h2 id="product-candidates-title">Select the exact product before comparing stores</h2>
       <p className="hint">
-        These are Google Shopping product candidates, not competitor offers.
-        Check the model, variant and pack, then choose one product to retrieve
-        its direct merchant offers through SerpAPI Immersive Product.
+        These are Google Shopping product candidates, not competitor offers. Check the model,
+        variant and pack, then choose one product to retrieve its direct merchant offers through
+        SerpAPI Immersive Product.
       </p>
-      <div
-        className="table-scroll"
-        role="region"
-        aria-label="Product candidates"
-        tabIndex={0}
-      >
+      <div className="table-scroll" role="region" aria-label="Product candidates" tabIndex={0}>
         <table className="data-table">
           <thead>
             <tr>
@@ -431,22 +401,18 @@ function ProductCandidates({
                 <td data-label="Candidate">
                   <strong>{candidate.title}</strong>
                   <span className="hint-block">
-                    {[candidate.brand, candidate.productId]
-                      .filter(Boolean)
-                      .join(" | ") || "Brand and product ID not supplied"}
+                    {[candidate.brand, candidate.productId].filter(Boolean).join(' | ') ||
+                      'Brand and product ID not supplied'}
                   </span>
                   <span className="hint-block">
-                    {candidate.packSize ?? "Pack not stated"} | condition{" "}
-                    {candidate.condition}
+                    {candidate.packSize ?? 'Pack not stated'} | condition {candidate.condition}
                   </span>
                 </td>
-                <td data-label="Discovery price">
-                  {candidate.displayedPrice ?? "not supplied"}
-                </td>
+                <td data-label="Discovery price">{candidate.displayedPrice ?? 'not supplied'}</td>
                 <td data-label="Evidence">
                   {candidate.multipleSources
-                    ? "Multiple stores indicated"
-                    : "Store count not established"}
+                    ? 'Multiple stores indicated'
+                    : 'Store count not established'}
                   <button
                     type="button"
                     className="btn btn-sm"
@@ -459,7 +425,7 @@ function ProductCandidates({
                   <button
                     type="button"
                     className="btn btn-primary btn-sm"
-                    disabled={loading || candidate.condition === "used"}
+                    disabled={loading || candidate.condition === 'used'}
                     onClick={() => onCompare(candidate)}
                   >
                     Compare this exact product
@@ -485,101 +451,96 @@ export function CompetitorsPage() {
   const state = useAppState();
   const dispatch = useAppDispatch();
   const actions = useActions();
-  const [query, setQuery] = useState("");
-  const [submitted, setSubmitted] = useState("");
+  const [query, setQuery] = useState('');
+  const [submitted, setSubmitted] = useState('');
+  const [testScenario, setTestScenario] = useState<BrowserTestSearchScenario>('results');
+  const [selectedResult, setSelectedResult] = useState<LiveSearchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [outcome, setOutcome] = useState<LiveSearchOutcome | null>(null);
   // 'checking' means the platform probe is in flight; null means it was unavailable.
-  const [health, setHealth] = useState<LiveHealth | null | "checking">(
-    "checking",
-  );
-  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(
-    null,
-  );
-  const [catalogueItems, setCatalogueItems] = useState<CatalogueItem[] | null>(
-    null,
-  );
+  const [health, setHealth] = useState<LiveHealth | null | 'checking'>('checking');
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
+  const [catalogueItems, setCatalogueItems] = useState<CatalogueItem[] | null>(null);
   const credentialInput = useRef<HTMLInputElement>(null);
-  const [attachTarget, setAttachTarget] = useState("");
+  const [attachTarget, setAttachTarget] = useState('');
   const requestSeq = useRef(0);
+  const staticBrowserTestMode = !platform.capabilities.liveSearch;
+  const serverFixtureMode = health !== 'checking' && health !== null && health.fixtureMode;
+  const fixturePresentation = staticBrowserTestMode || serverFixtureMode;
+  const providerModeChecking = !staticBrowserTestMode && health === 'checking';
   const liveSearchAvailable =
     platform.capabilities.liveSearch &&
-    health !== "checking" &&
+    health !== 'checking' &&
     health !== null &&
     health.fixtureMode === false;
   const liveSearchSourceEnabled = state.competitorSources.some(
     (source) =>
-      source.id === "live-provider" &&
-      source.accessMethod === "live-api" &&
-      source.enabled,
+      source.id === 'live-provider' && source.accessMethod === 'live-api' && source.enabled,
   );
   const desktopBudgetExhausted =
-    platform.kind === "desktop" &&
+    platform.kind === 'desktop' &&
     providerStatus?.paidCallsEnabled === true &&
     providerStatus.costPerCallCents > 0 &&
-    providerStatus.spentCents >
-      providerStatus.costCeilingCents - providerStatus.costPerCallCents;
+    providerStatus.spentCents > providerStatus.costCeilingCents - providerStatus.costPerCallCents;
   const paidCallsReady =
-    platform.kind === "web"
-      ? health !== "checking" &&
+    platform.kind === 'web'
+      ? health !== 'checking' &&
         health !== null &&
         (health.requiresPaidCall === false || health.paidCallsEnabled === true)
       : providerStatus?.paidCallsEnabled === true && !desktopBudgetExhausted;
   const liveSearchReady =
-    liveSearchAvailable &&
-    liveSearchSourceEnabled &&
-    health.liveSearchConfigured &&
-    paidCallsReady;
+    liveSearchAvailable && liveSearchSourceEnabled && health.liveSearchConfigured && paidCallsReady;
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      platform.health(),
-      platform.search.status(),
-      platform.catalogue.list(),
-    ]).then(([healthResult, status, catalogue]) => {
-      if (!cancelled) {
-        setHealth(healthResult.ok ? healthResult.value : null);
-        setProviderStatus(status.ok ? status.value : null);
-        setCatalogueItems(catalogue.ok ? catalogue.value : null);
-      }
-    });
+    void Promise.all([platform.health(), platform.search.status(), platform.catalogue.list()]).then(
+      ([healthResult, status, catalogue]) => {
+        if (!cancelled) {
+          setHealth(healthResult.ok ? healthResult.value : null);
+          setProviderStatus(status.ok ? status.value : null);
+          setCatalogueItems(catalogue.ok ? catalogue.value : null);
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
   }, [platform]);
 
   const runSearch = async (candidateToken?: string) => {
-    if (!liveSearchReady) {
+    if (!staticBrowserTestMode && !serverFixtureMode && !liveSearchReady) {
       actions.announce(
         liveSearchSourceEnabled
-          ? "Live search is not ready. Check the credential and approved budget."
-          : "The licensed live API source is disabled in the Source registry.",
+          ? 'Live search is not ready. Check the credential and approved budget.'
+          : 'The licensed live API source is disabled in the Source registry.',
       );
       return;
     }
     const q = candidateToken ? submitted : query.trim();
-    if (q === "") return;
+    if (q === '' || providerModeChecking) return;
     const seq = ++requestSeq.current;
     if (!candidateToken) setSubmitted(q);
     setLoading(true);
-    const result = await platform.search.query(q, candidateToken);
+    const result = staticBrowserTestMode
+      ? await new Promise<LiveSearchOutcome>((resolve) => {
+          window.setTimeout(() => resolve(createBrowserTestSearchOutcome(q, testScenario)), 300);
+        })
+      : await platform.search.query(q, candidateToken);
     if (seq !== requestSeq.current) return;
     setOutcome(result);
+    setSelectedResult(null);
     setLoading(false);
     actions.announce(
-      result.state === "selection_required"
+      result.state === 'selection_required'
         ? `${result.candidates.length} product candidates require exact selection for ${q}.`
-        : result.state === "ok"
-          ? `${result.results.length} observed merchant offers for ${q}.`
-          : `Live search state: ${result.state.replace(/_/g, " ")}.`,
+        : result.state === 'ok'
+          ? `${result.results.length} ${fixturePresentation ? 'fixture' : 'live'} results for ${q}.`
+          : `${fixturePresentation ? 'Fixture' : 'Live'} search state: ${result.state.replace(/_/g, ' ')}.`,
     );
   };
 
   const attachItem = catalogueItems?.find(
-    (item) =>
-      item.id === attachTarget.trim() ||
-      item.itemNumber === attachTarget.trim(),
+    (item) => item.id === attachTarget.trim() || item.itemNumber === attachTarget.trim(),
   );
   const attachRow = (state.comparison?.rows ?? []).find(
     (row) =>
@@ -597,15 +558,15 @@ export function CompetitorsPage() {
       approvedSource: false,
       observedAt: result.retrievedAt,
       price: result.itemPriceAud,
-      currency: "AUD",
+      currency: 'AUD',
       gstBasis: result.gstBasis,
-      shipping: result.shippingAud ?? "",
+      shipping: result.shippingAud ?? '',
       stockStatus: result.availability,
       condition: result.condition,
       packCompatible: false,
       productOnly: false,
       matchConfidence: 0,
-      reviewState: "quarantined",
+      reviewState: 'quarantined',
       ambiguousMatch: true,
       url: result.url,
       ...(result.packSize ? { packSize: result.packSize } : {}),
@@ -619,14 +580,12 @@ export function CompetitorsPage() {
 
   const updateCredential = async (replace: boolean) => {
     const input = credentialInput.current;
-    const secret = input?.value ?? "";
+    const secret = input?.value ?? '';
     if (secret.length < 8 || secret.length > 1024) {
-      actions.announce(
-        "Enter a provider credential between 8 and 1024 characters.",
-      );
+      actions.announce('Enter a provider credential between 8 and 1024 characters.');
       return;
     }
-    if (input) input.value = "";
+    if (input) input.value = '';
     const result = replace
       ? await platform.search.replaceCredential(secret)
       : await platform.search.configureCredential(secret);
@@ -634,9 +593,7 @@ export function CompetitorsPage() {
       setProviderStatus(result.value);
     }
     actions.announce(
-      result.ok
-        ? "Provider credential stored in Windows protected storage."
-        : result.error.message,
+      result.ok ? 'Provider credential stored in Windows protected storage.' : result.error.message,
     );
   };
 
@@ -644,9 +601,7 @@ export function CompetitorsPage() {
     const result = await platform.search.validateCredential();
     if (result.ok) setProviderStatus(result.value);
     actions.announce(
-      result.ok
-        ? "Provider credential validation completed."
-        : result.error.message,
+      result.ok ? 'Provider credential validation completed.' : result.error.message,
     );
   };
 
@@ -655,9 +610,7 @@ export function CompetitorsPage() {
     if (result.ok) {
       setProviderStatus(result.value);
     }
-    actions.announce(
-      result.ok ? "Provider credential removed." : result.error.message,
-    );
+    actions.announce(result.ok ? 'Provider credential removed.' : result.error.message);
   };
 
   const setPaidCallsEnabled = async (
@@ -673,7 +626,7 @@ export function CompetitorsPage() {
     if (result.ok) setProviderStatus(result.value);
     actions.announce(
       result.ok
-        ? `Paid provider calls ${result.value.paidCallsEnabled ? "enabled" : "disabled"}.`
+        ? `Paid provider calls ${result.value.paidCallsEnabled ? 'enabled' : 'disabled'}.`
         : result.error.message,
     );
   };
@@ -685,15 +638,13 @@ export function CompetitorsPage() {
 
   // Stored non-live local evidence still searches inline.
   const manualSources = state.competitorSources.filter(
-    (s) => s.enabled && s.accessMethod !== "live-api",
+    (s) => s.enabled && s.accessMethod !== 'live-api',
   );
   const storedOutcome = useMemo(
     () =>
       searchEvidence(
         state.competitorEvidence,
-        state.competitorSources.filter(
-          (source) => source.accessMethod !== "live-api",
-        ),
+        state.competitorSources.filter((source) => source.accessMethod !== 'live-api'),
         submitted,
       ),
     [state.competitorEvidence, state.competitorSources, submitted],
@@ -701,41 +652,35 @@ export function CompetitorsPage() {
   const storedBand = priceBand(storedOutcome.results);
 
   const [entry, setEntry] = useState({
-    sku: "",
-    price: "",
-    shipping: "",
-    gstBasis: "inc-gst" as CompetitorObservation["gstBasis"],
-    stockStatus: "unknown" as CompetitorObservation["stockStatus"],
-    condition: "unknown" as CompetitorObservation["condition"],
-    sourceId: "manual",
-    url: "",
-    packSize: "each",
+    sku: '',
+    price: '',
+    shipping: '',
+    gstBasis: 'inc-gst' as CompetitorObservation['gstBasis'],
+    stockStatus: 'unknown' as CompetitorObservation['stockStatus'],
+    condition: 'unknown' as CompetitorObservation['condition'],
+    sourceId: 'manual',
+    url: '',
+    packSize: 'each',
   });
   const entryPrice = parseMoney(entry.price);
   const entryShipping = parseMoney(entry.shipping);
-  const selectedManualSource = manualSources.find(
-    (candidate) => candidate.id === entry.sourceId,
-  );
+  const selectedManualSource = manualSources.find((candidate) => candidate.id === entry.sourceId);
   const entryUrlValid = (() => {
-    if (entry.url.trim() === "") return false;
+    if (entry.url.trim() === '') return false;
     try {
       const parsed = new URL(entry.url.trim());
-      return (
-        parsed.protocol === "https:" &&
-        parsed.username === "" &&
-        parsed.password === ""
-      );
+      return parsed.protocol === 'https:' && parsed.username === '' && parsed.password === '';
     } catch {
       return false;
     }
   })();
   const entryValid =
-    entry.sku.trim() !== "" &&
+    entry.sku.trim() !== '' &&
     entryPrice.ok &&
     entryShipping.ok &&
     selectedManualSource !== undefined &&
     entryUrlValid &&
-    entry.packSize.trim() !== "";
+    entry.packSize.trim() !== '';
 
   const storeManualObservation = async () => {
     if (!entryPrice.ok || !entryShipping.ok || !entryUrlValid) return;
@@ -749,7 +694,7 @@ export function CompetitorsPage() {
       approvedSource: false,
       observedAt,
       price: entryPrice.amount,
-      currency: "AUD",
+      currency: 'AUD',
       gstBasis: entry.gstBasis,
       shipping: entryShipping.amount,
       stockStatus: entry.stockStatus,
@@ -757,13 +702,13 @@ export function CompetitorsPage() {
       packCompatible: false,
       productOnly: false,
       matchConfidence: 0,
-      reviewState: "quarantined",
+      reviewState: 'quarantined',
       ambiguousMatch: true,
       url: entry.url.trim(),
       packSize: entry.packSize.trim(),
     };
 
-    dispatch({ type: "evidence-added", observations: [observation] });
+    dispatch({ type: 'evidence-added', observations: [observation] });
     setSubmitted(itemIdentifier);
 
     if (catalogueItems === null) {
@@ -773,9 +718,7 @@ export function CompetitorsPage() {
       return;
     }
     const item = catalogueItems.find(
-      (candidate) =>
-        candidate.id === itemIdentifier ||
-        candidate.itemNumber === itemIdentifier,
+      (candidate) => candidate.id === itemIdentifier || candidate.itemNumber === itemIdentifier,
     );
     if (!item) {
       actions.announce(
@@ -784,9 +727,7 @@ export function CompetitorsPage() {
       return;
     }
     const comparisonRow = (state.comparison?.rows ?? []).find(
-      (row) =>
-        row.s8?.itemNumber === item.itemNumber ||
-        row.supplier?.code === item.itemNumber,
+      (row) => row.s8?.itemNumber === item.itemNumber || row.supplier?.code === item.itemNumber,
     );
     await actions.attachReference(item.id, observation, {
       rowId: comparisonRow?.id ?? item.id,
@@ -796,26 +737,35 @@ export function CompetitorsPage() {
   };
 
   const failureCopy =
-    outcome && stateCopy(outcome.state, platform.kind, liveSearchAvailable);
+    outcome &&
+    stateCopy(
+      outcome.state,
+      platform.kind,
+      platform.capabilities.liveSearch || staticBrowserTestMode,
+    );
 
   return (
     <Page
       title="Competitor search"
       primary={
-        liveSearchReady ? (
+        platform.capabilities.liveSearch || staticBrowserTestMode ? (
           <button
             type="button"
             className="btn btn-primary"
-            disabled={query.trim() === "" || loading}
+            disabled={query.trim() === '' || loading || providerModeChecking}
             onClick={() => void runSearch()}
           >
-            Search live prices
+            {providerModeChecking
+              ? 'Checking search availability'
+              : fixturePresentation
+                ? 'Run fixture search'
+                : 'Search live prices'}
           </button>
         ) : undefined
       }
     >
       <section className="card">
-        {liveSearchReady ? (
+        {platform.capabilities.liveSearch || staticBrowserTestMode ? (
           <form
             className="searchbar"
             onSubmit={(event) => {
@@ -833,42 +783,67 @@ export function CompetitorsPage() {
                 placeholder="e.g. Lockwood 4570, LW4570 or 9312345678907"
               />
             </label>
+            {staticBrowserTestMode && (
+              <label>
+                Test outcome
+                <select
+                  value={testScenario}
+                  onChange={(event) =>
+                    setTestScenario(event.target.value as BrowserTestSearchScenario)
+                  }
+                >
+                  <option value="results">Results</option>
+                  <option value="empty">No results</option>
+                  <option value="timeout">Timeout</option>
+                  <option value="provider_error">Provider error</option>
+                </select>
+              </label>
+            )}
           </form>
         ) : (
           <p>
             {!liveSearchSourceEnabled
-              ? "The licensed live API source is disabled in Source registry. Enable it before searching."
-              : "Live provider search is unavailable. Use the manual evidence form below with an operator-verified HTTPS source."}
+              ? 'The licensed live API source is disabled in Source registry. Enable it before searching.'
+              : 'Live provider search is unavailable. Use the manual evidence form below with an operator-verified HTTPS source.'}
           </p>
         )}
+        {staticBrowserTestMode && (
+          <div className="callout" role="note">
+            <strong>Fictional browser test search.</strong> Results use reserved example domains and
+            deterministic AUD prices. No internet search, provider request, credential or charge is
+            used.
+          </div>
+        )}
         <p className="hint" role="status">
-          {health === "checking"
-            ? "Checking live search availability…"
-            : !liveSearchSourceEnabled
-              ? "Licensed live API retrieval is disabled in Source registry. No provider request can start."
-              : health === null
-                ? platform.kind === "desktop"
-                  ? "Native search is unavailable or offline. Manual entry works now."
-                  : platform.capabilities.liveSearch
-                    ? "The optional web search service is unavailable. Manual entry works now."
-                    : "Static Pages has no live provider service. Manual entry works now."
-                : health.fixtureMode
-                  ? "Live search is disabled because the configured service is not a live provider."
-                  : !health.liveSearchConfigured
-                    ? "Live search is not configured. Manual entry works now."
-                    : !paidCallsReady
-                      ? desktopBudgetExhausted ||
-                        health.paidPolicyState === "exhausted" ||
-                        providerStatus?.state === "quota_exhausted"
-                        ? "Live search budget is exhausted. No provider request can start until the approved budget period or ceiling changes."
-                        : "Live search paid calls are disabled. Configure and validate the protected credential, then enable an explicit budget."
-                      : health.liveSearchConfigured
-                        ? platform.kind === "desktop"
-                          ? "Live search ready: native provider, Australian region, AUD and rate limited."
-                          : health.requiresPaidCall === false
-                            ? "Live search ready: own-origin zero-cost provider, Australian marketplace, AUD, rate limited and cache controlled."
-                            : "Live search ready: own-origin service, configured Australian location, AUD, rate limited and cache controlled."
-                        : "Live search is not configured. Manual entry works now."}
+          {staticBrowserTestMode
+            ? 'Test mode is active in Static Pages. Choose a state and run the search to test the complete review flow.'
+            : health === 'checking'
+              ? 'Checking live search availability…'
+              : !liveSearchSourceEnabled
+                ? 'Licensed live API retrieval is disabled in Source registry. No provider request can start.'
+                : health === null
+                  ? platform.kind === 'desktop'
+                    ? 'Native search is unavailable or offline. Manual entry works now.'
+                    : platform.capabilities.liveSearch
+                      ? 'The optional web search service is unavailable. Manual entry works now.'
+                      : 'Static Pages has no live provider service. Manual entry works now.'
+                  : health.fixtureMode
+                    ? 'Fixture provider active: deterministic offline results for testing and demos.'
+                    : !health.liveSearchConfigured
+                      ? 'Live search is not configured. Manual entry works now.'
+                      : !paidCallsReady
+                        ? desktopBudgetExhausted ||
+                          health.paidPolicyState === 'exhausted' ||
+                          providerStatus?.state === 'quota_exhausted'
+                          ? 'Live search budget is exhausted. No provider request can start until the approved budget period or ceiling changes.'
+                          : 'Live search paid calls are disabled. Configure and validate the protected credential, then enable an explicit budget.'
+                        : health.liveSearchConfigured
+                          ? platform.kind === 'desktop'
+                            ? 'Live search ready: native provider, Australian region, AUD and rate limited.'
+                            : health.requiresPaidCall === false
+                              ? 'Live search ready: same-origin provider, zero-cost Australian marketplace, AUD, rate limited and cache controlled.'
+                              : 'Live search ready: same-origin provider, configured Australian location, AUD, rate limited and cache controlled.'
+                          : 'Live search is not configured. Manual entry works now.'}
         </p>
       </section>
 
@@ -876,14 +851,14 @@ export function CompetitorsPage() {
         <section className="card" aria-labelledby="provider-credential-title">
           <h2 id="provider-credential-title">Optional provider credential</h2>
           <p className="hint">
-            State: {providerStatus?.state ?? "checking"}. Paid calls remain{" "}
+            State: {providerStatus?.state ?? 'checking'}. Paid calls remain{' '}
             {providerStatus?.paidCallsEnabled
-              ? "enabled within the configured ceiling"
-              : "disabled"}
+              ? 'enabled within the configured ceiling'
+              : 'disabled'}
             .
             {providerStatus?.credentialHint
               ? ` Stored hint: ${providerStatus.credentialHint}.`
-              : ""}
+              : ''}
           </p>
           <label>
             New provider credential
@@ -899,21 +874,11 @@ export function CompetitorsPage() {
             <button
               type="button"
               className="btn"
-              onClick={() =>
-                void updateCredential(
-                  providerStatus?.credentialConfigured === true,
-                )
-              }
+              onClick={() => void updateCredential(providerStatus?.credentialConfigured === true)}
             >
-              {providerStatus?.credentialConfigured
-                ? "Replace credential"
-                : "Configure credential"}
+              {providerStatus?.credentialConfigured ? 'Replace credential' : 'Configure credential'}
             </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void validateCredential()}
-            >
+            <button type="button" className="btn" onClick={() => void validateCredential()}>
               Validate stored credential
             </button>
             <button
@@ -928,39 +893,30 @@ export function CompetitorsPage() {
           <ProviderPaidCallsControl
             status={providerStatus}
             onToggle={(enabled, costCeilingCents, costPerCallCents) =>
-              void setPaidCallsEnabled(
-                enabled,
-                costCeilingCents,
-                costPerCallCents,
-              )
+              void setPaidCallsEnabled(enabled, costCeilingCents, costPerCallCents)
             }
           />
           <p className="hint">
-            The complete stored value is never displayed or retained in React
-            state, SQLite, exports or logs.
+            The complete stored value is never displayed or retained in React state, SQLite, exports
+            or logs.
           </p>
         </section>
       )}
 
-      {loading && liveSearchReady && (
-        <section
-          className="card state-loading"
-          role="status"
-          aria-live="polite"
-        >
+      {loading && (platform.capabilities.liveSearch || staticBrowserTestMode) && (
+        <section className="card state-loading" role="status" aria-live="polite">
           <span className="spinner" aria-hidden="true" />
           <div>
             <h2>
-              Searching live sources for &ldquo;{submitted}&rdquo;&hellip;
+              {fixturePresentation ? 'Preparing fixture results' : 'Searching live sources'} for
+              &ldquo;{submitted}&rdquo;&hellip;
             </h2>
             <p className="hint">
-              {platform.kind === "desktop"
-                ? "The native service"
-                : "The web search service"}{" "}
-              is resolving the request.
-              {platform.kind === "web" && health.requiresPaidCall === false
-                ? " The selected official API returns direct marketplace offers; incomplete delivered totals remain visibly excluded."
-                : " Product discovery and merchant-offer retrieval remain separate so a Shopping product tile is never mislabelled as a competitor offer."}
+              {fixturePresentation
+                ? serverFixtureMode
+                  ? 'The same-origin fixture service is preparing deterministic offline results. No live provider request or charge is made.'
+                  : 'The browser fixture is preparing a deterministic state. No network request is made.'
+                : `${platform.kind === 'desktop' ? 'The native service' : 'The web demonstration server'} is querying the provider now. Results include seller, GST treatment and a retrieval timestamp.`}
             </p>
           </div>
         </section>
@@ -969,38 +925,39 @@ export function CompetitorsPage() {
       {!loading && outcome === null && (
         <EmptyState
           title={
-            liveSearchReady
-              ? "Type a product and search live provider evidence"
-              : !liveSearchSourceEnabled
-                ? "Live API source is disabled"
-                : "Manual competitor evidence remains available"
+            fixturePresentation
+              ? 'Enter any product to test competitor search'
+              : liveSearchReady
+                ? 'Type a product and search live provider evidence'
+                : !liveSearchSourceEnabled
+                  ? 'Live API source is disabled'
+                  : 'Manual competitor evidence remains available'
           }
           detail={
-            liveSearchReady
-              ? platform.kind === "web" && health.requiresPaidCall === false
-                ? "Search by part number, barcode or description. The configured official API returns direct offers, and the application compares only offers with a supported delivered-price basis. GST remains unverified unless evidence establishes it."
-                : "Search by part number, barcode or description. First select the exact product candidate; the application then retrieves direct merchant offers and compares only offers with a supported total-price basis. GST remains unverified unless evidence establishes it."
-              : !liveSearchSourceEnabled
-                ? "Enable the licensed live API source in Source registry before searching. No provider request is made while it is disabled."
-                : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
+            fixturePresentation
+              ? staticBrowserTestMode
+                ? 'Choose the outcome to exercise results, no-results, timeout and provider-error states. Every listing is fictional and reserved for UI testing.'
+                : 'Run the deterministic same-origin fixture to exercise the production-shaped review flow. Every listing is fictional and reserved for testing.'
+              : liveSearchReady
+                ? platform.kind === 'web' && health.requiresPaidCall === false
+                  ? 'Search by part number, barcode or description. The configured official API returns direct offers, and the application compares only offers with a supported delivered-price basis. GST remains unverified unless evidence establishes it.'
+                  : 'Search by part number, barcode or description. First select the exact product candidate; the application then retrieves direct merchant offers and compares only offers with a supported total-price basis. GST remains unverified unless evidence establishes it.'
+                : !liveSearchSourceEnabled
+                  ? 'Enable the licensed live API source in Source registry before searching. No provider request is made while it is disabled.'
+                  : 'Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used.'
           }
         />
       )}
 
       {!loading && outcome !== null && failureCopy && (
-        <section
-          className={`card state-banner state-${failureCopy.tone}`}
-          role="alert"
-        >
+        <section className={`card state-banner state-${failureCopy.tone}`} role="alert">
           <h2>{failureCopy.title}</h2>
           <p>{failureCopy.detail}</p>
-          {outcome.detail && (
-            <p className="hint">Search detail: {outcome.detail}</p>
-          )}
+          {outcome.detail && <p className="hint">Search detail: {outcome.detail}</p>}
         </section>
       )}
 
-      {!loading && outcome?.state === "selection_required" && (
+      {!loading && outcome?.state === 'selection_required' && (
         <ProductCandidates
           candidates={outcome.candidates}
           loading={loading || !liveSearchReady}
@@ -1009,16 +966,26 @@ export function CompetitorsPage() {
         />
       )}
 
-      {!loading && outcome?.state === "empty" && (
+      {!loading && outcome?.state === 'empty' && (
         <EmptyState
-          title={`No usable product candidates found for “${submitted}”`}
-          detail="The provider returned no supported product candidates in the observed Shopping sections. This is not a claim that no competitor sells the product. Try an exact part number, brand and model, or record verified evidence manually below."
+          title={
+            fixturePresentation
+              ? `No fixture prices found for “${submitted}”`
+              : `No usable product candidates found for “${submitted}”`
+          }
+          detail={
+            fixturePresentation
+              ? staticBrowserTestMode
+                ? 'The fictional provider returned a deliberate empty state. Change Test outcome to Results to continue the review flow.'
+                : 'The deterministic fixture returned a deliberate empty state. This is test evidence, not a live-market zero.'
+              : 'The provider returned no supported product candidates in the observed Shopping sections. This is not a claim that no competitor sells the product. Try an exact part number, brand and model, or record verified evidence manually below.'
+          }
         />
       )}
 
       {!loading &&
         outcome?.selectedProduct &&
-        ["ok", "no_comparable_offers"].includes(outcome.state) && (
+        ['ok', 'no_comparable_offers'].includes(outcome.state) && (
           <section className="card" aria-labelledby="selected-product-title">
             <h2 id="selected-product-title">Selected exact product</h2>
             <dl className="kv">
@@ -1027,29 +994,29 @@ export function CompetitorsPage() {
               <dt>Product</dt>
               <dd>{outcome.selectedProduct.title}</dd>
               <dt>Brand</dt>
-              <dd>{outcome.selectedProduct.brand ?? "not supplied"}</dd>
+              <dd>{outcome.selectedProduct.brand ?? 'not supplied'}</dd>
               <dt>Provider product ID</dt>
-              <dd>{outcome.selectedProduct.productId ?? "not supplied"}</dd>
+              <dd>{outcome.selectedProduct.productId ?? 'not supplied'}</dd>
             </dl>
             <p className="hint">
-              Every merchant row below belongs to this operator-selected product
-              cluster. Discovery prices were not used as merchant offers.
+              Every merchant row below belongs to this operator-selected product cluster. Discovery
+              prices were not used as merchant offers.
             </p>
           </section>
         )}
 
-      {!loading && outcome?.state === "no_comparable_offers" && (
+      {!loading && outcome?.state === 'no_comparable_offers' && (
         <>
           <EmptyState
             title={
               outcome.results.length === 0
-                ? "No merchant-store offers were returned for the selected product"
-                : "Merchant offers were observed, but none had a safe comparison basis"
+                ? 'No merchant-store offers were returned for the selected product'
+                : 'Merchant offers were observed, but none had a safe comparison basis'
             }
             detail={
               outcome.results.length === 0
-                ? "The selected product was valid, but the bounded Immersive Product response contained no supported direct merchant rows. This is not evidence that no merchant sells it."
-                : "The offers remain visible below as evidence. Financing, used condition, unknown shipping or an incomplete provider total can exclude an offer from the delivered-total band."
+                ? 'The selected product was valid, but the bounded Immersive Product response contained no supported direct merchant rows. This is not evidence that no merchant sells it.'
+                : 'The offers remain visible below as evidence. Financing, used condition, unknown shipping or an incomplete provider total can exclude an offer from the delivered-total band.'
             }
           />
           {outcome.results.length > 0 && (
@@ -1063,54 +1030,50 @@ export function CompetitorsPage() {
         </>
       )}
 
-      {!loading && outcome?.state === "ok" && outcome.band && (
+      {!loading && outcome?.state === 'ok' && outcome.band && (
         <>
           <div
             className="metric-row"
             role="group"
-            aria-label="Observed delivered-total band across comparable merchant offers"
+            aria-label={
+              fixturePresentation
+                ? 'Price band across fixture sources'
+                : 'Observed delivered-total band across comparable merchant offers'
+            }
           >
             <div className="metric-card">
               <span className="metric-label">Lowest observed total</span>
-              <strong className="metric-value">
-                {formatAmount(outcome.band.lowest)}
-              </strong>
+              <strong className="metric-value">{formatAmount(outcome.band.lowest)}</strong>
               <span className="metric-state pill pill-ok">
-                comparable basis, GST unverified
+                {fixturePresentation
+                  ? 'across fixture sources'
+                  : 'comparable basis, GST unverified'}
               </span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Median observed total</span>
-              <strong className="metric-value">
-                {formatAmount(outcome.band.median)}
-              </strong>
+              <strong className="metric-value">{formatAmount(outcome.band.median)}</strong>
               <span className="metric-state">
                 of {outcome.band.pricedResults} comparable offers
               </span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Highest observed total</span>
-              <strong className="metric-value">
-                {formatAmount(outcome.band.highest)}
-              </strong>
+              <strong className="metric-value">{formatAmount(outcome.band.highest)}</strong>
               <span className="metric-state">
-                spread{" "}
-                {formatAmount(
-                  centsToAud(
-                    outcome.band.highestCents - outcome.band.lowestCents,
-                  ),
-                )}
+                spread{' '}
+                {formatAmount(centsToAud(outcome.band.highestCents - outcome.band.lowestCents))}
               </span>
             </div>
             <div className="metric-card">
               <span className="metric-label">Merchant sources</span>
-              <strong className="metric-value">
-                {outcome.coverage?.sourcesWithPrice ?? 0}
-              </strong>
+              <strong className="metric-value">{outcome.coverage?.sourcesWithPrice ?? 0}</strong>
               <span className="metric-state">
                 {outcome.cached
-                  ? "served from application cache"
-                  : "provider cache status not asserted"}
+                  ? 'served from application cache'
+                  : fixturePresentation
+                    ? 'deterministic fixture retrieval'
+                    : 'provider cache status not asserted'}
               </span>
             </div>
           </div>
@@ -1119,8 +1082,53 @@ export function CompetitorsPage() {
             results={outcome.results}
             attachEnabled={attachEnabled}
             onAttach={attach}
-            onOpenSource={(url) => void openSource(url)}
+            resultsLabel={fixturePresentation ? 'Fixture search results' : 'Live search results'}
+            sourceActionLabel={fixturePresentation ? 'Inspect fixture source' : 'Open source page'}
+            onReview={setSelectedResult}
+            onOpenSource={(url) => {
+              if (fixturePresentation) {
+                actions.announce(`Fictional source ${new URL(url).hostname}. No page was opened.`);
+              } else {
+                void openSource(url);
+              }
+            }}
           />
+
+          {selectedResult && (
+            <section className="card" aria-labelledby="search-review-title">
+              <h2 id="search-review-title">Review selected result</h2>
+              <dl className="kv">
+                <dt>Product</dt>
+                <dd>{selectedResult.title}</dd>
+                <dt>Seller</dt>
+                <dd>{selectedResult.seller}</dd>
+                <dt>Price</dt>
+                <dd>{formatAmount(selectedResult.priceAud)} AUD</dd>
+                <dt>Shipping</dt>
+                <dd>
+                  {fixturePresentation
+                    ? 'Included in this fictional test price'
+                    : 'Check the provider source listing'}
+                </dd>
+                <dt>Source</dt>
+                <dd>{selectedResult.url}</dd>
+              </dl>
+              {fixturePresentation && (
+                <p className="hint">
+                  Fictional test evidence remains quarantined and can only be attached to an exact
+                  approved catalogue item.
+                </p>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!attachEnabled}
+                onClick={() => attach(selectedResult)}
+              >
+                Attach selected result as reference
+              </button>
+            </section>
+          )}
 
           <section className="card">
             <h2>Coverage</h2>
@@ -1128,33 +1136,26 @@ export function CompetitorsPage() {
               <dt>Provider queried</dt>
               <dd>
                 {outcome.provider} ({outcome.queryKind} query
-                {outcome.cached ? ", cached response" : ""})
+                {outcome.cached ? ', cached response' : ''})
               </dd>
               <dt>Merchant domains with an observed price</dt>
-              <dd>{outcome.coverage?.sourceDomains.join(", ") || "none"}</dd>
+              <dd>{outcome.coverage?.sourceDomains.join(', ') || 'none'}</dd>
               <dt>Non-live sources with no stored match</dt>
               <dd>
                 {storedOutcome.sourcesWithoutResults.length > 0
-                  ? `${storedOutcome.sourcesWithoutResults.join(", ")} (stored evidence)`
-                  : "none of the registered evidence sources"}
+                  ? `${storedOutcome.sourcesWithoutResults.join(', ')} (stored evidence)`
+                  : 'none of the registered evidence sources'}
               </dd>
               <dt>Candidates in this response</dt>
               <dd>{outcome.coverage?.providerCandidates ?? 0}</dd>
               <dt>Parsed merchant offers</dt>
-              <dd>
-                {outcome.coverage?.parsedOffers ?? outcome.results.length}
-              </dd>
+              <dd>{outcome.coverage?.parsedOffers ?? outcome.results.length}</dd>
               <dt>Comparable / excluded offers</dt>
               <dd>
-                {outcome.coverage?.comparableOffers ?? 0} /{" "}
-                {outcome.coverage?.excludedOffers ?? 0}
+                {outcome.coverage?.comparableOffers ?? 0} / {outcome.coverage?.excludedOffers ?? 0}
               </dd>
               <dt>Retrieved</dt>
-              <dd>
-                {outcome.retrievedAt
-                  ? retrievedLabel(outcome.retrievedAt)
-                  : "unknown"}
-              </dd>
+              <dd>{outcome.retrievedAt ? retrievedLabel(outcome.retrievedAt) : 'unknown'}</dd>
             </dl>
           </section>
         </>
@@ -1173,24 +1174,24 @@ export function CompetitorsPage() {
           </label>
         </div>
         <p className="hint" role="status">
-          {attachTarget.trim() === ""
+          {attachTarget.trim() === ''
             ? `${state.references.length} reference(s) attached this session. Enter an item to enable Attach.`
             : catalogueItems === null
-              ? "The approved catalogue is unavailable. Attachment is disabled and evidence remains session-only."
+              ? 'The approved catalogue is unavailable. Attachment is disabled and evidence remains session-only.'
               : attachItem
                 ? `Reference attachment available for ${attachTarget.trim()}. Provider facts remain quarantined until explicit review; no cost or sell price changes.`
                 : `No approved catalogue item matches ${attachTarget.trim()}. Attachment is disabled to prevent an orphan reference.`}
         </p>
       </section>
 
-      {submitted !== "" && storedOutcome.results.length > 0 && (
+      {submitted !== '' && storedOutcome.results.length > 0 && (
         <section className="card">
           <h2>Stored local evidence matching &ldquo;{submitted}&rdquo;</h2>
           <p className="hint">
             {storedOutcome.results.length} stored observation(s)
             {storedBand
               ? ` · band ${formatAmount(storedBand.lowest)} to ${formatAmount(storedBand.highest)} ex GST`
-              : ""}
+              : ''}
           </p>
         </section>
       )}
@@ -1211,7 +1212,7 @@ export function CompetitorsPage() {
               value={entry.price}
               onChange={(e) => setEntry({ ...entry, price: e.target.value })}
               inputMode="decimal"
-              aria-invalid={entry.price !== "" && !entryPrice.ok}
+              aria-invalid={entry.price !== '' && !entryPrice.ok}
             />
           </label>
           <label>
@@ -1220,7 +1221,7 @@ export function CompetitorsPage() {
               value={entry.shipping}
               onChange={(e) => setEntry({ ...entry, shipping: e.target.value })}
               inputMode="decimal"
-              aria-invalid={entry.shipping !== "" && !entryShipping.ok}
+              aria-invalid={entry.shipping !== '' && !entryShipping.ok}
               placeholder="Enter 0 only when the source states free shipping"
             />
           </label>
@@ -1231,7 +1232,7 @@ export function CompetitorsPage() {
               onChange={(e) =>
                 setEntry({
                   ...entry,
-                  gstBasis: e.target.value as CompetitorObservation["gstBasis"],
+                  gstBasis: e.target.value as CompetitorObservation['gstBasis'],
                 })
               }
             >
@@ -1259,7 +1260,7 @@ export function CompetitorsPage() {
               type="url"
               value={entry.url}
               onChange={(e) => setEntry({ ...entry, url: e.target.value })}
-              aria-invalid={entry.url !== "" && !entryUrlValid}
+              aria-invalid={entry.url !== '' && !entryUrlValid}
               placeholder="https://…"
               required
             />
@@ -1271,8 +1272,7 @@ export function CompetitorsPage() {
               onChange={(e) =>
                 setEntry({
                   ...entry,
-                  stockStatus: e.target
-                    .value as CompetitorObservation["stockStatus"],
+                  stockStatus: e.target.value as CompetitorObservation['stockStatus'],
                 })
               }
             >
@@ -1288,8 +1288,7 @@ export function CompetitorsPage() {
               onChange={(e) =>
                 setEntry({
                   ...entry,
-                  condition: e.target
-                    .value as CompetitorObservation["condition"],
+                  condition: e.target.value as CompetitorObservation['condition'],
                 })
               }
             >
@@ -1317,11 +1316,10 @@ export function CompetitorsPage() {
           </button>
         </div>
         <p className="hint">
-          A source URL, explicit shipping amount and stated pack are required.
-          Manual observations are always quarantined with product and pack
-          matching unconfirmed; they never become accepted comparison evidence
-          merely because they were typed here. Neither path writes to a cost or
-          sell price, directly or indirectly.
+          A source URL, explicit shipping amount and stated pack are required. Manual observations
+          are always quarantined with product and pack matching unconfirmed; they never become
+          accepted comparison evidence merely because they were typed here. Neither path writes to a
+          cost or sell price, directly or indirectly.
         </p>
       </section>
     </Page>
@@ -1329,9 +1327,9 @@ export function CompetitorsPage() {
 }
 
 const ACCESS_LABELS: Record<string, string> = {
-  "live-api": "Licensed provider API",
-  "manual-entry": "Manual entry",
-  "file-import": "Legacy file-import record (not available)",
+  'live-api': 'Licensed provider API',
+  'manual-entry': 'Manual entry',
+  'file-import': 'Legacy file-import record (not available)',
 };
 
 /** Source registry: every source, how it is accessed, and an enable toggle. */
@@ -1341,12 +1339,7 @@ export function SourcesPage() {
   const platform = usePlatform();
   return (
     <Page title="Source registry">
-      <div
-        className="table-scroll"
-        role="region"
-        aria-label="Registered sources"
-        tabIndex={0}
-      >
+      <div className="table-scroll" role="region" aria-label="Registered sources" tabIndex={0}>
         <table className="data-table">
           <thead>
             <tr>
@@ -1364,16 +1357,10 @@ export function SourcesPage() {
                 <td data-label="Access method">
                   {ACCESS_LABELS[source.accessMethod] ?? source.accessMethod}
                 </td>
-                <td data-label="How access works">
-                  {source.automatedAccessNote}
-                </td>
+                <td data-label="How access works">{source.automatedAccessNote}</td>
                 <td data-label="State">
-                  <span
-                    className={
-                      source.enabled ? "pill pill-ok" : "pill pill-error"
-                    }
-                  >
-                    {source.enabled ? "enabled" : "disabled"}
+                  <span className={source.enabled ? 'pill pill-ok' : 'pill pill-error'}>
+                    {source.enabled ? 'enabled' : 'disabled'}
                   </span>
                 </td>
                 <td data-label="Action">
@@ -1381,17 +1368,15 @@ export function SourcesPage() {
                     type="button"
                     className="btn btn-sm"
                     onClick={() => {
-                      void actions
-                        .toggleCompetitorSource(source.id)
-                        .then((saved) => {
-                          if (saved)
-                            actions.announce(
-                              `${source.name} ${source.enabled ? "disabled" : "enabled"}.`,
-                            );
-                        });
+                      void actions.toggleCompetitorSource(source.id).then((saved) => {
+                        if (saved)
+                          actions.announce(
+                            `${source.name} ${source.enabled ? 'disabled' : 'enabled'}.`,
+                          );
+                      });
                     }}
                   >
-                    {source.enabled ? "Disable" : "Enable"}
+                    {source.enabled ? 'Disable' : 'Enable'}
                   </button>
                 </td>
               </tr>
@@ -1404,19 +1389,19 @@ export function SourcesPage() {
         <dl className="kv">
           <dt>Live retrieval</dt>
           <dd>
-            {platform.kind === "desktop"
-              ? "Performed by the native Rust service through an exact allowlisted licensed shopping-search API. Native requests are rate limited and do not claim a response cache."
+            {platform.kind === 'desktop'
+              ? 'Performed by the native Rust service through an exact allowlisted licensed shopping-search API. Native requests are rate limited and do not claim a response cache.'
               : platform.capabilities.liveSearch
-                ? "Performed by the Node web service through a licensed shopping-search API. Requests are rate limited, cached and identify the client honestly."
-                : "Static Pages has no Node service and performs no live provider retrieval."}{" "}
-            Retailer websites are never scraped directly; robots.txt, site
-            terms, rate limits and bot protections are never circumvented.
+                ? 'Performed by the Node web service through a licensed shopping-search API. Requests are rate limited, cached and identify the client honestly.'
+                : 'Static Pages has no Node service and performs no live provider retrieval.'}{' '}
+            Retailer websites are never scraped directly; robots.txt, site terms, rate limits and
+            bot protections are never circumvented.
           </dd>
           <dt>Fallback paths</dt>
           <dd>
-            Manual entry. A source that cannot be supported lawfully or reliably
-            is disabled here and says why, instead of failing silently. Bulk
-            evidence-file import is not available in this release.
+            Manual entry. A source that cannot be supported lawfully or reliably is disabled here
+            and says why, instead of failing silently. Bulk evidence-file import is not available in
+            this release.
           </dd>
         </dl>
       </section>

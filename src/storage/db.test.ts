@@ -20,7 +20,7 @@ const alias = {
 };
 
 describe("strict legacy IndexedDB inspection", () => {
-  it("reports exact valid counts without mutating or discarding records", () => {
+  it("reports exact valid counts and adds the safe glass default without discarding records", () => {
     const inspection = inspectConfigurationValues(
       [profile],
       [profile.id],
@@ -43,6 +43,7 @@ describe("strict legacy IndexedDB inspection", () => {
         markupPercent: "30",
         taxHandling: "prices-inc-gst",
         theme: "dark",
+        glassTint: "clear",
       },
     });
   });

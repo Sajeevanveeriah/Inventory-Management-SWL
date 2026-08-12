@@ -76,10 +76,14 @@ const requiredPermissionGroups = [
   "allow-swl-search",
   "allow-swl-files",
 ];
+const requiredPermissions = [
+  "core:app:allow-set-app-theme",
+  ...requiredPermissionGroups,
+];
 requireBoundary(
   JSON.stringify([...permissions].sort()) ===
-    JSON.stringify([...requiredPermissionGroups].sort()),
-  "The main capability must contain only the five reviewed SWL permission groups.",
+    JSON.stringify([...requiredPermissions].sort()),
+  "The main capability must contain only the five reviewed SWL groups and native theme permission.",
 );
 for (const required of requiredPermissionGroups) {
   requireBoundary(

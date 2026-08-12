@@ -1,16 +1,34 @@
 import { useState } from 'react';
 import { ROUNDING_RULE_LABEL } from '../core/money';
-import { TAX_HANDLING_OPTIONS, type Settings, type TaxHandling } from '../core/settings';
+import {
+  GLASS_TINT_OPTIONS,
+  TAX_HANDLING_OPTIONS,
+  type AppearanceTheme,
+  type GlassTint,
+  type Settings,
+  type TaxHandling,
+} from '../core/settings';
 import { useAppState } from '../state/store';
 import { useActions } from '../state/useActions';
+import { AppearanceControl } from './AppearanceControl';
 import { Dialog } from './Dialog';
 
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
+  appearanceSaving: boolean;
+  onAppearanceChange: (
+    change: Partial<Pick<Settings, 'theme' | 'glassTint'>>,
+    description: string,
+  ) => Promise<boolean>;
 }
 
-export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+export function SettingsDialog({
+  open,
+  onClose,
+  appearanceSaving,
+  onAppearanceChange,
+}: SettingsDialogProps) {
   const state = useAppState();
   const actions = useActions();
   const [markup, setMarkup] = useState(state.settings.markupPercent);
@@ -20,6 +38,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const markupValid = /^\d{1,3}(\.\d{1,2})?$/.test(markup) && Number(markup) >= 30;
   const changed = markup !== state.settings.markupPercent || tax !== state.settings.taxHandling;
+  const busy = saving || appearanceSaving;
 
   const apply = async () => {
     const next: Settings = {
@@ -33,15 +52,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (tax !== state.settings.taxHandling)
       parts.push(`supplier cost basis changed to “${TAX_HANDLING_OPTIONS[tax]}”`);
     setSaving(true);
-    const saved = await actions.changeSettings(next, parts.join('; '));
-    setSaving(false);
+    let saved: boolean;
+    try {
+      saved = await actions.changeSettings(next, parts.join('; '));
+    } finally {
+      setSaving(false);
+    }
     if (!saved) return;
     setConfirming(false);
     onClose();
   };
 
   return (
-    <Dialog open={open} title="Settings" onClose={onClose}>
+    <Dialog
+      open={open}
+      title="Settings"
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
       {!confirming ? (
         <div>
           <div className="field">
@@ -74,7 +103,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <legend>Supplier cost basis (GST)</legend>
             <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
               State how your supplier quotes its costs. It is the one fact this tool cannot read
-              from the files, and the markup must be applied to a GST-exclusive cost — so reading it
+              from the files, and the markup must be applied to a GST-exclusive cost, so reading it
               wrongly moves every generated price by the full GST rate. Export stays blocked until
               it is set.
             </p>
@@ -103,38 +132,60 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </label>
             ))}
           </fieldset>
-          <div className="field">
-            <label htmlFor="setting-theme">Theme</label>
-            <select
-              id="setting-theme"
-              value={state.settings.theme}
-              disabled={saving}
-              onChange={(e) => {
-                setSaving(true);
-                void actions
-                  .changeSettings(
-                    {
-                      ...state.settings,
-                      theme: e.target.value as Settings['theme'],
-                    },
-                    `theme changed to ${e.target.value}`,
-                    false,
-                  )
-                  .finally(() => setSaving(false));
-              }}
-            >
-              <option value="light">Light (default)</option>
-              <option value="dark">Dark</option>
-            </select>
-          </div>
+          <section className="appearance-settings" aria-labelledby="appearance-settings-title">
+            <div className="appearance-settings-copy">
+              <h3 id="appearance-settings-title">Appearance</h3>
+              <p>
+                System follows the current Windows appearance automatically. Glass tint changes the
+                interface material only and never changes status colours.
+              </p>
+            </div>
+            <div className="appearance-settings-controls">
+              <div className="field appearance-field">
+                <span className="field-label">Theme</span>
+                <AppearanceControl
+                  value={state.settings.theme}
+                  disabled={busy}
+                  onChange={(theme: AppearanceTheme) => {
+                    void onAppearanceChange({ theme }, `theme changed to ${theme}`);
+                  }}
+                />
+              </div>
+              <div className="field appearance-field">
+                <span className="field-label">Glass finish</span>
+                <div className="glass-tint-control" role="group" aria-label="Glass finish">
+                  {(Object.keys(GLASS_TINT_OPTIONS) as GlassTint[]).map((glassTint) => (
+                    <button
+                      key={glassTint}
+                      type="button"
+                      aria-pressed={state.settings.glassTint === glassTint}
+                      disabled={busy}
+                      onClick={() => {
+                        void onAppearanceChange(
+                          { glassTint },
+                          `glass finish changed to ${glassTint}`,
+                        );
+                      }}
+                    >
+                      <span
+                        className={`glass-swatch glass-swatch-${glassTint}`}
+                        aria-hidden="true"
+                      />
+                      {GLASS_TINT_OPTIONS[glassTint]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
           <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="btn" onClick={onClose}>
+            <button type="button" className="btn" disabled={busy} onClick={onClose}>
               Close
             </button>
             <button
               type="button"
               className="btn btn-primary"
-              disabled={saving || !changed || !markupValid}
+              disabled={busy || !changed || !markupValid}
               onClick={() => setConfirming(true)}
             >
               Apply changes…
@@ -165,7 +216,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <button
               type="button"
               className="btn"
-              disabled={saving}
+              disabled={busy}
               onClick={() => setConfirming(false)}
             >
               Back
@@ -173,7 +224,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={saving}
+              disabled={busy}
               onClick={() => void apply()}
             >
               {saving ? 'Saving verified settings…' : 'Confirm and apply'}

@@ -73,10 +73,10 @@ describe("production SWL Windows desktop binary", () => {
     await expect($("html")).toHaveAttribute("data-theme", "light");
     await capture("dashboard-light-1366x768.png");
 
-    await (await buttonWithLabel("Switch to the dark theme")).click();
+    await (await buttonWithLabel("Dark appearance")).click();
     await expect($("html")).toHaveAttribute("data-theme", "dark");
     await capture("dashboard-dark-1366x768.png");
-    await (await buttonWithLabel("Switch to the light theme")).click();
+    await (await buttonWithLabel("Light appearance")).click();
     await expect($("html")).toHaveAttribute("data-theme", "light");
 
     await browser.setWindowSize(1920, 1080);
@@ -201,11 +201,18 @@ describe("production SWL Windows desktop binary", () => {
     expect(unexpectedNetwork).toEqual([]);
   });
 
-  it("requires provider authorisation for ordinary and legacy fixture-prefixed searches", async () => {
+  it("runs deterministic fixture searches across every provider state", async () => {
     await browser.setWindowSize(1366, 768);
     await navigate("#/competitors");
     const search = await $('input[placeholder*="Lockwood 4570"]');
-    const submit = await buttonWithText("Search live prices");
+    const submit = await buttonWithText("Run fixture search");
+
+    await search.setValue("LW4570");
+    await submit.click();
+    await expect(
+      $('div[role="region"][aria-label="Fixture search results"]'),
+    ).toBeDisplayed();
+    await capture("provider-fixture-results-1366x768.png");
 
     const captureState = async (
       query: string,
@@ -219,24 +226,35 @@ describe("production SWL Windows desktop binary", () => {
     };
 
     await captureState(
-      "LW4570",
-      "Live search is not configured",
-      "not-configured",
+      "fixture:empty",
+      "No fixture prices found",
+      "fixture-empty",
     );
-    for (const [query, screenshotName] of [
-      ["fixture:empty", "empty"],
-      ["fixture:offline", "offline"],
-      ["fixture:timeout", "timeout"],
-      ["fixture:quota", "quota"],
-      ["fixture:rate-limit", "rate-limit"],
-      ["fixture:error", "error"],
-    ] as const) {
-      await captureState(
-        query,
-        "Live search is not configured",
-        `fixture-prefix-${screenshotName}-requires-provider`,
-      );
-    }
+    await captureState(
+      "fixture:offline",
+      "The computer is offline",
+      "fixture-offline",
+    );
+    await captureState(
+      "fixture:timeout",
+      "The search provider timed out",
+      "fixture-timeout",
+    );
+    await captureState(
+      "fixture:quota",
+      "Approved search allowance is exhausted",
+      "fixture-quota",
+    );
+    await captureState(
+      "fixture:rate-limit",
+      "Local rate limit reached",
+      "fixture-rate-limit",
+    );
+    await captureState(
+      "fixture:error",
+      "The search provider returned an error",
+      "fixture-error",
+    );
   });
 
   it("creates, previews, confirms and restores a verified local backup", async () => {
