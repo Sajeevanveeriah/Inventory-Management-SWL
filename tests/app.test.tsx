@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import App from '../src/App';
@@ -142,10 +142,10 @@ describe('application workflow (jsdom integration)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('persists the header theme toggle through the platform settings service', async () => {
+  it('persists the header appearance choice through the platform settings service', async () => {
     const user = userEvent.setup();
     const base = publicationService(true);
-    let savedTheme: 'light' | 'dark' | null = null;
+    let savedTheme: 'system' | 'light' | 'dark' | null = null;
     const service: PlatformService = {
       ...base,
       settings: {
@@ -158,13 +158,65 @@ describe('application workflow (jsdom integration)', () => {
     };
     await renderApp(service);
 
-    const toggle = screen.getByRole('button', { name: /dark theme/i });
+    const toggle = screen.getByRole('button', { name: /dark appearance/i });
     await user.click(toggle);
 
     await waitFor(() => expect(savedTheme).toBe('dark'));
-    expect(screen.getByRole('button', { name: /light theme/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /dark appearance/i })).toHaveAttribute(
       'aria-pressed',
       'true',
+    );
+  });
+
+  it('serialises appearance saves across the dialog and header without losing tint', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    const pending: Array<{
+      settings: Settings;
+      finish: (result: PlatformResult<Settings>) => void;
+    }> = [];
+    const service: PlatformService = {
+      ...base,
+      settings: {
+        ...base.settings,
+        async save(settings) {
+          return new Promise<PlatformResult<Settings>>((finish) => {
+            pending.push({ settings, finish });
+          });
+        },
+      },
+    };
+    await renderApp(service);
+
+    await user.click(screen.getByRole('button', { name: /^open settings$/i }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /blue tinted glass/i }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: /^close$/i })).toBeDisabled();
+    const header = document.querySelector<HTMLElement>('.topbar');
+    expect(header).not.toBeNull();
+    expect(within(header!).getByRole('button', { name: /dark appearance/i })).toBeDisabled();
+
+    pending[0]!.finish(platformOk(pending[0]!.settings));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: /blue tinted glass/i })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
+    );
+    await user.click(within(dialog).getByRole('button', { name: /^close$/i }));
+    await user.click(within(header!).getByRole('button', { name: /dark appearance/i }));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[1]!.settings).toMatchObject({ theme: 'dark', glassTint: 'tinted' });
+    pending[1]!.finish(platformOk(pending[1]!.settings));
+    await waitFor(() =>
+      expect(within(header!).getByRole('button', { name: /dark appearance/i })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
     );
   });
 
@@ -295,18 +347,16 @@ describe('application workflow (jsdom integration)', () => {
       level: 1,
     });
     expect(screen.queryByRole('button', { name: /search live prices/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /run test search/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /run fixture search/i })).toBeInTheDocument();
     expect(screen.getByRole('note')).toHaveTextContent(/no internet search/i);
 
     const searchBox = screen.getByRole('searchbox', { name: /product name/i });
     const outcome = screen.getByRole('combobox', { name: /test outcome/i });
     await user.type(searchBox, 'Lockwood 4570');
-    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
+    expect(screen.getByRole('heading', { name: /preparing fixture results/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: /preparing fictional results/i }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole('region', { name: /test search results/i }),
+      await screen.findByRole('region', { name: /fixture search results/i }),
     ).toBeInTheDocument();
     await user.click(screen.getAllByRole('button', { name: /review result/i })[0]!);
     expect(screen.getByRole('heading', { name: /review selected result/i })).toBeInTheDocument();
@@ -315,10 +365,7 @@ describe('application workflow (jsdom integration)', () => {
       name: /attach selected result as reference/i,
     });
     expect(attachButton).toBeDisabled();
-    await user.type(
-      screen.getByRole('textbox', { name: /catalogue item/i }),
-      'LW4570',
-    );
+    await user.type(screen.getByRole('textbox', { name: /catalogue item/i }), 'LW4570');
     expect(attachButton).toBeEnabled();
     await user.click(attachButton);
     await waitFor(() => expect(attachedTestResult).not.toBeNull());
@@ -330,15 +377,15 @@ describe('application workflow (jsdom integration)', () => {
     expect(screen.getAllByText(/reference price stored for LW4570/i).length).toBeGreaterThan(0);
 
     await user.selectOptions(outcome, 'empty');
-    await user.click(screen.getByRole('button', { name: /run test search/i }));
-    expect(await screen.findByText(/no test prices found/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
+    expect(await screen.findByText(/no fixture prices found/i)).toBeInTheDocument();
 
     await user.selectOptions(outcome, 'timeout');
-    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
     expect(await screen.findByText(/search provider timed out/i)).toBeInTheDocument();
 
     await user.selectOptions(outcome, 'provider_error');
-    await user.click(screen.getByRole('button', { name: /run test search/i }));
+    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
     expect(await screen.findByText(/search provider returned an error/i)).toBeInTheDocument();
 
     window.location.hash = '#/sources';
@@ -350,6 +397,160 @@ describe('application workflow (jsdom integration)', () => {
     await user.click(screen.getByRole('button', { name: /privacy and data handling/i }));
     expect(screen.getByText(/Static Pages has no Node server/i)).toBeInTheDocument();
     expect(screen.getByText(/cannot make a provider request/i)).toBeInTheDocument();
+  });
+
+  it('uses fixture wording while retaining the production-shaped server query path', async () => {
+    const user = userEvent.setup();
+    const base = publicationService(true);
+    let queryCalls = 0;
+    let openedSources = 0;
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'fixture',
+          liveSearchConfigured: false,
+          fixtureMode: true,
+          paidCallsEnabled: false,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'fixture',
+            state: 'fixture',
+            paidCallsEnabled: false,
+            costCeilingAud: '0.00',
+            costCeilingCents: 0,
+            costPerCallCents: 0,
+            spentCents: 0,
+            credentialConfigured: false,
+            credentialHint: null,
+            lastValidatedAt: null,
+          });
+        },
+        async query(query) {
+          queryCalls += 1;
+          return {
+            state: 'ok',
+            query,
+            queryKind: 'free-text',
+            provider: 'fixture',
+            results: [
+              {
+                title: 'Fictional fixture deadlatch',
+                priceCents: 12_950,
+                priceAud: '129.50',
+                currency: 'AUD',
+                gstBasis: 'inc-gst',
+                packSize: 'each',
+                seller: 'Fictionville Security',
+                sourceDomain: 'example.com',
+                url: 'https://example.com/fixture-deadlatch',
+                retrievedAt: '2026-08-12T00:00:00.000Z',
+              },
+            ],
+            band: {
+              lowest: '129.50',
+              median: '129.50',
+              highest: '129.50',
+              lowestCents: 12_950,
+              medianCents: 12_950,
+              highestCents: 12_950,
+              pricedResults: 1,
+            },
+            retrievedAt: '2026-08-12T00:00:00.000Z',
+            cached: false,
+            detail: 'Deterministic fixture result.',
+            coverage: {
+              providerQueried: 'fixture',
+              sourcesWithPrice: 1,
+              sourceDomains: ['example.com'],
+              pricedResults: 1,
+            },
+          };
+        },
+      },
+      files: {
+        ...base.files,
+        async openVerifiedSource() {
+          openedSources += 1;
+          return platformOk(undefined);
+        },
+      },
+    };
+
+    window.location.hash = '#/competitors';
+    await renderApp(service);
+    expect(await screen.findByText(/fixture provider active/i)).toBeInTheDocument();
+    const search = screen.getByRole('searchbox', { name: /product name/i });
+    await user.type(search, 'LW4570');
+    await user.click(screen.getByRole('button', { name: /run fixture search/i }));
+
+    expect(queryCalls).toBe(1);
+    expect(
+      await screen.findByRole('region', { name: /fixture search results/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/deterministic fixture retrieval/i)).toBeInTheDocument();
+    expect(screen.queryByText(/fresh retrieval/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /live search results/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /inspect fixture source/i }));
+    expect(openedSources).toBe(0);
+    expect(screen.getAllByText(/no page was opened/i).length).toBeGreaterThan(0);
+  });
+
+  it('keeps live-provider wording when resolved health is not fixture mode', async () => {
+    const base = publicationService(true);
+    const service: PlatformService = {
+      ...base,
+      async health() {
+        return platformOk({
+          ok: true,
+          provider: 'native-provider',
+          liveSearchConfigured: true,
+          fixtureMode: false,
+          paidCallsEnabled: false,
+        });
+      },
+      catalogue: {
+        ...base.catalogue,
+        async list() {
+          return platformOk([]);
+        },
+      },
+      search: {
+        ...base.search,
+        async status() {
+          return platformOk({
+            provider: 'native-provider',
+            state: 'not_configured',
+            paidCallsEnabled: false,
+            costCeilingAud: '0.00',
+            costCeilingCents: 0,
+            costPerCallCents: 0,
+            spentCents: 0,
+            credentialConfigured: true,
+            credentialHint: null,
+            lastValidatedAt: null,
+          });
+        },
+      },
+    };
+
+    window.location.hash = '#/competitors';
+    await renderApp(service);
+    expect(await screen.findByText(/live search ready: same-origin provider/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /search live prices/i })).toBeInTheDocument();
+    expect(screen.queryByText(/fixture provider active/i)).not.toBeInTheDocument();
   });
 
   it('does not expose an unpersisted business rule while a delayed settings save fails', async () => {
@@ -420,7 +621,7 @@ describe('application workflow (jsdom integration)', () => {
     });
     expect(screen.getByText(/fictional demo data/i)).toBeInTheDocument();
 
-    // Continue to mapping — suggestions should be pre-selected from headers.
+    // Continue to mapping: suggestions should be pre-selected from headers.
     await user.click(screen.getByRole('button', { name: /continue to column mapping/i }));
     const codeSelect = screen.getByLabelText(/supplier item code/i);
     expect((codeSelect as HTMLSelectElement).value).toBe('0');

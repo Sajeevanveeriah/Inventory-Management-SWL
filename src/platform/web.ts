@@ -249,7 +249,8 @@ function settingsEqual(
   return (
     left.markupPercent === right.markupPercent &&
     left.taxHandling === right.taxHandling &&
-    left.theme === right.theme
+    left.theme === right.theme &&
+    left.glassTint === right.glassTint
   );
 }
 
@@ -471,6 +472,10 @@ export function createWebPlatformService(
     },
     rawImportPersistence: "never",
     manualEvidencePersistence: "catalogue-reference-or-session",
+
+    appearance: {
+      setTheme: async () => platformOk(undefined),
+    },
 
     health: () =>
       sessionOnly

@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $application = (Resolve-Path -LiteralPath $ApplicationPath).Path
+$env:SWL_DESKTOP_BINARY = $application
 $evidenceRoot = [IO.Path]::GetFullPath($EvidenceDirectory)
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
 $monitorEvidencePath = Join-Path $evidenceRoot 'OFFLINE-PROCESS-NETWORK.json'

@@ -719,7 +719,11 @@ export function CompetitorsPage() {
   const credentialInput = useRef<HTMLInputElement>(null);
   const [attachTarget, setAttachTarget] = useState("");
   const requestSeq = useRef(0);
-  const browserTestMode = !platform.capabilities.liveSearch;
+  const staticBrowserTestMode = !platform.capabilities.liveSearch;
+  const serverFixtureMode =
+    health !== "checking" && health !== null && health.fixtureMode;
+  const fixturePresentation = staticBrowserTestMode || serverFixtureMode;
+  const providerModeChecking = !staticBrowserTestMode && health === "checking";
 
   useEffect(() => {
     let cancelled = false;
@@ -741,12 +745,12 @@ export function CompetitorsPage() {
 
   const runSearch = async () => {
     const q = query.trim();
-    if (q === "") return;
+    if (q === "" || providerModeChecking) return;
     const seq = ++requestSeq.current;
     setSubmitted(q);
     setSelectedResult(null);
     setLoading(true);
-    const result = browserTestMode
+    const result = staticBrowserTestMode
       ? await new Promise<LiveSearchOutcome>((resolve) => {
           window.setTimeout(
             () => resolve(createBrowserTestSearchOutcome(q, testScenario)),
@@ -759,8 +763,8 @@ export function CompetitorsPage() {
     setLoading(false);
     actions.announce(
       result.state === "ok"
-        ? `${result.results.length} ${browserTestMode ? "fictional test" : "live"} results for ${q}.`
-        : `${browserTestMode ? "Test" : "Live"} search state: ${result.state.replace(/_/g, " ")}.`,
+        ? `${result.results.length} ${fixturePresentation ? "fixture" : "live"} results for ${q}.`
+        : `${fixturePresentation ? "Fixture" : "Live"} search state: ${result.state.replace(/_/g, " ")}.`,
     );
   };
 
@@ -969,21 +973,25 @@ export function CompetitorsPage() {
     stateCopy(
       outcome.state,
       platform.kind,
-      platform.capabilities.liveSearch || browserTestMode,
+      platform.capabilities.liveSearch || staticBrowserTestMode,
     );
 
   return (
     <Page
       title="Competitor search"
       primary={
-        platform.capabilities.liveSearch || browserTestMode ? (
+        platform.capabilities.liveSearch || staticBrowserTestMode ? (
           <button
             type="button"
             className="btn btn-primary"
-            disabled={query.trim() === "" || loading}
+            disabled={query.trim() === "" || loading || providerModeChecking}
             onClick={() => void runSearch()}
           >
-            {browserTestMode ? "Run Test search" : "Search live prices"}
+            {providerModeChecking
+              ? "Checking search availability"
+              : fixturePresentation
+                ? "Run fixture search"
+                : "Search live prices"}
           </button>
         ) : undefined
       }
@@ -992,7 +1000,7 @@ export function CompetitorsPage() {
         <IntelligenceWorkspace />
       )}
       <section className="card">
-        {platform.capabilities.liveSearch || browserTestMode ? (
+        {platform.capabilities.liveSearch || staticBrowserTestMode ? (
           <form
             className="searchbar"
             onSubmit={(event) => {
@@ -1010,7 +1018,7 @@ export function CompetitorsPage() {
                 placeholder="e.g. Lockwood 4570, LW4570 or 9312345678907"
               />
             </label>
-            {browserTestMode && (
+            {staticBrowserTestMode && (
               <label>
                 Test outcome
                 <select
@@ -1035,15 +1043,15 @@ export function CompetitorsPage() {
             evidence form below with an operator-verified HTTPS source.
           </p>
         )}
-        {browserTestMode && (
+        {staticBrowserTestMode && (
           <div className="callout" role="note">
-            <strong>Fictional browser Test search.</strong> Results use reserved
+            <strong>Fictional browser test search.</strong> Results use reserved
             example domains and deterministic AUD prices. No internet search,
             provider request, credential or charge is used.
           </div>
         )}
         <p className="hint" role="status">
-          {browserTestMode
+          {staticBrowserTestMode
             ? "Test mode is active in Static Pages. Choose a state and run the search to test the complete review flow."
             : health === "checking"
               ? "Checking live search availability…"
@@ -1133,41 +1141,49 @@ export function CompetitorsPage() {
         </section>
       )}
 
-      {loading && (platform.capabilities.liveSearch || browserTestMode) && (
-        <section
-          className="card state-loading"
-          role="status"
-          aria-live="polite"
-        >
-          <span className="spinner" aria-hidden="true" />
-          <div>
-            <h2>
-              {browserTestMode ? "Preparing fictional results" : "Searching live sources"} for &ldquo;{submitted}&rdquo;&hellip;
-            </h2>
-            <p className="hint">
-              {browserTestMode
-                ? "The browser fixture is preparing a deterministic state. No network request is made."
-                : `${platform.kind === "desktop" ? "The native service" : "The web demonstration server"} is querying the provider now. Results include seller, GST treatment and a retrieval timestamp.`}
-            </p>
-          </div>
-        </section>
-      )}
+      {loading &&
+        (platform.capabilities.liveSearch || staticBrowserTestMode) && (
+          <section
+            className="card state-loading"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="spinner" aria-hidden="true" />
+            <div>
+              <h2>
+                {fixturePresentation
+                  ? "Preparing fixture results"
+                  : "Searching live sources"}{" "}
+                for &ldquo;{submitted}&rdquo;&hellip;
+              </h2>
+              <p className="hint">
+                {fixturePresentation
+                  ? serverFixtureMode
+                    ? "The same-origin fixture service is preparing deterministic offline results. No live provider request or charge is made."
+                    : "The browser fixture is preparing a deterministic state. No network request is made."
+                  : `${platform.kind === "desktop" ? "The native service" : "The web demonstration server"} is querying the provider now. Results include seller, GST treatment and a retrieval timestamp.`}
+              </p>
+            </div>
+          </section>
+        )}
 
       {!loading && outcome === null && (
         <EmptyState
           title={
-            browserTestMode
+            fixturePresentation
               ? "Enter any product to test competitor search"
               : platform.capabilities.liveSearch
-              ? "Type a product and search the live market"
-              : "Manual competitor evidence remains available"
+                ? "Type a product and search the live market"
+                : "Manual competitor evidence remains available"
           }
           detail={
-            browserTestMode
-              ? "Choose the outcome to exercise results, no-results, timeout and provider-error states. Every listing is fictional and reserved for UI testing."
+            fixturePresentation
+              ? staticBrowserTestMode
+                ? "Choose the outcome to exercise results, no-results, timeout and provider-error states. Every listing is fictional and reserved for UI testing."
+                : "Run the deterministic same-origin fixture to exercise the production-shaped review flow. Every listing is fictional and reserved for testing."
               : platform.capabilities.liveSearch
-              ? "One box, no search-type selector: the application works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
-              : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
+                ? "One box, no search-type selector: the application works out whether the query is a part number, barcode or free text. Results arrive with an AUD price band, GST treatment, seller, retrieval time and a working source link. Nothing needs importing first."
+                : "Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used."
           }
         />
       )}
@@ -1187,10 +1203,12 @@ export function CompetitorsPage() {
 
       {!loading && outcome?.state === "empty" && (
         <EmptyState
-          title={`No ${browserTestMode ? "test" : "live"} prices found for “${submitted}”`}
+          title={`No ${fixturePresentation ? "fixture" : "live"} prices found for “${submitted}”`}
           detail={
-            browserTestMode
-              ? "The fictional provider returned a deliberate empty state. Change Test outcome to Results to continue the review flow."
+            fixturePresentation
+              ? staticBrowserTestMode
+                ? "The fictional provider returned a deliberate empty state. Change Test outcome to Results to continue the review flow."
+                : "The deterministic fixture returned a deliberate empty state. This is test evidence, not a live-market zero."
               : "The provider answered but returned no priced listings. That is a genuine zero, not a failure. Try a broader term, or record a price you found yourself with manual entry below."
           }
         />
@@ -1201,7 +1219,7 @@ export function CompetitorsPage() {
           <div
             className="metric-row"
             role="group"
-            aria-label={`Price band across ${browserTestMode ? "fictional test" : "live"} sources`}
+            aria-label={`Price band across ${fixturePresentation ? "fixture" : "live"} sources`}
           >
             <div className="metric-card">
               <span className="metric-label">Lowest</span>
@@ -1209,7 +1227,7 @@ export function CompetitorsPage() {
                 {formatAmount(outcome.band.lowest)}
               </strong>
               <span className="metric-state pill pill-ok">
-                across {browserTestMode ? "fictional test" : "live"} sources
+                across {fixturePresentation ? "fixture" : "live"} sources
               </span>
             </div>
             <div className="metric-card">
@@ -1241,7 +1259,11 @@ export function CompetitorsPage() {
                 {outcome.coverage?.sourcesWithPrice ?? 0}
               </strong>
               <span className="metric-state">
-                {outcome.cached ? "served from cache" : "fresh retrieval"}
+                {outcome.cached
+                  ? "served from cache"
+                  : fixturePresentation
+                    ? "deterministic fixture retrieval"
+                    : "fresh retrieval"}
               </span>
             </div>
           </div>
@@ -1249,14 +1271,18 @@ export function CompetitorsPage() {
           <ResultsTable
             results={outcome.results}
             resultsLabel={
-              browserTestMode ? "Test search results" : "Live search results"
+              fixturePresentation
+                ? "Fixture search results"
+                : "Live search results"
             }
             sourceActionLabel={
-              browserTestMode ? "Inspect test source" : "Open source page"
+              fixturePresentation
+                ? "Inspect fixture source"
+                : "Open source page"
             }
             onReview={setSelectedResult}
             onOpenSource={(url) => {
-              if (browserTestMode) {
+              if (fixturePresentation) {
                 actions.announce(
                   `Fictional source ${new URL(url).hostname}. No page was opened.`,
                 );
@@ -1278,14 +1304,14 @@ export function CompetitorsPage() {
                 <dd>{formatAmount(selectedResult.priceAud)} AUD</dd>
                 <dt>Shipping</dt>
                 <dd>
-                  {browserTestMode
+                  {fixturePresentation
                     ? "Included in this fictional test price"
                     : "Check the provider source listing"}
                 </dd>
                 <dt>Source</dt>
                 <dd>{selectedResult.url}</dd>
               </dl>
-              {browserTestMode && (
+              {fixturePresentation && (
                 <p className="hint">
                   Fictional test evidence remains quarantined and can only be
                   attached to an exact approved catalogue item.

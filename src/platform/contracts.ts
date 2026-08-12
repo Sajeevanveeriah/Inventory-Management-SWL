@@ -5,7 +5,7 @@ import type {
   LiveSearchResult,
 } from "../core/liveSearch";
 import type { MappingProfile } from "../core/mapping";
-import type { Settings } from "../core/settings";
+import type { AppearanceTheme, Settings } from "../core/settings";
 import type { CompetitorSource } from "../core/sources";
 import type { GeneratedOutput } from "../io/exportWorkbooks";
 
@@ -256,6 +256,9 @@ export interface PlatformService {
   readonly kind: PlatformKind;
   readonly capabilities: PlatformCapabilities;
 
+  appearance: {
+    setTheme(theme: AppearanceTheme): Promise<PlatformResult<void>>;
+  };
   health(): Promise<PlatformResult<LiveHealth>>;
 
   catalogue: {

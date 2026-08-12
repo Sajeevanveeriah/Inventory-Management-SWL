@@ -55,6 +55,16 @@ const PROVIDER_ID: &str = "serpapi";
 const PROVIDER_HOST: &str = "serpapi.com";
 const PROVIDER_ENDPOINT: &str = "https://serpapi.com/search.json";
 const PROVIDER_ACCOUNT_ENDPOINT: &str = "https://serpapi.com/account.json";
+const PRODUCTION_CREDENTIAL_TARGET: &str =
+    "au.com.stanwoottonlocksmiths.swl-pricing/provider/serpapi";
+const LOCAL_TEST_CREDENTIAL_TARGET: &str =
+    "au.com.stanwoottonlocksmiths.swl-pricing.local-test/provider/serpapi";
+const ACCEPTANCE_PROVIDER_DISABLED_MESSAGE: &str =
+    "Live provider operations are unavailable in the acceptance-fixture build.";
+const ACCEPTANCE_FIXTURE_BUILD_SETTING: Option<&str> =
+    option_env!("SWL_DESKTOP_ACCEPTANCE_FIXTURES");
+const LOCAL_TEST_PROFILE_BUILD_SETTING: Option<&str> =
+    option_env!("SWL_DESKTOP_LOCAL_TEST_PROFILE");
 
 const WINDOWS_RESERVED: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
@@ -827,6 +837,45 @@ fn date_prefix() -> String {
     // the required YYYYMMDD prefix for every native recovery artefact.
     let (year, month, day) = civil_date((now_epoch_seconds() / 86_400) as i64);
     format!("{year:04}{month:02}{day:02}")
+}
+
+fn fixture_mode_for_build_setting(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
+fn acceptance_fixture_mode() -> bool {
+    fixture_mode_for_build_setting(ACCEPTANCE_FIXTURE_BUILD_SETTING)
+}
+
+fn local_test_profile_for_build_settings(
+    fixture_value: Option<&str>,
+    local_profile_value: Option<&str>,
+) -> bool {
+    fixture_mode_for_build_setting(fixture_value)
+        || fixture_mode_for_build_setting(local_profile_value)
+}
+
+fn credential_target_for_build_settings(
+    fixture_value: Option<&str>,
+    local_profile_value: Option<&str>,
+) -> &'static str {
+    if local_test_profile_for_build_settings(fixture_value, local_profile_value) {
+        LOCAL_TEST_CREDENTIAL_TARGET
+    } else {
+        PRODUCTION_CREDENTIAL_TARGET
+    }
+}
+
+fn live_provider_available_for_build_setting(value: Option<&str>) -> bool {
+    !fixture_mode_for_build_setting(value)
+}
+
+fn require_live_provider() -> Result<(), String> {
+    if live_provider_available_for_build_setting(ACCEPTANCE_FIXTURE_BUILD_SETTING) {
+        Ok(())
+    } else {
+        Err(ACCEPTANCE_PROVIDER_DISABLED_MESSAGE.to_string())
+    }
 }
 
 fn validate_identifier(value: &str, label: &str) -> Result<(), String> {
@@ -2540,7 +2589,7 @@ fn desktop_health(state: State<'_, AppState>) -> Result<DesktopHealth, String> {
         ok: true,
         provider: status.provider,
         live_search_configured: status.credential_configured,
-        fixture_mode: false,
+        fixture_mode: acceptance_fixture_mode(),
         schema_version: schema_version(&connection)?,
     })
 }
@@ -3173,10 +3222,13 @@ fn validate_settings(settings: &Value) -> Result<String, String> {
     let object = settings
         .as_object()
         .ok_or_else(|| "Settings must be a JSON object.".to_string())?;
-    if object.len() != 3
+    if !(3..=4).contains(&object.len())
         || !["markupPercent", "taxHandling", "theme"]
             .iter()
             .all(|key| object.contains_key(*key))
+        || !object
+            .keys()
+            .all(|key| matches!(key.as_str(), "markupPercent" | "taxHandling" | "theme" | "glassTint"))
     {
         return Err("Settings contain an unsupported field.".to_string());
     }
@@ -3196,10 +3248,28 @@ fn validate_settings(settings: &Value) -> Result<String, String> {
         .get("theme")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if !matches!(theme, "light" | "dark") {
+    if !matches!(theme, "system" | "light" | "dark") {
         return Err("Theme setting is invalid.".to_string());
     }
-    validate_json(settings, "Settings")
+    let glass_tint = object
+        .get("glassTint")
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| "Glass tint setting is invalid.".to_string())
+        })
+        .transpose()?
+        .unwrap_or("clear");
+    if !matches!(glass_tint, "clear" | "tinted") {
+        return Err("Glass tint setting is invalid.".to_string());
+    }
+    let mut normalised = settings.clone();
+    normalised
+        .as_object_mut()
+        .expect("settings object was checked above")
+        .entry("glassTint")
+        .or_insert_with(|| json!("clear"));
+    validate_json(&normalised, "Settings")
 }
 
 #[tauri::command]
@@ -3215,12 +3285,17 @@ fn load_settings(state: State<'_, AppState>) -> Result<Value, String> {
         .map_err(|_| "Settings could not be read.".to_string())?;
     match serialised {
         Some(value) => {
-            serde_json::from_str(&value).map_err(|_| "The stored settings are invalid.".to_string())
+            let parsed = serde_json::from_str(&value)
+                .map_err(|_| "The stored settings are invalid.".to_string())?;
+            let normalised = validate_settings(&parsed)?;
+            serde_json::from_str(&normalised)
+                .map_err(|_| "The stored settings are invalid.".to_string())
         }
         None => Ok(json!({
             "markupPercent": "30",
             "taxHandling": "not-configured",
-            "theme": "light"
+            "theme": "system",
+            "glassTint": "clear"
         })),
     }
 }
@@ -3387,12 +3462,21 @@ fn configuration_from_database(connection: &Connection) -> Result<ConfigurationE
         .optional()
         .map_err(|_| "The configuration could not be read.".to_string())?
         .map(|value| {
-            serde_json::from_str(&value).map_err(|_| "The stored settings are invalid.".to_string())
+            let parsed = serde_json::from_str(&value)
+                .map_err(|_| "The stored settings are invalid.".to_string())?;
+            let normalised = validate_settings(&parsed)?;
+            serde_json::from_str(&normalised)
+                .map_err(|_| "The stored settings are invalid.".to_string())
         })
         .transpose()?
-        .unwrap_or_else(
-            || json!({"markupPercent":"30","taxHandling":"not-configured","theme":"light"}),
-        );
+        .unwrap_or_else(|| {
+            json!({
+                "markupPercent": "30",
+                "taxHandling": "not-configured",
+                "theme": "system",
+                "glassTint": "clear"
+            })
+        });
     let counts = ConfigurationCounts {
         profiles: profiles.len(),
         aliases: aliases.len(),
@@ -4111,6 +4195,22 @@ fn reset_application_data_at(
 #[cfg(windows)]
 struct WindowsCredentialStore;
 
+struct AcceptanceFixtureCredentialStore;
+
+impl CredentialStore for AcceptanceFixtureCredentialStore {
+    fn set(&self, _secret: &str) -> Result<(), String> {
+        Err(ACCEPTANCE_PROVIDER_DISABLED_MESSAGE.to_string())
+    }
+
+    fn get(&self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
+
+    fn remove(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 #[cfg(windows)]
 mod wincred {
     use std::ffi::c_void;
@@ -4161,7 +4261,10 @@ mod wincred {
 
 #[cfg(windows)]
 fn credential_target() -> Vec<u16> {
-    "au.com.stanwoottonlocksmiths.swl-pricing/provider/serpapi"
+    credential_target_for_build_settings(
+        ACCEPTANCE_FIXTURE_BUILD_SETTING,
+        LOCAL_TEST_PROFILE_BUILD_SETTING,
+    )
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect()
@@ -4277,6 +4380,9 @@ impl CredentialStore for UnsupportedCredentialStore {
 }
 
 fn platform_credential_store() -> Arc<dyn CredentialStore> {
+    if acceptance_fixture_mode() {
+        return Arc::new(AcceptanceFixtureCredentialStore);
+    }
     #[cfg(windows)]
     {
         Arc::new(WindowsCredentialStore)
@@ -4354,6 +4460,7 @@ fn store_credential(
     secret: String,
     replace: bool,
 ) -> Result<ProviderStatus, String> {
+    require_live_provider()?;
     validate_credential(&secret)?;
     let prior = state.credential_store.get()?;
     let present = prior.is_some();
@@ -4435,6 +4542,7 @@ fn validate_provider_account_payload(body: &[u8]) -> Result<(), String> {
 async fn validate_provider_credential(
     state: State<'_, AppState>,
 ) -> Result<ProviderStatus, String> {
+    require_live_provider()?;
     let secret = state
         .credential_store
         .get()?
@@ -4507,6 +4615,7 @@ fn remove_provider_credential(state: State<'_, AppState>) -> Result<ProviderStat
 }
 
 fn remove_provider_credential_at(state: &AppState) -> Result<ProviderStatus, String> {
+    require_live_provider()?;
     let _gate = lock_mutation_gate(state)?;
     let mut connection = open_connection(&state.database_path)?;
     remove_provider_credential_inner(state, &mut connection)
@@ -4548,6 +4657,7 @@ fn set_provider_paid_calls_inner(
     cost_per_call_cents: Option<i64>,
 ) -> Result<ProviderStatus, String> {
     if enabled {
+        require_live_provider()?;
         if state.credential_store.get()?.is_none() {
             return Err(
                 "A protected provider credential is required before paid calls can be enabled."
@@ -4628,6 +4738,7 @@ fn reserve_provider_call(connection: &Connection) -> Result<(), String> {
 fn authorise_provider_search(
     state: &AppState,
 ) -> Result<(String, ProviderSearchLease<'_>), String> {
+    require_live_provider()?;
     // Serialise the policy/credential snapshot and pessimistic reservation with
     // every destructive mutation. The database handle is deliberately dropped
     // before the lease is returned and therefore never crosses the HTTPS await.
@@ -4807,6 +4918,21 @@ fn fixture_search(query: &str) -> SearchOutcome {
     }
 }
 
+fn build_scoped_fixture_search(query: &str, build_setting: Option<&str>) -> Option<SearchOutcome> {
+    if fixture_mode_for_build_setting(build_setting) {
+        return Some(fixture_search(query));
+    }
+    if !query.starts_with("fixture:") {
+        return None;
+    }
+    Some(empty_search(
+        "invalid_query",
+        query,
+        PROVIDER_ID,
+        "Synthetic fixture queries are unavailable in production.",
+    ))
+}
+
 fn parse_aud_cents(value: &str) -> Option<i64> {
     let cleaned = value
         .replace("AUD", "")
@@ -4895,8 +5021,8 @@ async fn search_competitors(
             "The search query is outside the supported range.",
         ));
     }
-    if query.starts_with("fixture:") {
-        return Ok(fixture_search(&query));
+    if let Some(outcome) = build_scoped_fixture_search(&query, ACCEPTANCE_FIXTURE_BUILD_SETTING) {
+        return Ok(outcome);
     }
     let (credential, _search_lease) = match authorise_provider_search(&state) {
         Ok(value) => value,
@@ -7851,6 +7977,42 @@ mod tests {
     }
 
     #[test]
+    fn appearance_settings_migrate_legacy_values_and_reject_unknown_finishes() {
+        let migrated: Value = serde_json::from_str(
+            &validate_settings(&json!({
+                "markupPercent": "30",
+                "taxHandling": "not-configured",
+                "theme": "light"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(migrated["glassTint"], json!("clear"));
+
+        assert!(validate_settings(&json!({
+            "markupPercent": "30",
+            "taxHandling": "not-configured",
+            "theme": "system",
+            "glassTint": "tinted"
+        }))
+        .is_ok());
+        assert!(validate_settings(&json!({
+            "markupPercent": "30",
+            "taxHandling": "not-configured",
+            "theme": "sepia",
+            "glassTint": "clear"
+        }))
+        .is_err());
+        assert!(validate_settings(&json!({
+            "markupPercent": "30",
+            "taxHandling": "not-configured",
+            "theme": "dark",
+            "glassTint": "smoked"
+        }))
+        .is_err());
+    }
+
+    #[test]
     fn catalogue_money_changes_require_one_atomic_approval_publication() {
         let directory = migrated_database();
         let mut connection = open_connection(&directory.database()).unwrap();
@@ -8631,6 +8793,84 @@ mod tests {
     }
 
     #[test]
+    fn production_build_rejects_fixture_prefixed_queries_before_provider_authorisation() {
+        assert!(!acceptance_fixture_mode());
+        assert!(!fixture_mode_for_build_setting(None));
+        assert!(!fixture_mode_for_build_setting(Some("true")));
+        assert!(fixture_mode_for_build_setting(Some("1")));
+        assert_eq!(
+            credential_target_for_build_settings(None, None),
+            PRODUCTION_CREDENTIAL_TARGET
+        );
+        assert_eq!(
+            credential_target_for_build_settings(Some("true"), Some("true")),
+            PRODUCTION_CREDENTIAL_TARGET
+        );
+        assert_eq!(
+            credential_target_for_build_settings(None, Some("1")),
+            LOCAL_TEST_CREDENTIAL_TARGET
+        );
+        assert_eq!(
+            credential_target_for_build_settings(Some("1"), None),
+            LOCAL_TEST_CREDENTIAL_TARGET
+        );
+        assert_eq!(
+            credential_target_for_build_settings(Some("1"), Some("1")),
+            LOCAL_TEST_CREDENTIAL_TARGET
+        );
+        assert_ne!(PRODUCTION_CREDENTIAL_TARGET, LOCAL_TEST_CREDENTIAL_TARGET);
+        assert!(live_provider_available_for_build_setting(None));
+        assert!(live_provider_available_for_build_setting(Some("true")));
+        assert!(!live_provider_available_for_build_setting(Some("1")));
+        assert!(build_scoped_fixture_search("LW4570", None).is_none());
+
+        let outcome = build_scoped_fixture_search("fixture:offline", None).expect("fixture prefix");
+        assert_eq!(outcome.state, "invalid_query");
+        assert_eq!(outcome.provider, PROVIDER_ID);
+        assert!(outcome.results.is_empty());
+        assert_eq!(outcome.cached, Some(false));
+
+        let fixture =
+            build_scoped_fixture_search("ordinary lock query", Some("1")).expect("fixture build");
+        assert_eq!(fixture.state, "ok");
+        assert_eq!(fixture.provider, "fixture");
+        assert_eq!(fixture.results.len(), 2);
+
+        let store = AcceptanceFixtureCredentialStore;
+        assert_eq!(store.get().unwrap(), None);
+        assert!(store.set("fixture-placeholder-secret").is_err());
+        assert!(store.remove().is_ok());
+    }
+
+    #[test]
+    fn windows_workflow_scopes_fixture_build_setting_to_isolated_acceptance_binary() {
+        let workflow = include_str!("../../.github/workflows/windows-desktop.yml");
+        let canonical = workflow
+            .split("- name: Build canonical unsigned NSIS package")
+            .nth(1)
+            .expect("canonical package step")
+            .split("- name: Prove the Rust lock was not changed")
+            .next()
+            .expect("canonical package boundary");
+        assert!(canonical.contains("IsNullOrEmpty($env:SWL_DESKTOP_ACCEPTANCE_FIXTURES)"));
+        assert!(canonical.contains("IsNullOrEmpty($env:SWL_DESKTOP_LOCAL_TEST_PROFILE)"));
+        assert!(!canonical.contains("SWL_DESKTOP_ACCEPTANCE_FIXTURES: '1'"));
+        assert!(!canonical.contains("SWL_DESKTOP_LOCAL_TEST_PROFILE: '1'"));
+
+        let acceptance = workflow
+            .split("- name: Build isolated unbundled release-profile desktop acceptance binary")
+            .nth(1)
+            .expect("isolated acceptance build step")
+            .split("- name: Prove a clean disposable profile")
+            .next()
+            .expect("isolated acceptance build boundary");
+        assert!(acceptance.contains("SWL_DESKTOP_ACCEPTANCE_FIXTURES: '1'"));
+        assert!(acceptance.contains("SWL_DESKTOP_LOCAL_TEST_PROFILE: '1'"));
+        assert!(acceptance.contains("CARGO_TARGET_DIR"));
+        assert!(acceptance.contains("distributed = $false"));
+    }
+
+    #[test]
     fn provider_json_errors_map_to_distinct_sanitised_states() {
         assert_eq!(
             provider_payload_error_state(&json!({
@@ -8899,6 +9139,24 @@ mod tests {
         assert!(
             export_configuration_to_folder_inner(&state, grant_id, filename.to_string(),).is_err()
         );
+    }
+
+    #[test]
+    fn configuration_export_normalises_legacy_appearance_before_hashing() {
+        let directory = migrated_database();
+        let connection = open_connection(&directory.database()).unwrap();
+        connection
+            .execute(
+                "INSERT INTO settings(id,settings_json,updated_at) VALUES('settings',?1,'now')",
+                params![r#"{"markupPercent":"30","taxHandling":"not-configured","theme":"dark"}"#],
+            )
+            .unwrap();
+
+        let envelope = configuration_from_database(&connection).unwrap();
+        assert_eq!(envelope.data.settings["glassTint"], json!("clear"));
+        assert_eq!(envelope.data.settings["theme"], json!("dark"));
+        validate_configuration_envelope(&envelope).unwrap();
+        assert!(verify_configuration_checksum(&envelope));
     }
 
     #[test]
@@ -9624,6 +9882,7 @@ mod tests {
         assert!(!capability.contains("process:"));
         assert!(!capability.contains("fs:"));
         assert!(!capability.contains("http:"));
+        assert!(capability.contains("core:app:allow-set-app-theme"));
         for group in [
             "allow-swl-read",
             "allow-swl-write",

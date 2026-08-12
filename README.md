@@ -314,6 +314,51 @@ Development requires exact Node.js 22.22.2 and the locked project dependencies. 
 Windows application does not require Node.js, a repository checkout, a terminal or a browser.
 The commands below are for development and the secondary browser demonstration only.
 
+### No-install local testing
+
+Two local test routes are available. Neither runs the NSIS installer, installs dependencies,
+loads `.env`, inherits `VITE_*` build values or writes to the production desktop profile.
+The browser route never uses provider credentials. The native portable route can use a separately
+configured local-test credential, but paid calls remain disabled by default.
+
+**Fast browser workflow:** double-click `test-swl-locally.cmd`, or run `npm run test:local`.
+The launcher rebuilds the current source, creates a fresh fictional store under the Windows
+temporary directory, starts the same-origin production-shaped server with the offline fixture
+provider, verifies `/api/health`, then opens the browser. Press Ctrl+C in the launcher window to
+stop the server and remove that disposable store. The release baseline is Node 22.22.2; the local
+tester also accepts the available Node 24 LTS runtime. Locked repository dependencies remain a
+prerequisite, and the launcher refuses rather than installing anything.
+
+**Native portable workflow:** double-click `test-swl-portable.cmd`, or run
+`npm run test:portable`. It builds and launches the unbundled executable at
+`src-tauri/target/local-test/release/swl-pricing-desktop.exe`. The executable uses the distinct
+application identifier `au.com.stanwoottonlocksmiths.swl-pricing.local-test`, so its SQLite data
+and Windows Credential Manager target cannot share the production desktop profile. The launcher does not
+read a provider credential from `.env` or the process environment and never copies the production
+credential. To retrieve real results, enter a test credential in **Competitor search**, configure and
+validate it, enter a positive total budget and per-call reservation in AUD, then explicitly enable paid
+provider calls. Credential validation and searches contact the live provider and can consume quota or
+incur charges. The local-test credential persists in Windows Credential Manager until it is removed in
+the tester; do not configure it on a shared or untrusted computer. The route requires the existing Node,
+Rust, MSVC and WebView2 development prerequisites, but does not install the SWL application.
+Use `npm run test:portable:build` when a build without launch is required.
+The portable build is frozen and offline: it fails if the exact locked Rust dependencies are not
+already cached, rather than downloading them.
+The normal launcher reports ready only after the native window reaches the title set after SQLite
+migration and native state initialisation.
+
+The browser route verifies the shared React workflow, own-origin Node API and generated files.
+The portable route additionally exercises the native Tauri shell, IPC and SQLite adapter. A no-cost
+portable smoke test proves only that the live provider is available behind the credential and budget
+gates; a real-result search is separate evidence because it requires operator approval, network access
+and possible provider cost. Neither route proves NSIS installation, upgrade, uninstall, SmartScreen, signing, offline WebView2
+provisioning or clean-machine behaviour; those remain separate release gates.
+
+Run `npm run e2e:local` for automated no-install acceptance in the Microsoft-signed Edge
+installation under Program Files. This runner owns the fixture server, dynamic port, readiness,
+Playwright process, shutdown and disposable cleanup directly. It never downloads a browser or
+executes a user-supplied browser path.
+
 ```bash
 npm ci               # install the exact locked dependency graph
 npm run seed         # seed realistic fictional sample data into server/data/

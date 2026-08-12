@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { APP_NAME, APP_VERSION } from './core/audit';
+import type { Settings } from './core/settings';
 import { usePlatform } from './platform/context';
 import { STEP_ORDER, STEP_TITLES, useAppDispatch, useAppState, type StepId } from './state/store';
 import { useActions } from './state/useActions';
+import { AppearanceControl } from './ui/AppearanceControl';
 import { BrandLockup, BrandMark, timeOfDayGreeting } from './ui/Brand';
 import { PrivacyDialog } from './ui/PrivacyDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
@@ -82,29 +84,6 @@ const NAV_ICONS: Record<Route, string> = {
     'M8 5.5A2.5 2.5 0 1 1 8 10.5 2.5 2.5 0 0 1 8 5.5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4',
   '#/help': 'M6 6a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.8M8 12v.5',
 };
-
-function ThemeIcon({ dark }: { dark: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {dark ? (
-        <path d="M13 9.6A5.6 5.6 0 0 1 6.4 3a5.6 5.6 0 1 0 6.6 6.6z" />
-      ) : (
-        <>
-          <circle cx="8" cy="8" r="3" />
-          <path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3.1 3.1l1.1 1.1M11.8 11.8l1.1 1.1M12.9 3.1l-1.1 1.1M4.2 11.8l-1.1 1.1" />
-        </>
-      )}
-    </svg>
-  );
-}
 
 function ShieldIcon() {
   return (
@@ -236,10 +215,14 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const navRef = useRef<HTMLElement>(null);
+  const pendingRouteFocusRef = useRef(false);
+  const appearanceSavingRef = useRef(false);
+  const settingsRef = useRef(state.settings);
   const pageTitle = ROUTES.find(([id]) => id === route)?.[1] ?? 'Dashboard';
   const greeting = timeOfDayGreeting();
   const totalRecords = state.comparison?.rows.length ?? 0;
@@ -247,12 +230,35 @@ export default function App() {
     (decision) => decision.state === 'approved',
   ).length;
 
-  const go = (next: Route) => {
+  const go = (next: Route, focusHeading = true) => {
+    pendingRouteFocusRef.current = focusHeading;
     window.location.assign(next);
     setRoute(next);
     setMenuOpen(false);
   };
   const goRoute = (next: string) => go(next as Route);
+
+  useEffect(() => {
+    settingsRef.current = state.settings;
+  }, [state.settings]);
+
+  const changeAppearance = async (
+    change: Partial<Pick<Settings, 'theme' | 'glassTint'>>,
+    description: string,
+  ) => {
+    if (appearanceSavingRef.current) return false;
+    appearanceSavingRef.current = true;
+    setAppearanceSaving(true);
+    const next = { ...settingsRef.current, ...change };
+    try {
+      const saved = await actions.changeSettings(next, description, false);
+      if (saved) settingsRef.current = next;
+      return saved;
+    } finally {
+      appearanceSavingRef.current = false;
+      setAppearanceSaving(false);
+    }
+  };
 
   useEffect(() => {
     const onHash = () => setRoute(currentRoute());
@@ -290,6 +296,20 @@ export default function App() {
   useEffect(() => {
     document.title = `${pageTitle} - ${APP_NAME}`;
   }, [pageTitle]);
+
+  useEffect(() => {
+    if (!pendingRouteFocusRef.current) return undefined;
+    pendingRouteFocusRef.current = false;
+    const focusHeading = () => {
+      document.querySelector<HTMLElement>('.page-head h1')?.focus();
+    };
+    if (typeof window.requestAnimationFrame !== 'function') {
+      focusHeading();
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(focusHeading);
+    return () => window.cancelAnimationFrame(frame);
+  }, [route]);
 
   // "/" focuses the global search from anywhere outside a text field.
   useEffect(() => {
@@ -424,7 +444,11 @@ export default function App() {
             }}
           />
         )}
-        <div className="app-frame">
+        <div
+          className="app-frame"
+          inert={menuOpen ? true : undefined}
+          aria-hidden={menuOpen ? 'true' : undefined}
+        >
           <header className="topbar">
             <button
               ref={menuButtonRef}
@@ -466,40 +490,18 @@ export default function App() {
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
                   if (route !== '#/inventory' && event.target.value.trim() !== '')
-                    go('#/inventory');
+                    go('#/inventory', false);
                 }}
               />
             </div>
             <div className="topbar-actions">
-              <button
-                type="button"
-                className="icon-btn"
-                aria-pressed={state.settings.theme === 'dark'}
-                aria-label={
-                  state.settings.theme === 'dark'
-                    ? 'Switch to the light theme'
-                    : 'Switch to the dark theme'
-                }
-                title={state.settings.theme === 'dark' ? 'Light theme' : 'Dark theme'}
-                onClick={(event) => {
-                  const button = event.currentTarget;
-                  button.disabled = true;
-                  void actions
-                    .changeSettings(
-                      {
-                        ...state.settings,
-                        theme: state.settings.theme === 'dark' ? 'light' : 'dark',
-                      },
-                      'Theme toggled',
-                      false,
-                    )
-                    .finally(() => {
-                      button.disabled = false;
-                    });
+              <AppearanceControl
+                value={state.settings.theme}
+                disabled={appearanceSaving}
+                onChange={(theme) => {
+                  void changeAppearance({ theme }, `theme changed to ${theme}`);
                 }}
-              >
-                <ThemeIcon dark={state.settings.theme === 'dark'} />
-              </button>
+              />
               <button
                 type="button"
                 className="icon-btn"
@@ -577,9 +579,15 @@ export default function App() {
       <div aria-live="polite" role="status" className="visually-hidden">
         {state.announcement}
       </div>
-      {settingsOpen && <SettingsDialog open onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog
+          open
+          appearanceSaving={appearanceSaving}
+          onAppearanceChange={changeAppearance}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {privacyOpen && <PrivacyDialog open onClose={() => setPrivacyOpen(false)} />}
     </>
   );
 }
-

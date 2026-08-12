@@ -14,7 +14,7 @@ export function Page({
     <>
       <div className="page-head">
         <div>
-          <h1>{title}</h1>
+          <h1 tabIndex={-1}>{title}</h1>
         </div>
         {primary && <div className="page-primary">{primary}</div>}
       </div>

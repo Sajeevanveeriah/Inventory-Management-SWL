@@ -35,11 +35,17 @@ async function demoToValidate(page: Page) {
 }
 
 async function approveAllEligible(page: Page) {
-  for (const tab of [/^Price changed \(6\)$/, /^New items \(2\)$/] as const) {
+  for (const [tab, approved] of [
+    [/^Price changed \(6\)$/, 6],
+    [/^New items \(2\)$/, 2],
+  ] as const) {
     await page.getByRole('button', { name: tab }).click();
     await page.getByRole('checkbox', { name: 'Select all visible rows' }).check();
     await page.getByRole('button', { name: /Approve selected/ }).click();
     await page.getByRole('button', { name: /Approve \d record\(s\)/ }).click();
+    await expect(page.getByRole('status')).toContainText(
+      `Approved and recorded ${approved} records.`,
+    );
   }
 }
 
@@ -116,11 +122,47 @@ test.describe('desktop 1440px light', () => {
 
     await demoToValidate(page);
     await page.getByRole('button', { name: 'Open settings' }).click();
-    await page.getByLabel('Theme', { exact: true }).selectOption('dark');
+    await page.getByRole('dialog').getByRole('button', { name: 'Dark appearance' }).click();
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('cell', { name: 'FIC-002', exact: true }).click();
     await shot(page, '17-review-dark');
+  });
+
+  test('appearance material states and reset', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/#/dashboard');
+    const root = page.locator('html');
+    await expect(root).toHaveAttribute('data-theme-preference', 'system');
+    await shot(page, 'appearance-01-system-clear-light');
+
+    await page.getByRole('button', { name: 'Open settings' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Light appearance' }).click();
+    await dialog.getByRole('button', { name: 'Blue tinted glass' }).click();
+    await expect(root).toHaveAttribute('data-glass-tint', 'tinted');
+    await shot(page, 'appearance-02-light-tinted-settings');
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    await shot(page, 'appearance-03-light-tinted');
+
+    const darkAppearance = page.locator('.topbar').getByRole('button', { name: 'Dark appearance' });
+    await darkAppearance.click();
+    await expect(root).toHaveAttribute('data-theme', 'dark');
+    await expect(darkAppearance).toHaveAttribute('aria-pressed', 'true');
+    await shot(page, 'appearance-04-dark-tinted');
+
+    await page.getByRole('button', { name: 'Open settings' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'System appearance' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Clear glass' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+    await expect(root).toHaveAttribute('data-theme-preference', 'system');
+    await expect(root).toHaveAttribute('data-glass-tint', 'clear');
+    await shot(page, 'appearance-05-system-clear-reset');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+    await shot(page, 'appearance-06-system-clear-mobile');
   });
 });
 
@@ -174,7 +216,7 @@ test.describe('operations shell', () => {
     await shot(page, '28-suppliers');
   });
 
-  test('competitor search: all five live states and source registry', async ({ page }) => {
+  test('competitor search: all five fixture states and source registry', async ({ page }) => {
     await page.goto('/#/competitors');
     await shot(page, '30-competitor-search-empty');
 
@@ -182,27 +224,27 @@ test.describe('operations shell', () => {
     // Loading state: the fixture provider delays "fixture-slow" long enough to
     // capture. The unique suffix defeats the server-side cache across runs.
     await searchBox.fill(`fixture-slow deadlatch ${Date.now()}`);
-    await page.getByRole('button', { name: 'Search live prices' }).click();
-    await expect(page.getByText(/Searching live sources/)).toBeVisible();
+    await page.getByRole('button', { name: 'Run fixture search' }).click();
+    await expect(page.getByText(/Preparing fixture results/)).toBeVisible();
     await shot(page, '31-competitor-search-loading');
 
     await searchBox.fill('LW4570');
-    await page.getByRole('button', { name: 'Search live prices' }).click();
-    await expect(page.getByRole('region', { name: 'Live search results' })).toBeVisible();
+    await page.getByRole('button', { name: 'Run fixture search' }).click();
+    await expect(page.getByRole('region', { name: 'Fixture search results' })).toBeVisible();
     await shot(page, '32-competitor-search-results');
 
     await searchBox.fill('fixture-none');
-    await page.getByRole('button', { name: 'Search live prices' }).click();
-    await expect(page.getByText(/No live prices found/)).toBeVisible();
+    await page.getByRole('button', { name: 'Run fixture search' }).click();
+    await expect(page.getByText(/No fixture prices found/)).toBeVisible();
     await shot(page, '33-competitor-search-no-results');
 
     await searchBox.fill('fixture-error');
-    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await page.getByRole('button', { name: 'Run fixture search' }).click();
     await expect(page.getByText('The search provider returned an error')).toBeVisible();
     await shot(page, '34-competitor-search-provider-unavailable');
 
     await searchBox.fill('fixture-quota');
-    await page.getByRole('button', { name: 'Search live prices' }).click();
+    await page.getByRole('button', { name: 'Run fixture search' }).click();
     await expect(page.getByText('Provider quota is exhausted')).toBeVisible();
     await shot(page, '35-competitor-search-quota');
 
@@ -217,8 +259,8 @@ test.describe('operations shell', () => {
     await shot(page, '37-competitor-search-mobile-empty');
     const searchBox = page.getByLabel(/Product name, part number/);
     await searchBox.fill('LW4570');
-    await page.getByRole('button', { name: 'Search live prices' }).click();
-    await expect(page.getByRole('region', { name: 'Live search results' })).toBeVisible();
+    await page.getByRole('button', { name: 'Run fixture search' }).click();
+    await expect(page.getByRole('region', { name: 'Fixture search results' })).toBeVisible();
     await shot(page, '38-competitor-search-mobile-results');
     await navigateFromCompactMenu(page, 'Source registry');
     await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
@@ -282,7 +324,7 @@ test.describe('surface tour, light and dark, 1440px and 390px', () => {
         });
         await page.goto('/#/dashboard');
         if (theme === 'dark') {
-          await page.getByRole('button', { name: 'Switch to the dark theme' }).click();
+          await page.locator('.topbar').getByRole('button', { name: 'Dark appearance' }).click();
           await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
         }
         for (const [route, name] of SURFACES) {
@@ -294,4 +336,3 @@ test.describe('surface tour, light and dark, 1440px and 390px', () => {
     }
   }
 });
-

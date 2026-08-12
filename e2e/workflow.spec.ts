@@ -26,8 +26,9 @@ test('complete synthetic workflow: load, map, validate, review, export, verify, 
 }) => {
   const externalRequests: string[] = [];
   const consoleLines: string[] = [];
+  const allowedOrigin = new URL(process.env.SWL_LOCAL_TEST_URL ?? 'http://127.0.0.1:4173').origin;
   page.on('request', (req) => {
-    if (!req.url().startsWith('http://127.0.0.1:4173')) externalRequests.push(req.url());
+    if (new URL(req.url()).origin !== allowedOrigin) externalRequests.push(req.url());
   });
   page.on('console', (msg) => consoleLines.push(msg.text()));
 

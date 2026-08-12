@@ -158,3 +158,110 @@ test('mobile 390px: search page remains usable', async ({ page }) => {
   });
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test('appearance follows the system, persists an override and applies the optional tint', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/#/dashboard');
+  const root = page.locator('html');
+  await expect(root).toHaveAttribute('data-theme-preference', 'system');
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+
+  await page.locator('.topbar').getByRole('button', { name: 'Light appearance' }).click();
+  await expect(root).toHaveAttribute('data-theme-preference', 'light');
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  await page.reload();
+  await expect(root).toHaveAttribute('data-theme', 'light');
+
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'System appearance' }).click();
+  await expect(root).toHaveAttribute('data-theme-preference', 'system');
+  await dialog.getByRole('button', { name: 'Blue tinted glass' }).click();
+  await expect(root).toHaveAttribute('data-glass-tint', 'tinted');
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(root).toHaveAttribute('data-theme', 'light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(root).toHaveAttribute('data-theme', 'dark');
+  await page.reload();
+  await expect(root).toHaveAttribute('data-theme-preference', 'system');
+  await expect(root).toHaveAttribute('data-glass-tint', 'tinted');
+});
+
+test('operator navigation focuses the new route while global search keeps typing focus', async ({
+  page,
+}) => {
+  await page.goto('/#/new-run');
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeFocused();
+
+  const globalSearch = page.getByLabel('Search products across supplier and ServiceM8 data');
+  await globalSearch.fill('FIC-001');
+  await expect(page.getByRole('heading', { name: 'Inventory search', level: 1 })).toBeVisible();
+  await expect(globalSearch).toBeFocused();
+});
+
+test('mobile appearance controls are keyboard operable and the open menu makes content inert', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/dashboard');
+  const light = page.locator('.topbar').getByRole('button', { name: 'Light appearance' });
+  await light.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await expect(page.locator('.app-frame')).toHaveAttribute('inert', '');
+  await expect(page.locator('.side-nav button[aria-current="page"]')).toBeFocused();
+
+  const overflow = await page.evaluate(() => {
+    const doc = (
+      globalThis as unknown as {
+        document: { documentElement: { scrollWidth: number; clientWidth: number } };
+      }
+    ).document;
+    return doc.documentElement.scrollWidth - doc.documentElement.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('200 percent zoom equivalent keeps settings inside the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 450 });
+  await page.goto('/#/dashboard');
+  await expect(
+    page.locator('.topbar').getByRole('button', { name: 'System appearance' }),
+  ).toHaveAttribute('title', 'System');
+  await page.getByRole('button', { name: 'Open settings' }).click();
+  const dialog = page.getByRole('dialog');
+  const bounds = await dialog.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(720);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(450);
+
+  const overflow = await page.evaluate(() => {
+    const doc = (
+      globalThis as unknown as {
+        document: { documentElement: { scrollWidth: number; clientWidth: number } };
+      }
+    ).document;
+    return doc.documentElement.scrollWidth - doc.documentElement.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test('reduced motion removes material entrance and colour transitions', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/#/dashboard');
+  await expect(page.locator('.metric-card').first()).toBeVisible();
+  const motion = (await page.evaluate(`(() => {
+    const style = getComputedStyle(document.querySelector('.metric-card'));
+    return { animationName: style.animationName, transitionDuration: style.transitionDuration };
+  })()`)) as { animationName: string; transitionDuration: string };
+  expect(motion).toEqual({ animationName: 'none', transitionDuration: '0s' });
+});
