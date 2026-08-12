@@ -5261,11 +5261,17 @@ fn successful_search(query: &str, provider: &str, mut results: Vec<SearchResult>
         .collect::<HashSet<_>>();
     let mut source_domains = domains.into_iter().collect::<Vec<_>>();
     source_domains.sort();
+    let comparable_offers = results
+        .iter()
+        .filter(|result| result.comparison_eligible)
+        .count();
     SearchOutcome {
         state: "ok".to_string(),
         query: query.to_string(),
         query_kind: query_kind(query),
         provider: provider.to_string(),
+        candidates: Vec::new(),
+        selected_product: None,
         band: search_band(&results),
         retrieved_at: Some(now_text()),
         cached: Some(false),
@@ -5275,8 +5281,56 @@ fn successful_search(query: &str, provider: &str, mut results: Vec<SearchResult>
             sources_with_price: source_domains.len(),
             source_domains,
             priced_results: results.len(),
+            provider_candidates: 0,
+            parsed_offers: results.len(),
+            comparable_offers,
+            excluded_offers: results.len() - comparable_offers,
         }),
         results,
+    }
+}
+
+fn fixture_result(
+    query: &str,
+    kind: &str,
+    price_cents: i64,
+    seller: &str,
+    url: &str,
+) -> SearchResult {
+    let price_aud = money_string(price_cents);
+    SearchResult {
+        search_query: Some(query.to_string()),
+        selected_product_title: None,
+        selected_product_brand: None,
+        selected_product_id: None,
+        title: format!("Synthetic {kind} result for {query}"),
+        price_cents,
+        price_aud: price_aud.clone(),
+        item_price_cents: price_cents,
+        item_price_aud: price_aud.clone(),
+        shipping_cents: Some(0),
+        shipping_aud: Some(money_string(0)),
+        estimated_tax_cents: None,
+        estimated_tax_aud: None,
+        total_price_cents: Some(price_cents),
+        total_price_aud: Some(price_aud.clone()),
+        comparison_price_cents: Some(price_cents),
+        comparison_price_aud: Some(price_aud.clone()),
+        price_basis: "item_plus_shipping".to_string(),
+        original_price_text: format!("A${price_aud}"),
+        currency_basis: "explicit-aud".to_string(),
+        currency: "AUD".to_string(),
+        gst_basis: "unknown".to_string(),
+        pack_size: None,
+        condition: "new".to_string(),
+        availability: "in-stock".to_string(),
+        financing: false,
+        comparison_eligible: true,
+        exclusion_reasons: Vec::new(),
+        seller: seller.to_string(),
+        source_domain: "example.invalid".to_string(),
+        url: url.to_string(),
+        retrieved_at: now_text(),
     }
 }
 
@@ -5304,30 +5358,20 @@ fn fixture_search(query: &str) -> SearchOutcome {
             query,
             "fixture",
             vec![
-                SearchResult {
-                    title: format!("Synthetic lock result for {query}"),
-                    price_cents: 12_345,
-                    price_aud: "123.45".to_string(),
-                    currency: "AUD".to_string(),
-                    gst_basis: "unknown".to_string(),
-                    pack_size: None,
-                    seller: "Fictionville Security Supplies".to_string(),
-                    source_domain: "example.invalid".to_string(),
-                    url: "https://example.invalid/synthetic-lock-a".to_string(),
-                    retrieved_at: now_text(),
-                },
-                SearchResult {
-                    title: format!("Synthetic hardware result for {query}"),
-                    price_cents: 15_500,
-                    price_aud: "155.00".to_string(),
-                    currency: "AUD".to_string(),
-                    gst_basis: "unknown".to_string(),
-                    pack_size: None,
-                    seller: "Fictionville Hardware Direct".to_string(),
-                    source_domain: "example.invalid".to_string(),
-                    url: "https://example.invalid/synthetic-lock-b".to_string(),
-                    retrieved_at: now_text(),
-                },
+                fixture_result(
+                    query,
+                    "lock",
+                    12_345,
+                    "Fictionville Security Supplies",
+                    "https://example.invalid/synthetic-lock-a",
+                ),
+                fixture_result(
+                    query,
+                    "hardware",
+                    15_500,
+                    "Fictionville Hardware Direct",
+                    "https://example.invalid/synthetic-lock-b",
+                ),
             ],
         ),
     }
