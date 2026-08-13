@@ -148,7 +148,12 @@ if ($applicationExecutables.Count -ne 1) {
 $application = $applicationExecutables[0]
 $installedApplicationSha256 = (Get-FileHash -LiteralPath $application.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($installedApplicationSha256 -ne $productionBinarySha256) {
-  throw 'The installed executable is not byte-identical to the production binary driven by WDIO.'
+  $productionItem = Get-Item -LiteralPath $productionBinary
+  $installerItem = Get-Item -LiteralPath $installer
+  throw ("The installed executable is not byte-identical to the canonical production binary. " +
+    "installed=$($application.FullName) sha256=$installedApplicationSha256 bytes=$($application.Length) lastWriteUtc=$($application.LastWriteTimeUtc.ToString('o')); " +
+    "production=$productionBinary sha256=$productionBinarySha256 bytes=$($productionItem.Length) lastWriteUtc=$($productionItem.LastWriteTimeUtc.ToString('o')); " +
+    "installer=$installer bytes=$($installerItem.Length) lastWriteUtc=$($installerItem.LastWriteTimeUtc.ToString('o'))")
 }
 $applicationSignature = Get-AuthenticodeSignature -LiteralPath $application.FullName
 if ($applicationSignature.Status -ne 'NotSigned') {
@@ -381,7 +386,10 @@ if ($reinstalledExecutables.Count -ne 1) {
 $reinstalledApplication = $reinstalledExecutables[0]
 $reinstalledApplicationSha256 = (Get-FileHash -LiteralPath $reinstalledApplication.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($reinstalledApplicationSha256 -ne $productionBinarySha256) {
-  throw 'The reinstalled executable is not byte-identical to the production binary driven by WDIO.'
+  $productionItem = Get-Item -LiteralPath $productionBinary
+  throw ("The reinstalled executable is not byte-identical to the canonical production binary. " +
+    "reinstalled=$($reinstalledApplication.FullName) sha256=$reinstalledApplicationSha256 bytes=$($reinstalledApplication.Length) lastWriteUtc=$($reinstalledApplication.LastWriteTimeUtc.ToString('o')); " +
+    "production=$productionBinary sha256=$productionBinarySha256 bytes=$($productionItem.Length) lastWriteUtc=$($productionItem.LastWriteTimeUtc.ToString('o'))")
 }
 $reinstalledSignature = Get-AuthenticodeSignature -LiteralPath $reinstalledApplication.FullName
 if ($reinstalledSignature.Status -ne 'NotSigned') {
