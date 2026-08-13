@@ -61,11 +61,15 @@ function Get-DataManifest {
   if (!(Test-Path -LiteralPath $Root -PathType Container)) { return @() }
   return @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object {
     # The embedded WebView2 browser profile is volatile cache state the
-    # runtime rewrites on its own schedule; it is not preserved business
-    # data, which the database evidence checks cover exactly.
+    # runtime rewrites on its own schedule, and SQLite write-ahead sidecar
+    # files appear and disappear whenever any tool (including the scoped
+    # database evidence helper) opens the database. Neither is preserved
+    # business data; the database evidence checks compare the schema and
+    # record contents exactly.
     $relative = [IO.Path]::GetRelativePath($Root, $_.FullName)
     $relative -ne 'EBWebView' -and
-    -not $relative.StartsWith('EBWebView' + [IO.Path]::DirectorySeparatorChar)
+    -not $relative.StartsWith('EBWebView' + [IO.Path]::DirectorySeparatorChar) -and
+    $_.Name -notmatch '\.sqlite3-(?:wal|shm|journal)$'
   } | Sort-Object FullName | ForEach-Object {
     [ordered]@{
       relativePath = [IO.Path]::GetRelativePath($Root, $_.FullName)
