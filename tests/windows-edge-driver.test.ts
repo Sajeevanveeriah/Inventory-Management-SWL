@@ -215,6 +215,11 @@ describe('production WDIO driver boundary', () => {
     expect(desktopRunner).toContain('if ($activeWebViewCount -ne 1)');
     expect(desktopRunner).toContain('$activeWebViewVersions[0] -cne $edgeDriverVersion');
     expect(desktopRunner).toContain("$profile.Enabled.ToString() -cne 'True'");
+    expect(desktopRunner).toContain('Native desktop acceptance failed');
+    expect(desktopRunner).toContain(
+      "$_ -notmatch '(?i)(?:password|token|secret|credential|api[_-]?key)'",
+    );
+    expect(desktopRunner).toContain('if ($diagnostic.Length -gt 3500)');
 
     const offlineRule = desktopRunner.match(/function Add-OfflineRule \{[\s\S]*?\n\}/)?.[0];
     expect(offlineRule).toBeDefined();

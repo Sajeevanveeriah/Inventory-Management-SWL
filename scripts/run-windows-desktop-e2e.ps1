@@ -424,4 +424,32 @@ if ($networkEvidence.monitorErrorCount -ne 0 -or
     $networkEvidence.unexpectedRemoteConnectionCount -ne 0) {
   throw 'The desktop acceptance workflow violated the fail-closed process/network boundary.'
 }
-if ($testExitCode -ne 0) { exit $testExitCode }
+if ($testExitCode -ne 0) {
+  $wdioLogPath = Join-Path $evidenceRoot 'WDIO.log'
+  $diagnostic = if (Test-Path -LiteralPath $wdioLogPath -PathType Leaf) {
+    $logLines = @(Get-Content -LiteralPath $wdioLogPath -ErrorAction Stop | ForEach-Object {
+      ($_ -replace "`e\[[0-9;]*[A-Za-z]", '').Trim()
+    } | Where-Object {
+      $_ -match '(?i)(?:error|fail|expect|timeout|webdriver|tauri|jasmine)' -and
+      $_ -notmatch '(?i)(?:password|token|secret|credential|api[_-]?key)'
+    } | Select-Object -Last 24)
+    if ($logLines.Count -eq 0) {
+      'Native WDIO exited nonzero without a non-sensitive diagnostic line.'
+    }
+    else {
+      ($logLines -join ' | ')
+    }
+  }
+  else {
+    'Native WDIO exited nonzero without producing its expected log.'
+  }
+  if ($diagnostic.Length -gt 3500) { $diagnostic = $diagnostic.Substring(0, 3500) }
+  if ($env:GITHUB_ACTIONS -eq 'true') {
+    $encodedDiagnostic = $diagnostic.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+    Write-Output "::error file=desktop-e2e/installed-app.spec.ts,title=Native desktop acceptance failed::$encodedDiagnostic"
+  }
+  else {
+    Write-Error $diagnostic
+  }
+  exit $testExitCode
+}
