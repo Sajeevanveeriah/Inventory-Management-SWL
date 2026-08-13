@@ -26,6 +26,7 @@ describe('locked Tauri service EdgeDriver compatibility', () => {
   it('revalidates the workflow-selected Edge path in the bounded local runner', () => {
     expect(workflow).toContain('"CHROMIUM_PATH=$edgePath"');
     expect(workflow).toContain('"SWL_VERIFIED_BROWSER_SHA256=$edgeSha256"');
+    expect(workflow).toContain('npm run e2e:local -- --reporter=github');
     expect(localBrowserRunner).toContain('process.env.CHROMIUM_PATH');
     expect(localBrowserRunner).toContain('process.env.SWL_VERIFIED_BROWSER_SHA256');
     expect(localBrowserRunner).toContain("createHash('sha256')");
