@@ -68,6 +68,16 @@ function Get-DataManifest {
   })
 }
 
+function Get-NormalisedDirectoryPath {
+  param([string]$Path)
+  # Registry install locations may carry quotes or a trailing separator that
+  # [IO.Path]::GetFullPath preserves; normalise both sides before comparing.
+  return [IO.Path]::GetFullPath($Path.Trim('"')).TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar
+  )
+}
+
 function Test-LoopbackAddress {
   param([string]$Address)
   return $Address -in @('127.0.0.1', '::1', '0.0.0.0', '::')
@@ -219,9 +229,11 @@ if ($uninstallEntriesAfter.Count -ne 1) {
   throw "Expected exactly one new current-user uninstall registration; found $($uninstallEntriesAfter.Count)."
 }
 $uninstallRegistryPath = $uninstallEntriesAfter[0].RegistryPath
-if ([string]::IsNullOrWhiteSpace($uninstallEntriesAfter[0].InstallLocation) -or
-    [IO.Path]::GetFullPath($uninstallEntriesAfter[0].InstallLocation) -ine [IO.Path]::GetFullPath($installRoot)) {
-  throw 'The current-user uninstall registration does not identify the exact installation directory.'
+$registeredInstallLocation = [string]$uninstallEntriesAfter[0].InstallLocation
+if ([string]::IsNullOrWhiteSpace($registeredInstallLocation) -or
+    (Get-NormalisedDirectoryPath $registeredInstallLocation) -ine (Get-NormalisedDirectoryPath $installRoot)) {
+  throw ("The current-user uninstall registration does not identify the exact installation directory. " +
+    "registered=$registeredInstallLocation expected=$installRoot")
 }
 
 $processesBeforeLaunch = @(Get-CimInstance Win32_Process)
@@ -452,9 +464,11 @@ if ($reinstalledEntries.Count -ne 1) {
   throw "Expected one recreated current-user uninstall registration; found $($reinstalledEntries.Count)."
 }
 $reinstalledRegistryPath = $reinstalledEntries[0].RegistryPath
-if ([string]::IsNullOrWhiteSpace($reinstalledEntries[0].InstallLocation) -or
-    [IO.Path]::GetFullPath($reinstalledEntries[0].InstallLocation) -ine [IO.Path]::GetFullPath($installRoot)) {
-  throw 'The recreated current-user registration has the wrong installation directory.'
+$reinstalledInstallLocation = [string]$reinstalledEntries[0].InstallLocation
+if ([string]::IsNullOrWhiteSpace($reinstalledInstallLocation) -or
+    (Get-NormalisedDirectoryPath $reinstalledInstallLocation) -ine (Get-NormalisedDirectoryPath $installRoot)) {
+  throw ("The recreated current-user registration has the wrong installation directory. " +
+    "registered=$reinstalledInstallLocation expected=$installRoot")
 }
 
 $manifestImmediatelyAfterReinstall = @(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress
