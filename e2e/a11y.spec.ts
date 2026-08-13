@@ -157,7 +157,7 @@ test('dark theme keeps contrast on the review screen', async ({ page }) => {
   await page.getByRole('button', { name: 'Open settings' }).click();
   const settingsDialog = page.getByRole('dialog');
   await settingsDialog.getByRole('button', { name: 'Dark appearance' }).click();
-  await page.keyboard.press('Escape');
+  await settingsDialog.getByRole('button', { name: 'Close' }).click();
   await expect(settingsDialog).toBeHidden();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.getByRole('button', { name: 'Review changes' }).click();

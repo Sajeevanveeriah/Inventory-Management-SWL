@@ -150,7 +150,7 @@ test.describe('desktop 1440px light', () => {
     await demoToValidate(page);
     await page.getByRole('button', { name: 'Open settings' }).click();
     await settingsDialog.getByRole('button', { name: 'Dark appearance' }).click();
-    await page.keyboard.press('Escape');
+    await settingsDialog.getByRole('button', { name: 'Close' }).click();
     await expect(settingsDialog).toBeHidden();
     await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('cell', { name: 'FIC-002', exact: true }).click();
