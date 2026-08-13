@@ -9,9 +9,30 @@ $productName = 'SWL Pricing and Inventory Control'
 $applicationIdentifier = 'au.com.stanwoottonlocksmiths.swl-pricing'
 $installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 $productionBinary = (Resolve-Path -LiteralPath $ProductionBinaryPath).Path
+# Observational only: tauri build rewrites this target-directory file in
+# place after packing the installer (same size, new bytes; observed
+# last-write 0.3 seconds after the installer landed), so it is never
+# byte-identical to the packaged executable and must not anchor identity.
 $productionBinarySha256 = (Get-FileHash -LiteralPath $productionBinary -Algorithm SHA256).Hash.ToLowerInvariant()
 $evidence = [IO.Path]::GetFullPath($EvidencePath)
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($evidence)) -Force | Out-Null
+
+# The canonical identity reference is the application executable inside the
+# installer payload: what this artefact ships must be exactly what install
+# and reinstall place on disk.
+$payloadExtractRoot = Join-Path $env:RUNNER_TEMP ("swl-installer-payload-" + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $payloadExtractRoot | Out-Null
+$sevenZip = Get-Command 7z -ErrorAction Stop
+& $sevenZip.Source x -y "-o$payloadExtractRoot" $installer | Out-Null
+if ($LASTEXITCODE -gt 1) { throw "The installer payload could not be extracted for comparison (7z exit code $LASTEXITCODE)." }
+$payloadExecutables = @(Get-ChildItem -LiteralPath $payloadExtractRoot -Recurse -File -Filter '*.exe' | Where-Object {
+  $_.Name -notmatch '^unins|uninstall|WebView2|MicrosoftEdge'
+})
+if ($payloadExecutables.Count -ne 1) {
+  throw "Expected exactly one application executable inside the installer payload; found $($payloadExecutables.Count)."
+}
+$packagedApplicationSha256 = (Get-FileHash -LiteralPath $payloadExecutables[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+Remove-Item -LiteralPath $payloadExtractRoot -Recurse -Force
 
 function Get-SwlStartMenuLinks {
   param([string]$Root)
@@ -147,13 +168,10 @@ if ($applicationExecutables.Count -ne 1) {
 }
 $application = $applicationExecutables[0]
 $installedApplicationSha256 = (Get-FileHash -LiteralPath $application.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($installedApplicationSha256 -ne $productionBinarySha256) {
-  $productionItem = Get-Item -LiteralPath $productionBinary
-  $installerItem = Get-Item -LiteralPath $installer
-  throw ("The installed executable is not byte-identical to the canonical production binary. " +
+if ($installedApplicationSha256 -ne $packagedApplicationSha256) {
+  throw ("The installed executable is not byte-identical to the executable packaged inside the installer. " +
     "installed=$($application.FullName) sha256=$installedApplicationSha256 bytes=$($application.Length) lastWriteUtc=$($application.LastWriteTimeUtc.ToString('o')); " +
-    "production=$productionBinary sha256=$productionBinarySha256 bytes=$($productionItem.Length) lastWriteUtc=$($productionItem.LastWriteTimeUtc.ToString('o')); " +
-    "installer=$installer bytes=$($installerItem.Length) lastWriteUtc=$($installerItem.LastWriteTimeUtc.ToString('o'))")
+    "packaged sha256=$packagedApplicationSha256; installer=$installer")
 }
 $applicationSignature = Get-AuthenticodeSignature -LiteralPath $application.FullName
 if ($applicationSignature.Status -ne 'NotSigned') {
@@ -385,11 +403,10 @@ if ($reinstalledExecutables.Count -ne 1) {
 }
 $reinstalledApplication = $reinstalledExecutables[0]
 $reinstalledApplicationSha256 = (Get-FileHash -LiteralPath $reinstalledApplication.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($reinstalledApplicationSha256 -ne $productionBinarySha256) {
-  $productionItem = Get-Item -LiteralPath $productionBinary
-  throw ("The reinstalled executable is not byte-identical to the canonical production binary. " +
+if ($reinstalledApplicationSha256 -ne $packagedApplicationSha256) {
+  throw ("The reinstalled executable is not byte-identical to the executable packaged inside the installer. " +
     "reinstalled=$($reinstalledApplication.FullName) sha256=$reinstalledApplicationSha256 bytes=$($reinstalledApplication.Length) lastWriteUtc=$($reinstalledApplication.LastWriteTimeUtc.ToString('o')); " +
-    "production=$productionBinary sha256=$productionBinarySha256 bytes=$($productionItem.Length) lastWriteUtc=$($productionItem.LastWriteTimeUtc.ToString('o'))")
+    "packaged sha256=$packagedApplicationSha256")
 }
 $reinstalledSignature = Get-AuthenticodeSignature -LiteralPath $reinstalledApplication.FullName
 if ($reinstalledSignature.Status -ne 'NotSigned') {
@@ -579,11 +596,12 @@ if (($databaseEvidenceAfterSecondUninstall | ConvertTo-Json -Depth 7 -Compress) 
   installerSignature = $installerSignature.Status.ToString()
   installedExecutableSignature = $applicationSignature.Status.ToString()
   installedExecutable = $application.Name
-  productionBinarySha256 = $productionBinarySha256
+  packagedExecutableSha256 = $packagedApplicationSha256
+  postBundleTargetBinarySha256Observational = $productionBinarySha256
   installedExecutableSha256 = $installedApplicationSha256
   reinstalledExecutableSha256 = $reinstalledApplicationSha256
-  installedExecutableMatchesWdioProductionBinary = $true
-  reinstalledExecutableMatchesWdioProductionBinary = $true
+  installedExecutableMatchesPackagedExecutable = $true
+  reinstalledExecutableMatchesPackagedExecutable = $true
   launchedFromStartMenu = $true
   startMenuLink = [IO.Path]::GetRelativePath($startMenuRoot, $startMenuLink.FullName)
   currentUserUninstallRegistration = $true
