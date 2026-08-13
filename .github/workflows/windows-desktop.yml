@@ -99,7 +99,9 @@ jobs:
           if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft') {
             throw "The installed Microsoft Edge executable is not validly signed by Microsoft."
           }
+          $edgeSha256 = (Get-FileHash -LiteralPath $edgePath -Algorithm SHA256).Hash.ToLowerInvariant()
           "CHROMIUM_PATH=$edgePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SWL_VERIFIED_BROWSER_SHA256=$edgeSha256" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $driverInputs = @(
             $env:EdgeWebDriver,
             'C:\SeleniumWebDrivers\EdgeDriver\msedgedriver.exe',
@@ -131,7 +133,7 @@ jobs:
             browser = [ordered]@{
               fileName = [IO.Path]::GetFileName($edgePath)
               version = (Get-Item -LiteralPath $edgePath).VersionInfo.ProductVersion
-              sha256 = (Get-FileHash -LiteralPath $edgePath -Algorithm SHA256).Hash.ToLowerInvariant()
+              sha256 = $edgeSha256
               signatureStatus = $signature.Status.ToString()
               signerSubject = $signature.SignerCertificate.Subject
             }

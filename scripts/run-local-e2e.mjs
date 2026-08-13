@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { clearTimeout as clearScheduledTimeout, setTimeout as scheduleTimeout } from 'node:timers';
 import { fileURLToPath, URL } from 'node:url';
@@ -55,6 +56,17 @@ function browserPath() {
   const metadata = lstatSync(resolved);
   if (!metadata.isFile() || metadata.isSymbolicLink()) {
     throw new Error('The selected browser is not a reviewed regular executable file.');
+  }
+  const attestedSha256 = process.env.SWL_VERIFIED_BROWSER_SHA256;
+  if (attestedSha256 !== undefined) {
+    if (!/^[0-9a-f]{64}$/u.test(attestedSha256)) {
+      throw new Error('The supplied browser attestation is not a lowercase SHA-256 digest.');
+    }
+    const actualSha256 = createHash('sha256').update(readFileSync(resolved)).digest('hex');
+    if (actualSha256 !== attestedSha256) {
+      throw new Error('The selected browser does not match the verified workflow attestation.');
+    }
+    return resolved;
   }
   const verificationEnvironment = cleanEnvironment();
   verificationEnvironment.SWL_BROWSER_CANDIDATE = resolved;

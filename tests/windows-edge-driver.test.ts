@@ -25,7 +25,11 @@ const supportedDriverBannerSource =
 describe('locked Tauri service EdgeDriver compatibility', () => {
   it('revalidates the workflow-selected Edge path in the bounded local runner', () => {
     expect(workflow).toContain('"CHROMIUM_PATH=$edgePath"');
+    expect(workflow).toContain('"SWL_VERIFIED_BROWSER_SHA256=$edgeSha256"');
     expect(localBrowserRunner).toContain('process.env.CHROMIUM_PATH');
+    expect(localBrowserRunner).toContain('process.env.SWL_VERIFIED_BROWSER_SHA256');
+    expect(localBrowserRunner).toContain("createHash('sha256')");
+    expect(localBrowserRunner).toContain('/^[0-9a-f]{64}$/u');
     expect(localBrowserRunner).toContain('Get-AuthenticodeSignature');
     expect(localBrowserRunner).toContain("ProductName -notlike '*Microsoft Edge*'");
     expect(localBrowserRunner).toContain('const resolved = realpathSync(selected)');
