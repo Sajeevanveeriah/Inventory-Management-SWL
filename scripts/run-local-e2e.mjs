@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { clearTimeout as clearScheduledTimeout, setTimeout as scheduleTimeout } from 'node:timers';
 import { fileURLToPath, URL } from 'node:url';
@@ -35,6 +36,7 @@ function browserPath() {
     throw new Error('Automated local acceptance currently requires Microsoft Edge on Windows.');
   }
   const candidates = [
+    process.env.CHROMIUM_PATH,
     process.env['ProgramFiles(x86)']
       ? join(process.env['ProgramFiles(x86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe')
       : undefined,
@@ -42,16 +44,29 @@ function browserPath() {
       ? join(process.env.ProgramFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
       : undefined,
   ].filter(Boolean);
-  const selected = candidates.find((candidate) => existsSync(candidate));
+  const selected = [...new Set(candidates.map((candidate) => resolve(candidate)))].find(
+    (candidate) => existsSync(candidate),
+  );
   if (!selected) {
     throw new Error(
       'Microsoft Edge was not found under Program Files; this runner never downloads it.',
     );
   }
-  const resolved = resolve(selected);
+  const resolved = realpathSync(selected);
   const metadata = lstatSync(resolved);
-  if (!metadata.isFile() || metadata.isSymbolicLink() || realpathSync(resolved) !== resolved) {
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
     throw new Error('The selected browser is not a reviewed regular executable file.');
+  }
+  const attestedSha256 = process.env.SWL_VERIFIED_BROWSER_SHA256;
+  if (attestedSha256 !== undefined) {
+    if (!/^[0-9a-f]{64}$/u.test(attestedSha256)) {
+      throw new Error('The supplied browser attestation is not a lowercase SHA-256 digest.');
+    }
+    const actualSha256 = createHash('sha256').update(readFileSync(resolved)).digest('hex');
+    if (actualSha256 !== attestedSha256) {
+      throw new Error('The selected browser does not match the verified workflow attestation.');
+    }
+    return resolved;
   }
   const verificationEnvironment = cleanEnvironment();
   verificationEnvironment.SWL_BROWSER_CANDIDATE = resolved;
@@ -65,6 +80,9 @@ function browserPath() {
     ],
     { env: verificationEnvironment, stdio: 'ignore', windowsHide: true },
   );
+  if (verification.error) {
+    throw new Error('Microsoft Edge product and signature verification could not be started.');
+  }
   if (verification.status !== 0) {
     throw new Error(
       'The installed Microsoft Edge executable failed product or signature verification.',
@@ -163,6 +181,8 @@ function waitForLauncherReady(child) {
         const summary = JSON.parse(match[1]);
         if (
           typeof summary.url !== 'string' ||
+          typeof summary.liveDataDirectory !== 'string' ||
+          typeof summary.seedDataDirectory !== 'string' ||
           summary.fixtureMode !== true ||
           summary.paidCallsEnabled !== false ||
           summary.repositoryEnvironmentFilesLoaded !== false
@@ -181,7 +201,7 @@ function waitForLauncherReady(child) {
   });
 }
 
-function runPlaywright(url, executablePath) {
+function runPlaywright(url, executablePath, liveDataDirectory, seedDataDirectory) {
   const suppliedArguments = process.argv.slice(2);
   const hasReporter = suppliedArguments.some(
     (argument) => argument === '--reporter' || argument.startsWith('--reporter='),
@@ -200,6 +220,8 @@ function runPlaywright(url, executablePath) {
       ...cleanEnvironment(),
       CHROMIUM_PATH: executablePath,
       SWL_LOCAL_TEST_URL: url,
+      SWL_LOCAL_TEST_LIVE_DATA_DIR: liveDataDirectory,
+      SWL_LOCAL_TEST_SEED_DATA_DIR: seedDataDirectory,
     },
     stdio: 'inherit',
     windowsHide: true,
@@ -231,7 +253,12 @@ async function main() {
     const ready = await waitForLauncherReady(launcher);
     console.log(`Driving local fixture test at ${ready.url}`);
     console.log(`Browser: ${executablePath}`);
-    playwright = runPlaywright(ready.url, executablePath);
+    playwright = runPlaywright(
+      ready.url,
+      executablePath,
+      ready.liveDataDirectory,
+      ready.seedDataDirectory,
+    );
     const result = await waitForClose(playwright, 15 * 60_000, 'Playwright');
     if (interrupted) process.exitCode = 130;
     else if (result.code !== 0) process.exitCode = result.code ?? 1;
@@ -258,8 +285,15 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(
-    `Local E2E platform failed: ${error instanceof Error ? error.message : String(error)}`,
-  );
+  const details =
+    error instanceof AggregateError
+      ? error.errors
+          .filter(Boolean)
+          .map((cause) => (cause instanceof Error ? cause.message : String(cause)))
+          .join(' | ')
+      : error instanceof Error
+        ? error.message
+        : String(error);
+  console.error(`Local E2E platform failed: ${details}`);
   process.exitCode = 1;
 });

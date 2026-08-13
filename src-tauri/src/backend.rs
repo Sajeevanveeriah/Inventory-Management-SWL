@@ -1059,9 +1059,7 @@ fn date_prefix() -> String {
     format!("{year:04}{month:02}{day:02}")
 }
 
-fn credential_target_for_build_settings(
-    local_profile_value: Option<&str>,
-) -> &'static str {
+fn credential_target_for_build_settings(local_profile_value: Option<&str>) -> &'static str {
     if local_profile_value == Some("1") {
         LOCAL_TEST_CREDENTIAL_TARGET
     } else {

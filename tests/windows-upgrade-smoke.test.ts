@@ -242,7 +242,17 @@ describe('Windows desktop offline cleanup', () => {
     );
 
     expect(desktopE2eSource).toContain('$testExitCode = $LASTEXITCODE');
-    expect(desktopE2eSource).toContain('if ($testExitCode -ne 0) { exit $testExitCode }');
+    expect(desktopE2eSource).toContain('$maximumDesktopAttempts = 2');
+    expect(desktopE2eSource).toContain(
+      "$attemptLog -match 'session not created: DevToolsActivePort file doesn''t exist'",
+    );
+    expect(desktopE2eSource).toContain("$attemptLog -match 'Failed to create a session'");
+    expect(desktopE2eSource).toContain(
+      "$attemptLog -notmatch 'ExpectationError|AssertionError'",
+    );
+    expect(desktopE2eSource).toContain('if ($testExitCode -ne 0) {');
+    expect(desktopE2eSource).toContain('Native desktop acceptance failed');
+    expect(desktopE2eSource).toContain('exit $testExitCode');
   });
 });
 

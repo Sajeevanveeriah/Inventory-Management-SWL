@@ -14,6 +14,7 @@ function readSource(...segments: string[]) {
 const preparation = readSource('scripts', 'prepare-edge-webdriver.ps1');
 const workflow = readSource('.github', 'workflows', 'windows-desktop.yml');
 const desktopRunner = readSource('scripts', 'run-windows-desktop-e2e.ps1');
+const localBrowserRunner = readSource('scripts', 'run-local-e2e.mjs');
 const wdio = readSource('wdio.conf.ts');
 const tauriServicePatch = readSource('scripts', 'patch-tauri-service-edge-driver-label.mjs');
 const supportedDriverBanner =
@@ -22,6 +23,20 @@ const supportedDriverBannerSource =
   "'^Microsoft Edge WebDriver (?<version>\\d+(?:\\.\\d+){3}) \\([0-9a-f]{40}\\)$'";
 
 describe('locked Tauri service EdgeDriver compatibility', () => {
+  it('revalidates the workflow-selected Edge path in the bounded local runner', () => {
+    expect(workflow).toContain('"CHROMIUM_PATH=$edgePath"');
+    expect(workflow).toContain('"SWL_VERIFIED_BROWSER_SHA256=$edgeSha256"');
+    expect(workflow).toContain('npm run e2e:local -- --reporter=github');
+    expect(localBrowserRunner).toContain('process.env.CHROMIUM_PATH');
+    expect(localBrowserRunner).toContain('process.env.SWL_VERIFIED_BROWSER_SHA256');
+    expect(localBrowserRunner).toContain("createHash('sha256')");
+    expect(localBrowserRunner).toContain('/^[0-9a-f]{64}$/u');
+    expect(localBrowserRunner).toContain('Get-AuthenticodeSignature');
+    expect(localBrowserRunner).toContain("ProductName -notlike '*Microsoft Edge*'");
+    expect(localBrowserRunner).toContain('const resolved = realpathSync(selected)');
+    expect(localBrowserRunner).toContain('metadata.isSymbolicLink()');
+  });
+
   it('patches only reviewed 1.3.0 dependency bytes after npm ci', () => {
     expect(tauriServicePatch).toContain('packageMetadata.version !== "1.3.0"');
     expect(tauriServicePatch).toContain(
@@ -200,6 +215,11 @@ describe('production WDIO driver boundary', () => {
     expect(desktopRunner).toContain('if ($activeWebViewCount -ne 1)');
     expect(desktopRunner).toContain('$activeWebViewVersions[0] -cne $edgeDriverVersion');
     expect(desktopRunner).toContain("$profile.Enabled.ToString() -cne 'True'");
+    expect(desktopRunner).toContain('Native desktop acceptance failed');
+    expect(desktopRunner).toContain(
+      "$_ -notmatch '(?i)(?:password|token|secret|credential|api[_-]?key)'",
+    );
+    expect(desktopRunner).toContain('if ($diagnostic.Length -gt 3500)');
 
     const offlineRule = desktopRunner.match(/function Add-OfflineRule \{[\s\S]*?\n\}/)?.[0];
     expect(offlineRule).toBeDefined();

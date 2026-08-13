@@ -305,8 +305,25 @@ try {
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $EvidencePath -Encoding utf8
   } -ArgumentList $application, $stopSentinel, $monitorEvidencePath
 
-  & npm run e2e:desktop 2>&1 | Tee-Object -FilePath (Join-Path $evidenceRoot 'WDIO.log')
-  $testExitCode = $LASTEXITCODE
+  $wdioLogPath = Join-Path $evidenceRoot 'WDIO.log'
+  $maximumDesktopAttempts = 2
+  for ($desktopAttempt = 1; $desktopAttempt -le $maximumDesktopAttempts; $desktopAttempt += 1) {
+    $attemptLogPath = Join-Path $evidenceRoot "WDIO-attempt-$desktopAttempt.log"
+    & npm run e2e:desktop 2>&1 | Tee-Object -FilePath $attemptLogPath
+    $testExitCode = $LASTEXITCODE
+    Copy-Item -LiteralPath $attemptLogPath -Destination $wdioLogPath -Force
+    if ($testExitCode -eq 0) { break }
+
+    $attemptLog = Get-Content -LiteralPath $attemptLogPath -Raw -ErrorAction Stop
+    $retryableSessionStartupFailure = (
+      $desktopAttempt -lt $maximumDesktopAttempts -and
+      $attemptLog -match 'session not created: DevToolsActivePort file doesn''t exist' -and
+      $attemptLog -match 'Failed to create a session' -and
+      $attemptLog -notmatch 'ExpectationError|AssertionError'
+    )
+    if (!$retryableSessionStartupFailure) { break }
+    Start-Sleep -Seconds 2
+  }
 }
 finally {
   $cleanupFailures = [Collections.Generic.List[string]]::new()
@@ -424,4 +441,32 @@ if ($networkEvidence.monitorErrorCount -ne 0 -or
     $networkEvidence.unexpectedRemoteConnectionCount -ne 0) {
   throw 'The desktop acceptance workflow violated the fail-closed process/network boundary.'
 }
-if ($testExitCode -ne 0) { exit $testExitCode }
+if ($testExitCode -ne 0) {
+  $wdioLogPath = Join-Path $evidenceRoot 'WDIO.log'
+  $diagnostic = if (Test-Path -LiteralPath $wdioLogPath -PathType Leaf) {
+    $logLines = @(Get-Content -LiteralPath $wdioLogPath -ErrorAction Stop | ForEach-Object {
+      ($_ -replace "`e\[[0-9;]*[A-Za-z]", '').Trim()
+    } | Where-Object {
+      $_ -match '(?i)(?:error|fail|expect|timeout|webdriver|tauri|jasmine)' -and
+      $_ -notmatch '(?i)(?:password|token|secret|credential|api[_-]?key)'
+    } | Select-Object -Last 24)
+    if ($logLines.Count -eq 0) {
+      'Native WDIO exited nonzero without a non-sensitive diagnostic line.'
+    }
+    else {
+      ($logLines -join ' | ')
+    }
+  }
+  else {
+    'Native WDIO exited nonzero without producing its expected log.'
+  }
+  if ($diagnostic.Length -gt 3500) { $diagnostic = $diagnostic.Substring(0, 3500) }
+  if ($env:GITHUB_ACTIONS -eq 'true') {
+    $encodedDiagnostic = $diagnostic.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+    Write-Output "::error file=desktop-e2e/installed-app.spec.ts,title=Native desktop acceptance failed::$encodedDiagnostic"
+  }
+  else {
+    Write-Error $diagnostic
+  }
+  exit $testExitCode
+}
