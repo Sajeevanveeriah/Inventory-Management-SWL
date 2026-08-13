@@ -126,7 +126,10 @@ test('complete synthetic workflow: load, map, validate, review, export, verify, 
 
   // --- export and structural verification ---------------------------------
   await page.getByRole('button', { name: 'Generate all output files' }).click();
-  await expect(page.getByRole('heading', { name: 'Generated files' })).toBeVisible();
+  // Same CPU-bound generation as screenshots.spec.ts; see the note there.
+  await expect(page.getByRole('heading', { name: 'Generated files' })).toBeVisible({
+    timeout: 30_000,
+  });
   const downloadButtons = page.getByRole('button', {
     name: 'Download',
     exact: true,

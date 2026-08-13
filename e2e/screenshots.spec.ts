@@ -9,6 +9,14 @@ import { installLiveSearchApiMock } from './support/liveSearch';
  */
 
 const DIR = 'screenshots';
+/**
+ * Generating the outputs lazily loads the workbook library and then builds
+ * every file on the main thread, so its duration tracks how loaded the machine
+ * is. The default five-second expectation is not a considered budget for that,
+ * and the suite runs with no retries, so a busy CI runner failed the build here
+ * while the identical step in workflow.spec.ts passed in the same run.
+ */
+const GENERATE_OUTPUTS_TIMEOUT = 30_000;
 test.beforeAll(() => {
   fs.mkdirSync(DIR, { recursive: true });
 });
@@ -130,7 +138,9 @@ test.describe('desktop 1440px light', () => {
     await page.getByRole('button', { name: 'Continue to export' }).click();
     await shot(page, '13-export-ready');
     await page.getByRole('button', { name: 'Generate all output files' }).click();
-    await expect(page.getByRole('heading', { name: 'Generated files' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Generated files' })).toBeVisible({
+      timeout: GENERATE_OUTPUTS_TIMEOUT,
+    });
     await shot(page, '14-export-generated');
   });
 
