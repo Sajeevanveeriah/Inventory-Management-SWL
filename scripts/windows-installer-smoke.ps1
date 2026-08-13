@@ -59,7 +59,14 @@ function Get-SwlUninstallEntries {
 function Get-DataManifest {
   param([string]$Root)
   if (!(Test-Path -LiteralPath $Root -PathType Container)) { return @() }
-  return @(Get-ChildItem -LiteralPath $Root -Recurse -File | Sort-Object FullName | ForEach-Object {
+  return @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object {
+    # The embedded WebView2 browser profile is volatile cache state the
+    # runtime rewrites on its own schedule; it is not preserved business
+    # data, which the database evidence checks cover exactly.
+    $relative = [IO.Path]::GetRelativePath($Root, $_.FullName)
+    $relative -ne 'EBWebView' -and
+    -not $relative.StartsWith('EBWebView' + [IO.Path]::DirectorySeparatorChar)
+  } | Sort-Object FullName | ForEach-Object {
     [ordered]@{
       relativePath = [IO.Path]::GetRelativePath($Root, $_.FullName)
       bytes = $_.Length
