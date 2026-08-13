@@ -144,7 +144,7 @@ jobs:
             }
           } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$env:RUNNER_TEMP/swl-diagnostics/Microsoft-Edge-Evidence.json" -Encoding utf8
       - name: Run production Playwright and axe checks
-        run: npm run e2e
+        run: npm run e2e:local
       - name: Run Rust database, migration, IPC and security tests
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features
       - name: Build exact test-only desktop acceptance helpers
