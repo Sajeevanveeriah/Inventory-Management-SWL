@@ -61,6 +61,11 @@ if (!['all', 'current', 'history'].includes(scope)) {
 const scanCurrent = scope === 'all' || scope === 'current';
 const scanHistory = scope === 'all' || scope === 'history';
 const excludePrivateEnv = process.argv.includes('--exclude-private-env');
+// Report-only still scans and still prints every finding; it just does not fail
+// the run. It exists for the reachable history, whose exposure is already
+// public and cannot be withdrawn without rewriting published commits. Leave it
+// off for the proposed tree so a newly added credential is still blocked.
+const reportOnly = process.argv.includes('--report-only');
 
 function git(args, options = {}) {
   try {
@@ -189,9 +194,15 @@ if (scanHistory) {
 }
 
 if (findings.length > 0) {
-  console.error('Possible secrets detected (values NOT shown):');
-  for (const finding of [...new Set(findings)]) console.error(`  - ${finding}`);
-  process.exit(1);
+  const report = reportOnly ? console.log : console.error;
+  report('Possible secrets detected (values NOT shown):');
+  for (const finding of [...new Set(findings)]) report(`  - ${finding}`);
+  if (!reportOnly) process.exit(1);
+  report(
+    'Reported without failing because --report-only was requested. Nothing above is fixed, ' +
+      'and any credential listed here stays readable to anyone who clones the repository.',
+  );
+  process.exit(0);
 }
 console.log(
   `Secret scan passed for ${scope}: ${currentFiles.size} current paths and ${seen.size} history policy scans checked.`,
