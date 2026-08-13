@@ -38,12 +38,14 @@ if ($signature.Status -ne 'NotSigned') {
 
 $packageRaw = Get-Content -LiteralPath 'package.json' -Raw
 $package = $packageRaw | ConvertFrom-Json
-$packageLock = Get-Content -LiteralPath 'package-lock.json' -Raw | ConvertFrom-Json
+# npm lockfiles key the root package under an empty-string property, which
+# ConvertFrom-Json only accepts as a hashtable.
+$packageLock = Get-Content -LiteralPath 'package-lock.json' -Raw | ConvertFrom-Json -AsHashtable
 $cargoRaw = Get-Content -LiteralPath 'src-tauri/Cargo.toml' -Raw
 $cargoLockRaw = Get-Content -LiteralPath 'src-tauri/Cargo.lock' -Raw
 $tauri = Get-Content -LiteralPath 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
 $auditRaw = Get-Content -LiteralPath 'src/core/audit.ts' -Raw
-$lockRoot = $packageLock.packages.PSObject.Properties[''].Value
+$lockRoot = $packageLock['packages']['']
 $cargoLockVersionMatch = [regex]::Match(
   $cargoLockRaw,
   '(?ms)^\[\[package\]\]\s*name\s*=\s*"swl-pricing-desktop"\s*version\s*=\s*"([^"]+)"'
