@@ -181,6 +181,8 @@ function waitForLauncherReady(child) {
         const summary = JSON.parse(match[1]);
         if (
           typeof summary.url !== 'string' ||
+          typeof summary.liveDataDirectory !== 'string' ||
+          typeof summary.seedDataDirectory !== 'string' ||
           summary.fixtureMode !== true ||
           summary.paidCallsEnabled !== false ||
           summary.repositoryEnvironmentFilesLoaded !== false
@@ -199,7 +201,7 @@ function waitForLauncherReady(child) {
   });
 }
 
-function runPlaywright(url, executablePath) {
+function runPlaywright(url, executablePath, liveDataDirectory, seedDataDirectory) {
   const suppliedArguments = process.argv.slice(2);
   const hasReporter = suppliedArguments.some(
     (argument) => argument === '--reporter' || argument.startsWith('--reporter='),
@@ -218,6 +220,8 @@ function runPlaywright(url, executablePath) {
       ...cleanEnvironment(),
       CHROMIUM_PATH: executablePath,
       SWL_LOCAL_TEST_URL: url,
+      SWL_LOCAL_TEST_LIVE_DATA_DIR: liveDataDirectory,
+      SWL_LOCAL_TEST_SEED_DATA_DIR: seedDataDirectory,
     },
     stdio: 'inherit',
     windowsHide: true,
@@ -249,7 +253,12 @@ async function main() {
     const ready = await waitForLauncherReady(launcher);
     console.log(`Driving local fixture test at ${ready.url}`);
     console.log(`Browser: ${executablePath}`);
-    playwright = runPlaywright(ready.url, executablePath);
+    playwright = runPlaywright(
+      ready.url,
+      executablePath,
+      ready.liveDataDirectory,
+      ready.seedDataDirectory,
+    );
     const result = await waitForClose(playwright, 15 * 60_000, 'Playwright');
     if (interrupted) process.exitCode = 130;
     else if (result.code !== 0) process.exitCode = result.code ?? 1;

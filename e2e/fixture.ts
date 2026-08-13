@@ -1,12 +1,11 @@
 import { expect, test as base } from '@playwright/test';
 import { cpSync, existsSync, rmSync } from 'node:fs';
-import { resolve } from 'node:path';
 
-const LIVE_DATA_DIRECTORY = resolve('.e2e-data');
-const SEED_DATA_DIRECTORY = resolve('.e2e-seed-data');
+const LIVE_DATA_DIRECTORY = process.env.SWL_LOCAL_TEST_LIVE_DATA_DIR;
+const SEED_DATA_DIRECTORY = process.env.SWL_LOCAL_TEST_SEED_DATA_DIR;
 
 function resetSyntheticServerData() {
-  if (!existsSync(SEED_DATA_DIRECTORY)) {
+  if (!LIVE_DATA_DIRECTORY || !SEED_DATA_DIRECTORY || !existsSync(SEED_DATA_DIRECTORY)) {
     throw new Error('The synthetic E2E seed snapshot is unavailable.');
   }
   rmSync(LIVE_DATA_DIRECTORY, { recursive: true, force: true });

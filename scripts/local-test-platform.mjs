@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -298,11 +306,13 @@ async function main() {
 
     temporaryDirectory = mkdtempSync(join(realpathSync(tmpdir()), LOCAL_TEST_PREFIX));
     const dataDirectory = join(temporaryDirectory, 'data');
+    const seedDataDirectory = join(temporaryDirectory, 'seed-data');
     console.log('Creating a fresh fictional test store...');
-    await runChecked(process.execPath, ['server/seed.mjs', '--data-dir', dataDirectory], {
-      env: fixtureEnvironment(dataDirectory),
+    await runChecked(process.execPath, ['server/seed.mjs', '--data-dir', seedDataDirectory], {
+      env: fixtureEnvironment(seedDataDirectory),
       stage: 'Synthetic test-store seed',
     });
+    cpSync(seedDataDirectory, dataDirectory, { recursive: true, errorOnExist: true });
 
     const port = await availablePort();
     const url = `http://127.0.0.1:${port}`;
@@ -314,6 +324,8 @@ async function main() {
     const summary = {
       url,
       dataDirectory: temporaryDirectory,
+      liveDataDirectory: dataDirectory,
+      seedDataDirectory,
       provider: health.provider,
       fixtureMode: health.fixtureMode,
       paidCallsEnabled: health.paidCallsEnabled,

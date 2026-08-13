@@ -59,6 +59,8 @@ describe('no-install local testing platform', () => {
       forwardedSensitiveKeys: [],
     });
     expect(summary.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
+    expect(summary.liveDataDirectory).toContain(summary.dataDirectory);
+    expect(summary.seedDataDirectory).toContain(summary.dataDirectory);
     expect(existsSync(summary.dataDirectory)).toBe(false);
     expect(`${result.stdout}\n${result.stderr}`).not.toContain(
       'fixture-secret-must-not-be-forwarded',
@@ -158,6 +160,8 @@ describe('no-install local testing platform', () => {
     expect(runner).toContain("await stopOwnedProcess(launcher, 'Local fixture launcher', true)");
     expect(runner).not.toContain('process.env.LOCALAPPDATA');
     expect(runner).toContain('process.env.CHROMIUM_PATH');
+    expect(runner).toContain('SWL_LOCAL_TEST_LIVE_DATA_DIR: liveDataDirectory');
+    expect(runner).toContain('SWL_LOCAL_TEST_SEED_DATA_DIR: seedDataDirectory');
     expect(runner).toContain('Get-AuthenticodeSignature');
     expect(runner).toContain("['/PID', String(child.pid), '/T', '/F']");
   });
