@@ -75,6 +75,31 @@ function Get-DataManifest {
   })
 }
 
+function Get-ManifestDifferences {
+  param([string]$BeforeJson, [string]$AfterJson)
+  $before = @($BeforeJson | ConvertFrom-Json)
+  $after = @($AfterJson | ConvertFrom-Json)
+  $beforeMap = @{}
+  foreach ($entry in $before) { $beforeMap[$entry.relativePath] = $entry }
+  $afterMap = @{}
+  foreach ($entry in $after) { $afterMap[$entry.relativePath] = $entry }
+  $differences = @()
+  foreach ($key in @($beforeMap.Keys | Sort-Object)) {
+    if (!$afterMap.ContainsKey($key)) {
+      $differences += "removed: $key ($($beforeMap[$key].bytes) bytes)"
+    } elseif ($afterMap[$key].sha256 -ne $beforeMap[$key].sha256 -or
+        $afterMap[$key].bytes -ne $beforeMap[$key].bytes) {
+      $differences += "changed: $key ($($beforeMap[$key].bytes) -> $($afterMap[$key].bytes) bytes)"
+    }
+  }
+  foreach ($key in @($afterMap.Keys | Sort-Object)) {
+    if (!$beforeMap.ContainsKey($key)) {
+      $differences += "added: $key ($($afterMap[$key].bytes) bytes)"
+    }
+  }
+  return $differences
+}
+
 function Get-NormalisedDirectoryPath {
   param([string]$Path)
   # Registry install locations may carry quotes or a trailing separator that
@@ -174,7 +199,8 @@ $install = Start-Process -FilePath $installer -ArgumentList @('/S', "/D=$install
 if ($install.ExitCode -ne 0) { throw "Silent current-user installation failed with exit code $($install.ExitCode)." }
 $manifestImmediatelyAfterInstall = @(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress
 if ($manifestImmediatelyAfterInstall -ne $preinstallDataManifestJson) {
-  throw 'Installation changed the existing synthetic application-data manifest before launch.'
+  throw ("Installation changed the existing synthetic application-data manifest before launch: " +
+    ((Get-ManifestDifferences $preinstallDataManifestJson $manifestImmediatelyAfterInstall) -join '; '))
 }
 
 $applicationExecutables = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -Filter '*.exe' | Where-Object {
@@ -400,7 +426,8 @@ if (!(Test-Path -LiteralPath $dataRoot -PathType Container)) {
 $dataManifestAfter = @(Get-DataManifest -Root $dataRoot)
 $dataManifestAfterJson = $dataManifestAfter | ConvertTo-Json -Depth 5 -Compress
 if ($dataManifestAfterJson -ne $dataManifestBeforeJson) {
-  throw 'Uninstall changed the preserved application-data manifest.'
+  throw ("Uninstall changed the preserved application-data manifest: " +
+    ((Get-ManifestDifferences $dataManifestBeforeJson $dataManifestAfterJson) -join '; '))
 }
 $databaseEvidenceAfterUninstall = Get-SwlDatabaseEvidence
 if (($databaseEvidenceAfterUninstall | ConvertTo-Json -Depth 7 -Compress) -ne $databaseEvidenceBeforeJson) {
@@ -480,7 +507,8 @@ if ([string]::IsNullOrWhiteSpace($reinstalledInstallLocation) -or
 
 $manifestImmediatelyAfterReinstall = @(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress
 if ($manifestImmediatelyAfterReinstall -ne $dataManifestBeforeJson) {
-  throw 'Reinstall changed the preserved application-data manifest before launch.'
+  throw ("Reinstall changed the preserved application-data manifest before launch: " +
+    ((Get-ManifestDifferences $dataManifestBeforeJson $manifestImmediatelyAfterReinstall) -join '; '))
 }
 
 $processesBeforeReopen = @(Get-CimInstance Win32_Process)
@@ -600,7 +628,8 @@ if ($reinstalledLinkRemains -or $reinstalledRegistrationRemains -or $reinstalled
 }
 $finalDataManifestJson = @(Get-DataManifest -Root $dataRoot) | ConvertTo-Json -Depth 5 -Compress
 if ($finalDataManifestJson -ne $dataManifestAfterReopenJson) {
-  throw 'Second uninstall changed the preserved application-data manifest.'
+  throw ("Second uninstall changed the preserved application-data manifest: " +
+    ((Get-ManifestDifferences $dataManifestAfterReopenJson $finalDataManifestJson) -join '; '))
 }
 $databaseEvidenceAfterSecondUninstall = Get-SwlDatabaseEvidence
 if (($databaseEvidenceAfterSecondUninstall | ConvertTo-Json -Depth 7 -Compress) -ne $databaseEvidenceBeforeJson) {
