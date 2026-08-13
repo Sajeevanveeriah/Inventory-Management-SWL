@@ -157,7 +157,7 @@ describe('no-install local testing platform', () => {
     expect(runner).toContain("stdio: ['ignore', 'pipe', 'pipe', 'ipc']");
     expect(runner).toContain("await stopOwnedProcess(launcher, 'Local fixture launcher', true)");
     expect(runner).not.toContain('process.env.LOCALAPPDATA');
-    expect(runner).not.toContain('process.env.CHROMIUM_PATH');
+    expect(runner).toContain('process.env.CHROMIUM_PATH');
     expect(runner).toContain('Get-AuthenticodeSignature');
     expect(runner).toContain("['/PID', String(child.pid), '/T', '/F']");
   });
