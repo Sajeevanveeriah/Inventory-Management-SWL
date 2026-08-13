@@ -137,16 +137,21 @@ test.describe('desktop 1440px light', () => {
   test('dialogs and dark theme', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Open settings' }).click();
+    const settingsDialog = page.getByRole('dialog');
     await shot(page, '15-settings-dialog');
     await page.keyboard.press('Escape');
+    await expect(settingsDialog).toBeHidden();
     await page.getByRole('button', { name: 'Privacy and data handling' }).click();
+    const privacyDialog = page.getByRole('dialog');
     await shot(page, '16-privacy-dialog');
     await page.keyboard.press('Escape');
+    await expect(privacyDialog).toBeHidden();
 
     await demoToValidate(page);
     await page.getByRole('button', { name: 'Open settings' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Dark appearance' }).click();
+    await settingsDialog.getByRole('button', { name: 'Dark appearance' }).click();
     await page.keyboard.press('Escape');
+    await expect(settingsDialog).toBeHidden();
     await page.getByRole('button', { name: 'Review changes' }).click();
     await page.getByRole('cell', { name: 'FIC-002', exact: true }).click();
     await shot(page, '17-review-dark');
