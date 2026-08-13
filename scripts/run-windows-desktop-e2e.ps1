@@ -305,8 +305,25 @@ try {
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $EvidencePath -Encoding utf8
   } -ArgumentList $application, $stopSentinel, $monitorEvidencePath
 
-  & npm run e2e:desktop 2>&1 | Tee-Object -FilePath (Join-Path $evidenceRoot 'WDIO.log')
-  $testExitCode = $LASTEXITCODE
+  $wdioLogPath = Join-Path $evidenceRoot 'WDIO.log'
+  $maximumDesktopAttempts = 2
+  for ($desktopAttempt = 1; $desktopAttempt -le $maximumDesktopAttempts; $desktopAttempt += 1) {
+    $attemptLogPath = Join-Path $evidenceRoot "WDIO-attempt-$desktopAttempt.log"
+    & npm run e2e:desktop 2>&1 | Tee-Object -FilePath $attemptLogPath
+    $testExitCode = $LASTEXITCODE
+    Copy-Item -LiteralPath $attemptLogPath -Destination $wdioLogPath -Force
+    if ($testExitCode -eq 0) { break }
+
+    $attemptLog = Get-Content -LiteralPath $attemptLogPath -Raw -ErrorAction Stop
+    $retryableSessionStartupFailure = (
+      $desktopAttempt -lt $maximumDesktopAttempts -and
+      $attemptLog -match 'session not created: DevToolsActivePort file doesn''t exist' -and
+      $attemptLog -match 'Failed to create a session' -and
+      $attemptLog -notmatch 'ExpectationError|AssertionError'
+    )
+    if (!$retryableSessionStartupFailure) { break }
+    Start-Sleep -Seconds 2
+  }
 }
 finally {
   $cleanupFailures = [Collections.Generic.List[string]]::new()
