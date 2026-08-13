@@ -162,7 +162,7 @@ if (scanHistory) {
     '--format=',
     '-z',
   ]).split('\0');
-  for (let index = 0; index < historicalRecords.length; ) {
+  for (let index = 0; index < historicalRecords.length;) {
     const metadata = historicalRecords[index++].trim();
     if (!metadata) continue;
     const match = /^:(\d{6}) (\d{6}) [0-9a-f]+ ([0-9a-f]+) [A-Z]$/u.exec(metadata);

@@ -1,12 +1,12 @@
-import { useRef, useState } from "react";
-import type { MappingProfile } from "../../core/mapping";
-import { triggerDownload } from "../../io/download";
-import { usePlatform } from "../../platform/context";
-import { MappingProfileSchema } from "../../platform/schemas";
-import { useAppDispatch, useAppState } from "../../state/store";
-import { useActions } from "../../state/useActions";
-import { ConfirmDialog } from "../ConfirmDialog";
-import { EmptyState, Page } from "./PageChrome";
+import { useRef, useState } from 'react';
+import type { MappingProfile } from '../../core/mapping';
+import { triggerDownload } from '../../io/download';
+import { usePlatform } from '../../platform/context';
+import { MappingProfileSchema } from '../../platform/schemas';
+import { useAppDispatch, useAppState } from '../../state/store';
+import { useActions } from '../../state/useActions';
+import { ConfirmDialog } from '../ConfirmDialog';
+import { EmptyState, Page } from './PageChrome';
 
 /**
  * Supplier mapping profiles: the durable per-supplier configuration
@@ -18,46 +18,38 @@ export function SuppliersPage() {
   const platform = usePlatform();
   const dispatch = useAppDispatch();
   const actions = useActions();
-  const [name, setName] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<MappingProfile | null>(
-    null,
-  );
-  const [importError, setImportError] = useState("");
+  const [name, setName] = useState('');
+  const [pendingDelete, setPendingDelete] = useState<MappingProfile | null>(null);
+  const [importError, setImportError] = useState('');
   const importInput = useRef<HTMLInputElement>(null);
-  const filesLoaded =
-    state.supplier.table !== null && state.servicem8.table !== null;
+  const filesLoaded = state.supplier.table !== null && state.servicem8.table !== null;
   const nameValid = name.trim().length >= 3;
 
   const exportProfile = (profile: MappingProfile) => {
     const blob = new Blob([JSON.stringify(profile, null, 2)], {
-      type: "application/json",
+      type: 'application/json',
     });
-    triggerDownload(
-      blob,
-      `${profile.name.replace(/[^A-Za-z0-9_-]+/g, "-")}-mapping-profile.json`,
-    );
+    triggerDownload(blob, `${profile.name.replace(/[^A-Za-z0-9_-]+/g, '-')}-mapping-profile.json`);
     actions.announce(`Mapping profile "${profile.name}" exported as JSON.`);
   };
 
   const importProfile = async (file: File) => {
-    setImportError("");
+    setImportError('');
     try {
       if (file.size === 0 || file.size > 1024 * 1024) {
-        setImportError(
-          "The mapping profile file size is outside the supported range.",
-        );
+        setImportError('The mapping profile file size is outside the supported range.');
         return;
       }
       const parsed = JSON.parse(await file.text()) as Partial<MappingProfile>;
       if (
-        typeof parsed.name !== "string" ||
-        parsed.name.trim() === "" ||
-        typeof parsed.supplierMapping !== "object" ||
-        typeof parsed.servicem8Mapping !== "object" ||
+        typeof parsed.name !== 'string' ||
+        parsed.name.trim() === '' ||
+        typeof parsed.supplierMapping !== 'object' ||
+        typeof parsed.servicem8Mapping !== 'object' ||
         !Array.isArray(parsed.supplierHeaders) ||
         !Array.isArray(parsed.servicem8Headers)
       ) {
-        setImportError("The file is not a valid mapping profile export.");
+        setImportError('The file is not a valid mapping profile export.');
         return;
       }
       const existing = state.profiles.find((p) => p.name === parsed.name);
@@ -73,7 +65,7 @@ export function SuppliersPage() {
         updatedAt: new Date().toISOString(),
       };
       if (!MappingProfileSchema.safeParse(profile).success) {
-        setImportError("The file is not a valid mapping profile export.");
+        setImportError('The file is not a valid mapping profile export.');
         return;
       }
       const saved = await platform.profiles.save(profile);
@@ -81,24 +73,21 @@ export function SuppliersPage() {
         setImportError(saved.error.message);
         return;
       }
-      dispatch({ type: "profile-saved", profile });
-      actions.announce(
-        `Mapping profile "${profile.name}" imported (version ${profile.version}).`,
-      );
+      dispatch({ type: 'profile-saved', profile });
+      actions.announce(`Mapping profile "${profile.name}" imported (version ${profile.version}).`);
     } catch {
-      setImportError("The file could not be read as JSON.");
+      setImportError('The file could not be read as JSON.');
     }
   };
 
   const chooseProfileFile = async () => {
-    if (platform.kind === "web") {
+    if (platform.kind === 'web') {
       importInput.current?.click();
       return;
     }
-    const selected = await platform.files.chooseInputFile("configuration");
+    const selected = await platform.files.chooseInputFile('configuration');
     if (!selected.ok) {
-      if (selected.error.code !== "cancelled")
-        setImportError(selected.error.message);
+      if (selected.error.code !== 'cancelled') setImportError(selected.error.message);
       return;
     }
     if (selected.value !== null) await importProfile(selected.value);
@@ -107,8 +96,7 @@ export function SuppliersPage() {
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     const removed = await actions.deleteProfile(pendingDelete.id);
-    if (removed)
-      actions.announce(`Mapping profile "${pendingDelete.name}" deleted.`);
+    if (removed) actions.announce(`Mapping profile "${pendingDelete.name}" deleted.`);
     setPendingDelete(null);
   };
 
@@ -122,7 +110,7 @@ export function SuppliersPage() {
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              aria-invalid={name !== "" && !nameValid}
+              aria-invalid={name !== '' && !nameValid}
               placeholder="e.g. Fictionville Wholesale"
             />
           </label>
@@ -133,7 +121,7 @@ export function SuppliersPage() {
               value={
                 state.supplier.table
                   ? `${state.supplier.table.headers.length} supplier columns`
-                  : "No supplier file loaded"
+                  : 'No supplier file loaded'
               }
             />
           </label>
@@ -145,19 +133,15 @@ export function SuppliersPage() {
             disabled={!nameValid || !filesLoaded}
             onClick={() => {
               void actions.saveProfile(name.trim());
-              setName("");
+              setName('');
             }}
           >
             Save profile
           </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void chooseProfileFile()}
-          >
+          <button type="button" className="btn" onClick={() => void chooseProfileFile()}>
             Import profile JSON
           </button>
-          {platform.kind === "web" && (
+          {platform.kind === 'web' && (
             <input
               ref={importInput}
               type="file"
@@ -167,7 +151,7 @@ export function SuppliersPage() {
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) void importProfile(file);
-                event.target.value = "";
+                event.target.value = '';
               }}
             />
           )}
@@ -177,7 +161,7 @@ export function SuppliersPage() {
             Load both files in a run before saving a new profile.
           </p>
         )}
-        {importError !== "" && (
+        {importError !== '' && (
           <p className="form-error" role="alert">
             {importError}
           </p>
@@ -188,16 +172,11 @@ export function SuppliersPage() {
         <EmptyState
           title="No saved profiles"
           detail={`Profiles store supplier-specific column mappings and header fingerprints locally in ${
-            platform.kind === "desktop" ? "application data" : "this browser"
+            platform.kind === 'desktop' ? 'application data' : 'this browser'
           }, so repeat runs map instantly. No business rows are ever stored.`}
         />
       ) : (
-        <div
-          className="table-scroll"
-          role="region"
-          aria-label="Saved profiles"
-          tabIndex={0}
-        >
+        <div className="table-scroll" role="region" aria-label="Saved profiles" tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -231,7 +210,7 @@ export function SuppliersPage() {
                       >
                         Apply
                       </button>
-                      {platform.kind === "web" && (
+                      {platform.kind === 'web' && (
                         <button
                           type="button"
                           className="btn btn-sm"
@@ -256,20 +235,18 @@ export function SuppliersPage() {
         </div>
       )}
 
-      {platform.kind === "desktop" && state.profiles.length > 0 && (
+      {platform.kind === 'desktop' && state.profiles.length > 0 && (
         <p className="hint">
-          To transfer saved profiles, use Settings, then Configuration transfer.
-          Desktop exports use the native folder picker.
+          To transfer saved profiles, use Settings, then Configuration transfer. Desktop exports use
+          the native folder picker.
         </p>
       )}
 
       <ConfirmDialog
         open={pendingDelete !== null}
         title="Delete mapping profile"
-        body={`Delete the saved mapping profile "${pendingDelete?.name ?? ""}" from ${
-          platform.kind === "desktop"
-            ? "local application data"
-            : "this browser"
+        body={`Delete the saved mapping profile "${pendingDelete?.name ?? ''}" from ${
+          platform.kind === 'desktop' ? 'local application data' : 'this browser'
         }? This cannot be undone.`}
         confirmLabel="Delete profile"
         danger

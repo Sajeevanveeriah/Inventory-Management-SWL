@@ -1,68 +1,50 @@
 #!/usr/bin/env node
 /** Validate the GitHub Pages production build without starting a server. */
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 
-const base = process.env.PAGES_BASE ?? "/Inventory-Management-SWL/";
-if (!/^\/[A-Za-z0-9._/-]+\/$/.test(base) || base.includes("..")) {
-  throw new Error(
-    "PAGES_BASE must be a safe absolute project path ending in /.",
-  );
+const base = process.env.PAGES_BASE ?? '/Inventory-Management-SWL/';
+if (!/^\/[A-Za-z0-9._/-]+\/$/.test(base) || base.includes('..')) {
+  throw new Error('PAGES_BASE must be a safe absolute project path ending in /.');
 }
 
-const root = path.resolve("dist");
-const indexPath = path.join(root, "index.html");
-if (!existsSync(indexPath))
-  throw new Error("dist/index.html is missing. Build Pages first.");
-const index = readFileSync(indexPath, "utf8");
+const root = path.resolve('dist');
+const indexPath = path.join(root, 'index.html');
+if (!existsSync(indexPath)) throw new Error('dist/index.html is missing. Build Pages first.');
+const index = readFileSync(indexPath, 'utf8');
 
-if (!index.includes("Content-Security-Policy")) {
-  throw new Error("The Pages index is missing the production CSP.");
+if (!index.includes('Content-Security-Policy')) {
+  throw new Error('The Pages index is missing the production CSP.');
 }
-const cspContent =
-  index.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ??
-  "";
+const cspContent = index.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)?.[1] ?? '';
 const connectDirective = cspContent
-  .split(";")
+  .split(';')
   .map((directive) => directive.trim())
-  .find((directive) => directive.startsWith("connect-src "));
+  .find((directive) => directive.startsWith('connect-src '));
 const expectedConnectDirective = "connect-src 'self'";
 if (connectDirective !== expectedConnectDirective) {
-  throw new Error(
-    `The Pages CSP connect boundary is invalid: ${connectDirective ?? "missing"}`,
-  );
+  throw new Error(`The Pages CSP connect boundary is invalid: ${connectDirective ?? 'missing'}`);
 }
-for (const forbidden of [
-  "unsafe-eval",
-  "script-src *",
-  "font-src *",
-  "connect-src *",
-]) {
+for (const forbidden of ['unsafe-eval', 'script-src *', 'font-src *', 'connect-src *']) {
   if (index.includes(forbidden))
     throw new Error(`The Pages CSP contains forbidden value: ${forbidden}`);
 }
 
-const refs = [...index.matchAll(/(?:src|href)="([^"]+)"/g)].map(
-  (match) => match[1],
-);
-const localRefs = refs.filter(
-  (ref) => !ref.startsWith("#") && !ref.startsWith("data:"),
-);
-if (localRefs.length === 0)
-  throw new Error("The Pages index contains no local assets.");
+const refs = [...index.matchAll(/(?:src|href)="([^"]+)"/g)].map((match) => match[1]);
+const localRefs = refs.filter((ref) => !ref.startsWith('#') && !ref.startsWith('data:'));
+if (localRefs.length === 0) throw new Error('The Pages index contains no local assets.');
 
 for (const ref of localRefs) {
-  if (/^[a-z]+:/i.test(ref) || ref.startsWith("//")) {
+  if (/^[a-z]+:/i.test(ref) || ref.startsWith('//')) {
     throw new Error(`Remote production asset is forbidden: ${ref}`);
   }
-  if (!ref.startsWith(base) && !ref.startsWith("./")) {
-    throw new Error(
-      `Production asset is outside the Pages base ${base}: ${ref}`,
-    );
+  if (!ref.startsWith(base) && !ref.startsWith('./')) {
+    throw new Error(`Production asset is outside the Pages base ${base}: ${ref}`);
   }
-  const relative = (
-    ref.startsWith(base) ? ref.slice(base.length) : ref.slice(2)
-  ).split(/[?#]/, 1)[0];
+  const relative = (ref.startsWith(base) ? ref.slice(base.length) : ref.slice(2)).split(
+    /[?#]/,
+    1,
+  )[0];
   const resolved = path.resolve(root, relative);
   if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
     throw new Error(`Production asset escapes dist: ${ref}`);
@@ -80,31 +62,30 @@ function allFiles(directory) {
 }
 
 const javascript = allFiles(root)
-  .filter((file) => file.endsWith(".js"))
-  .map((file) => readFileSync(file, "utf8"))
-  .join("\n");
+  .filter((file) => file.endsWith('.js'))
+  .map((file) => readFileSync(file, 'utf8'))
+  .join('\n');
 const routes = [
-  "#/dashboard",
-  "#/new-run",
-  "#/runs",
-  "#/inventory",
-  "#/expansion",
-  "#/suppliers",
-  "#/mapping-profiles",
-  "#/pricing-rules",
-  "#/competitors",
-  "#/sources",
-  "#/exceptions",
-  "#/approvals",
-  "#/exports",
-  "#/integrations",
-  "#/audit",
-  "#/settings",
-  "#/help",
+  '#/dashboard',
+  '#/new-run',
+  '#/runs',
+  '#/inventory',
+  '#/expansion',
+  '#/suppliers',
+  '#/mapping-profiles',
+  '#/pricing-rules',
+  '#/competitors',
+  '#/sources',
+  '#/exceptions',
+  '#/approvals',
+  '#/exports',
+  '#/integrations',
+  '#/audit',
+  '#/settings',
+  '#/help',
 ];
 for (const route of routes) {
-  if (!javascript.includes(route))
-    throw new Error(`Compiled hash route is missing: ${route}`);
+  if (!javascript.includes(route)) throw new Error(`Compiled hash route is missing: ${route}`);
 }
 
 console.log(

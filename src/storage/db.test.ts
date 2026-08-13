@@ -1,32 +1,32 @@
-import { describe, expect, it } from "vitest";
-import { inspectConfigurationValues } from "./db";
+import { describe, expect, it } from 'vitest';
+import { inspectConfigurationValues } from './db';
 
 const profile = {
-  id: "profile-001",
-  name: "Synthetic supplier",
+  id: 'profile-001',
+  name: 'Synthetic supplier',
   version: 1,
   supplierMapping: { supplierCode: 0, supplierCost: 1 },
-  supplierHeaders: ["SKU", "Cost"],
+  supplierHeaders: ['SKU', 'Cost'],
   servicem8Mapping: { itemNumber: 0 },
-  servicem8Headers: ["Item Number"],
-  createdAt: "2026-08-09T00:00:00.000Z",
-  updatedAt: "2026-08-09T00:00:00.000Z",
+  servicem8Headers: ['Item Number'],
+  createdAt: '2026-08-09T00:00:00.000Z',
+  updatedAt: '2026-08-09T00:00:00.000Z',
 };
 
 const alias = {
-  supplierCode: "SYN-001",
-  itemNumber: "000123",
-  approvedAt: "2026-08-09T00:00:00.000Z",
+  supplierCode: 'SYN-001',
+  itemNumber: '000123',
+  approvedAt: '2026-08-09T00:00:00.000Z',
 };
 
-describe("strict legacy IndexedDB inspection", () => {
-  it("reports exact valid counts and adds the safe glass default without discarding records", () => {
+describe('strict legacy IndexedDB inspection', () => {
+  it('reports exact valid counts and adds the safe glass default without discarding records', () => {
     const inspection = inspectConfigurationValues(
       [profile],
       [profile.id],
       [alias],
       [alias.supplierCode],
-      { markupPercent: "30", taxHandling: "prices-inc-gst", theme: "dark" },
+      { markupPercent: '30', taxHandling: 'prices-inc-gst', theme: 'dark' },
     );
 
     expect(inspection).toMatchObject({
@@ -40,31 +40,31 @@ describe("strict legacy IndexedDB inspection", () => {
       profiles: [profile],
       aliases: [alias],
       settings: {
-        markupPercent: "30",
-        taxHandling: "prices-inc-gst",
-        theme: "dark",
-        glassTint: "clear",
+        markupPercent: '30',
+        taxHandling: 'prices-inc-gst',
+        theme: 'dark',
+        glassTint: 'clear',
       },
     });
   });
 
-  it("blocks malformed values and key conflicts instead of silently filtering or defaulting", () => {
+  it('blocks malformed values and key conflicts instead of silently filtering or defaulting', () => {
     const inspection = inspectConfigurationValues(
       [
         profile,
         {
           ...profile,
-          id: "profile-bad",
+          id: 'profile-bad',
           supplierMapping: { supplierCode: -1 },
         },
       ],
-      ["wrong-key", "profile-bad"],
-      [alias, { ...alias, itemNumber: "" }],
-      [alias.supplierCode, "SYN-002"],
+      ['wrong-key', 'profile-bad'],
+      [alias, { ...alias, itemNumber: '' }],
+      [alias.supplierCode, 'SYN-002'],
       {
-        markupPercent: "not-money",
-        taxHandling: "prices-ex-gst",
-        theme: "dark",
+        markupPercent: 'not-money',
+        taxHandling: 'prices-ex-gst',
+        theme: 'dark',
       },
     );
 
@@ -77,24 +77,22 @@ describe("strict legacy IndexedDB inspection", () => {
     });
     expect(inspection.validationMessages).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("2 legacy mapping profile"),
-        expect.stringContaining("1 legacy approved alias"),
-        expect.stringContaining("settings record failed validation"),
+        expect.stringContaining('2 legacy mapping profile'),
+        expect.stringContaining('1 legacy approved alias'),
+        expect.stringContaining('settings record failed validation'),
       ]),
     );
     expect(inspection.snapshot).toBeNull();
   });
 
-  it("blocks unknown legacy fields instead of silently discarding future configuration", () => {
+  it('blocks unknown legacy fields instead of silently discarding future configuration', () => {
     const rawProfiles = [{ ...profile, unsupportedProfileSetting: true }];
-    const rawAliases = [
-      { ...alias, privateNote: "synthetic unsupported field" },
-    ];
+    const rawAliases = [{ ...alias, privateNote: 'synthetic unsupported field' }];
     const rawSettings = {
-      markupPercent: "30",
-      taxHandling: "prices-inc-gst",
-      theme: "dark",
-      futureTaxSetting: "retain-me",
+      markupPercent: '30',
+      taxHandling: 'prices-inc-gst',
+      theme: 'dark',
+      futureTaxSetting: 'retain-me',
     };
     const before = JSON.stringify({ rawProfiles, rawAliases, rawSettings });
 
@@ -113,8 +111,6 @@ describe("strict legacy IndexedDB inspection", () => {
       settings: 1,
     });
     expect(inspection.snapshot).toBeNull();
-    expect(JSON.stringify({ rawProfiles, rawAliases, rawSettings })).toBe(
-      before,
-    );
+    expect(JSON.stringify({ rawProfiles, rawAliases, rawSettings })).toBe(before);
   });
 });

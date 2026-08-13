@@ -1,4 +1,4 @@
-import type { ComparisonRow } from "./compare";
+import type { ComparisonRow } from './compare';
 
 export interface ExpansionItem {
   rowId: string;
@@ -8,13 +8,13 @@ export interface ExpansionItem {
   supplierCost: string | null;
   proposedSell: string | null;
   barcode: string;
-  scope: "out-of-scope";
+  scope: 'out-of-scope';
 }
 
 export interface ExpansionCategory {
   name: string;
   items: ExpansionItem[];
-  scope: "out-of-scope";
+  scope: 'out-of-scope';
 }
 
 /**
@@ -22,14 +22,12 @@ export interface ExpansionCategory {
  * Approval remains solely in the review workflow, so appearing here never
  * causes a ServiceM8 import.
  */
-export function buildExpansionCatalogue(
-  rows: ComparisonRow[],
-): ExpansionCategory[] {
+export function buildExpansionCatalogue(rows: ComparisonRow[]): ExpansionCategory[] {
   const byCategory = new Map<string, ExpansionItem[]>();
 
   for (const row of rows) {
-    if (row.status !== "new-item" || row.supplier === null) continue;
-    const category = row.supplier.category?.trim() || "Uncategorised";
+    if (row.status !== 'new-item' || row.supplier === null) continue;
+    const category = row.supplier.category?.trim() || 'Uncategorised';
     const items = byCategory.get(category) ?? [];
     items.push({
       rowId: row.id,
@@ -39,7 +37,7 @@ export function buildExpansionCatalogue(
       supplierCost: row.supplier.cost,
       proposedSell: row.proposedSell,
       barcode: row.supplier.barcode,
-      scope: "out-of-scope",
+      scope: 'out-of-scope',
     });
     byCategory.set(category, items);
   }
@@ -47,10 +45,8 @@ export function buildExpansionCatalogue(
   return [...byCategory.entries()]
     .map(([name, items]) => ({
       name,
-      scope: "out-of-scope" as const,
-      items: [...items].sort((a, b) =>
-        a.code.localeCompare(b.code, undefined, { numeric: true }),
-      ),
+      scope: 'out-of-scope' as const,
+      items: [...items].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

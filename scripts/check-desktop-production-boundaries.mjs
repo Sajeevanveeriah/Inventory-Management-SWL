@@ -1,68 +1,47 @@
 #!/usr/bin/env node
 /** Static production-boundary checks for the Tauri bundle and capability. */
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 
-const tauri = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
-const capability = JSON.parse(
-  readFileSync("src-tauri/capabilities/default.json", "utf8"),
-);
-const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
-const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8"));
-const cargoManifest = readFileSync("src-tauri/Cargo.toml", "utf8");
-const cargoLock = readFileSync("src-tauri/Cargo.lock", "utf8");
-const auditSource = readFileSync("src/core/audit.ts", "utf8");
+const tauri = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+const capability = JSON.parse(readFileSync('src-tauri/capabilities/default.json', 'utf8'));
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+const packageLock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+const cargoManifest = readFileSync('src-tauri/Cargo.toml', 'utf8');
+const cargoLock = readFileSync('src-tauri/Cargo.lock', 'utf8');
+const auditSource = readFileSync('src/core/audit.ts', 'utf8');
 
 function requireBoundary(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+requireBoundary(tauri.app?.withGlobalTauri === false, 'withGlobalTauri must remain false.');
 requireBoundary(
-  tauri.app?.withGlobalTauri === false,
-  "withGlobalTauri must remain false.",
+  JSON.stringify(tauri.bundle?.targets) === JSON.stringify(['nsis']),
+  'NSIS must be the sole canonical bundle target.',
 );
 requireBoundary(
-  JSON.stringify(tauri.bundle?.targets) === JSON.stringify(["nsis"]),
-  "NSIS must be the sole canonical bundle target.",
+  tauri.bundle?.windows?.nsis?.installMode === 'currentUser',
+  'NSIS must use current-user installation.',
 );
 requireBoundary(
-  tauri.bundle?.windows?.nsis?.installMode === "currentUser",
-  "NSIS must use current-user installation.",
-);
-requireBoundary(
-  tauri.bundle?.windows?.webviewInstallMode?.type === "offlineInstaller",
-  "WebView2 must use offlineInstaller mode.",
+  tauri.bundle?.windows?.webviewInstallMode?.type === 'offlineInstaller',
+  'WebView2 must use offlineInstaller mode.',
 );
 
 const csp = tauri.app?.security?.csp;
-requireBoundary(
-  typeof csp === "string" && csp.length > 0,
-  "Tauri CSP must be explicit.",
-);
-for (const forbidden of [
-  "unsafe-eval",
-  "script-src *",
-  "font-src *",
-  "connect-src *",
-  "https:",
-]) {
-  requireBoundary(
-    !csp.includes(forbidden),
-    `Tauri CSP contains forbidden value: ${forbidden}`,
-  );
+requireBoundary(typeof csp === 'string' && csp.length > 0, 'Tauri CSP must be explicit.');
+for (const forbidden of ['unsafe-eval', 'script-src *', 'font-src *', 'connect-src *', 'https:']) {
+  requireBoundary(!csp.includes(forbidden), `Tauri CSP contains forbidden value: ${forbidden}`);
 }
+requireBoundary(csp.includes("script-src 'self'"), 'Tauri CSP must restrict scripts to self.');
 requireBoundary(
-  csp.includes("script-src 'self'"),
-  "Tauri CSP must restrict scripts to self.",
-);
-requireBoundary(
-  csp.includes("connect-src ipc: http://ipc.localhost"),
-  "Tauri CSP must restrict connections to the local IPC bridge.",
+  csp.includes('connect-src ipc: http://ipc.localhost'),
+  'Tauri CSP must restrict connections to the local IPC bridge.',
 );
 
 const permissions = capability.permissions ?? [];
-const forbiddenPermission =
-  /^(?:dialog:default|shell(?::|$)|process(?::|$)|fs(?::|$)|http(?::|$))/;
+const forbiddenPermission = /^(?:dialog:default|shell(?::|$)|process(?::|$)|fs(?::|$)|http(?::|$))/;
 for (const permission of permissions) {
   requireBoundary(
     !forbiddenPermission.test(permission),
@@ -70,92 +49,66 @@ for (const permission of permissions) {
   );
 }
 const requiredPermissionGroups = [
-  "allow-swl-read",
-  "allow-swl-write",
-  "allow-swl-recovery",
-  "allow-swl-search",
-  "allow-swl-files",
+  'allow-swl-read',
+  'allow-swl-write',
+  'allow-swl-recovery',
+  'allow-swl-search',
+  'allow-swl-files',
 ];
-const requiredPermissions = [
-  "core:app:allow-set-app-theme",
-  ...requiredPermissionGroups,
-];
+const requiredPermissions = ['core:app:allow-set-app-theme', ...requiredPermissionGroups];
 requireBoundary(
-  JSON.stringify([...permissions].sort()) ===
-    JSON.stringify([...requiredPermissions].sort()),
-  "The main capability must contain only the five reviewed SWL groups and native theme permission.",
+  JSON.stringify([...permissions].sort()) === JSON.stringify([...requiredPermissions].sort()),
+  'The main capability must contain only the five reviewed SWL groups and native theme permission.',
 );
 for (const required of requiredPermissionGroups) {
   requireBoundary(
     permissions.some(
-      (permission) =>
-        permission === required || permission.endsWith(`:${required}`),
+      (permission) => permission === required || permission.endsWith(`:${required}`),
     ),
     `Capability is missing explicit permission group: ${required}`,
   );
 }
 
-const permissionSource = readFileSync("src-tauri/permissions/swl.toml", "utf8");
+const permissionSource = readFileSync('src-tauri/permissions/swl.toml', 'utf8');
 const permissionCommands = [
   ...permissionSource.matchAll(/commands\.allow\s*=\s*\[([\s\S]*?)\]/g),
-].flatMap((match) =>
-  [...match[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map((entry) => entry[1]),
+].flatMap((match) => [...match[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map((entry) => entry[1]));
+const manifestSource = readFileSync('src-tauri/build.rs', 'utf8');
+const manifestBlock = manifestSource.match(/const COMMANDS:[\s\S]*?=\s*&\[([\s\S]*?)\];/);
+requireBoundary(manifestBlock, 'The Tauri build command manifest could not be read.');
+const manifestCommands = [...manifestBlock[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map(
+  (entry) => entry[1],
 );
-const manifestSource = readFileSync("src-tauri/build.rs", "utf8");
-const manifestBlock = manifestSource.match(
-  /const COMMANDS:[\s\S]*?=\s*&\[([\s\S]*?)\];/,
+const backendSource = readFileSync('src-tauri/src/backend.rs', 'utf8');
+const handlerBlock = backendSource.match(/tauri::generate_handler!\s*\[([\s\S]*?)\]\s*\)/);
+requireBoundary(handlerBlock, 'The Tauri invoke handler could not be read.');
+const handlerCommands = [...handlerBlock[1].matchAll(/\b([a-z][a-z0-9_]*)\b/g)].map(
+  (entry) => entry[1],
 );
-requireBoundary(
-  manifestBlock,
-  "The Tauri build command manifest could not be read.",
-);
-const manifestCommands = [
-  ...manifestBlock[1].matchAll(/"([a-z][a-z0-9_]*)"/g),
-].map((entry) => entry[1]);
-const backendSource = readFileSync("src-tauri/src/backend.rs", "utf8");
-const handlerBlock = backendSource.match(
-  /tauri::generate_handler!\s*\[([\s\S]*?)\]\s*\)/,
-);
-requireBoundary(handlerBlock, "The Tauri invoke handler could not be read.");
-const handlerCommands = [
-  ...handlerBlock[1].matchAll(/\b([a-z][a-z0-9_]*)\b/g),
-].map((entry) => entry[1]);
-const desktopAdapterSource = readFileSync("src/platform/desktop.ts", "utf8");
+const desktopAdapterSource = readFileSync('src/platform/desktop.ts', 'utf8');
 const frontendInvokedCommands = manifestCommands.filter((command) =>
   new RegExp(`['"]${command}['"]`).test(desktopAdapterSource),
 );
 
 function requireUniqueExact(actual, expected, label) {
-  requireBoundary(
-    new Set(actual).size === actual.length,
-    `${label} contains a duplicate command.`,
-  );
+  requireBoundary(new Set(actual).size === actual.length, `${label} contains a duplicate command.`);
   requireBoundary(
     JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort()),
     `${label} is not an exact match for the reviewed Tauri command manifest.`,
   );
 }
 
-requireUniqueExact(handlerCommands, manifestCommands, "Invoke handler");
-requireUniqueExact(
-  permissionCommands,
-  frontendInvokedCommands,
-  "Custom permissions",
-);
+requireUniqueExact(handlerCommands, manifestCommands, 'Invoke handler');
+requireUniqueExact(permissionCommands, frontendInvokedCommands, 'Custom permissions');
 for (const command of permissionCommands) {
   requireBoundary(
     manifestCommands.includes(command),
     `Custom permission exposes an unregistered command: ${command}`,
   );
 }
-for (const removedCommand of [
-  "append_approval",
-  "append_price_history",
-  "shell_info",
-]) {
+for (const removedCommand of ['append_approval', 'append_price_history', 'shell_info']) {
   requireBoundary(
-    !manifestCommands.includes(removedCommand) &&
-      !permissionCommands.includes(removedCommand),
+    !manifestCommands.includes(removedCommand) && !permissionCommands.includes(removedCommand),
     `Removed direct-write or diagnostic command must not be registered or exposed: ${removedCommand}`,
   );
 }
@@ -175,25 +128,19 @@ function allFiles(directory) {
   });
 }
 
-const desktopIndex = path.join("dist", "index.html");
+const desktopIndex = path.join('dist', 'index.html');
+requireBoundary(existsSync(desktopIndex), 'Desktop dist is missing. Build it before this check.');
 requireBoundary(
-  existsSync(desktopIndex),
-  "Desktop dist is missing. Build it before this check.",
-);
-requireBoundary(
-  !readFileSync(desktopIndex, "utf8").includes(
-    'http-equiv="Content-Security-Policy"',
-  ),
-  "Desktop dist contains a second meta CSP; Tauri must supply the single effective policy.",
+  !readFileSync(desktopIndex, 'utf8').includes('http-equiv="Content-Security-Policy"'),
+  'Desktop dist contains a second meta CSP; Tauri must supply the single effective policy.',
 );
 
 const productionFiles = [
-  ...allFiles("dist"),
-  "src-tauri/Cargo.lock",
-  ...allFiles("src-tauri/target/release").filter(
+  ...allFiles('dist'),
+  'src-tauri/Cargo.lock',
+  ...allFiles('src-tauri/target/release').filter(
     (file) =>
-      path.dirname(file) === path.join("src-tauri", "target", "release") &&
-      file.endsWith(".exe"),
+      path.dirname(file) === path.join('src-tauri', 'target', 'release') && file.endsWith('.exe'),
   ),
 ].filter(existsSync);
 const forbiddenDriver =
@@ -203,7 +150,7 @@ for (const file of productionFiles) {
     !/^(?:swl-db-acceptance|swl-legacy-seed)\.exe$/i.test(path.basename(file)),
     `Production input contains a test-only database acceptance helper: ${file}`,
   );
-  const content = readFileSync(file, "utf8");
+  const content = readFileSync(file, 'utf8');
   requireBoundary(
     !forbiddenDriver.test(content),
     `Production input contains WebDriver marker: ${file}`,
@@ -212,9 +159,7 @@ for (const file of productionFiles) {
 
 for (const dependency of Object.keys(packageJson.dependencies ?? {})) {
   requireBoundary(
-    !/^(?:@wdio\/|webdriverio$|tauri-driver$|tauri-plugin-wdio)/i.test(
-      dependency,
-    ),
+    !/^(?:@wdio\/|webdriverio$|tauri-driver$|tauri-plugin-wdio)/i.test(dependency),
     `Production dependency contains a test driver: ${dependency}`,
   );
 }
@@ -226,7 +171,7 @@ function tomlPackageVersion(source) {
 
 const versions = {
   package: packageJson.version,
-  packageLock: packageLock.packages?.[""]?.version,
+  packageLock: packageLock.packages?.['']?.version,
   cargo: tomlPackageVersion(cargoManifest),
   cargoLock: cargoLock.match(
     /\[\[package\]\]\s*\nname = "swl-pricing-desktop"\s*\nversion = "([^"]+)"/,

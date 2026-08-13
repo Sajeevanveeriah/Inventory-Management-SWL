@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 /**
  * Content Security Policy for the production build only.
@@ -27,26 +27,26 @@ const productionCsp = () =>
     "frame-src 'none'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
-  ].join("; ");
+  ].join('; ');
 
 export default defineConfig(({ mode }) => ({
   // The no-install test launchers must not load repository .env files. Their
   // fixture providers and data directories are supplied explicitly instead.
-  envDir: process.env.SWL_LOCAL_TEST === "1" ? false : undefined,
+  envDir: process.env.SWL_LOCAL_TEST === '1' ? false : undefined,
   // Local use serves from the root. Hosted deployments (e.g. GitHub Pages
   // project sites) set VITE_BASE, e.g. VITE_BASE=/Inventory-Management-SWL/.
-  base: process.env.VITE_BASE ?? "/",
+  base: process.env.VITE_BASE ?? '/',
   plugins: [
     react(),
     {
-      name: "swl-production-csp",
-      apply: "build",
+      name: 'swl-production-csp',
+      apply: 'build',
       transformIndexHtml(html) {
-        if (mode === "desktop") {
-          return html.replace("<!-- %PRODUCTION_CSP% -->", "");
+        if (mode === 'desktop') {
+          return html.replace('<!-- %PRODUCTION_CSP% -->', '');
         }
         return html.replace(
-          "<!-- %PRODUCTION_CSP% -->",
+          '<!-- %PRODUCTION_CSP% -->',
           `<meta http-equiv="Content-Security-Policy" content="${productionCsp()}" />`,
         );
       },
@@ -54,13 +54,13 @@ export default defineConfig(({ mode }) => ({
   ],
   server: {
     // Dev: the SPA calls its own origin; Vite forwards /api to the Node server.
-    proxy: { "/api": "http://127.0.0.1:8787" },
+    proxy: { '/api': 'http://127.0.0.1:8787' },
   },
   preview: {
-    proxy: { "/api": "http://127.0.0.1:8787" },
+    proxy: { '/api': 'http://127.0.0.1:8787' },
   },
   build: {
-    target: "es2022",
+    target: 'es2022',
     chunkSizeWarningLimit: 1500,
   },
 }));

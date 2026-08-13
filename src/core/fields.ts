@@ -1,22 +1,18 @@
-import type { FileRole } from "./table";
+import type { FileRole } from './table';
 
 /** Conceptual target fields the operator maps source columns onto. */
 export type SupplierFieldKey =
-  | "supplierCode"
-  | "supplierDescription"
-  | "supplierCost"
-  | "supplierBarcode"
-  | "supplierCategory";
+  'supplierCode' | 'supplierDescription' | 'supplierCost' | 'supplierBarcode' | 'supplierCategory';
 export type S8FieldKey =
-  | "itemNumber"
-  | "itemDescription"
-  | "existingCost"
-  | "existingSellPrice"
-  | "priceIncludesTaxes"
-  | "taxRate"
-  | "quantityInStock"
-  | "itemIsInventoried"
-  | "barcode";
+  | 'itemNumber'
+  | 'itemDescription'
+  | 'existingCost'
+  | 'existingSellPrice'
+  | 'priceIncludesTaxes'
+  | 'taxRate'
+  | 'quantityInStock'
+  | 'itemIsInventoried'
+  | 'barcode';
 export type FieldKey = SupplierFieldKey | S8FieldKey;
 
 export interface FieldDefinition {
@@ -31,130 +27,122 @@ export interface FieldDefinition {
 
 export const SUPPLIER_FIELDS: FieldDefinition[] = [
   {
-    key: "supplierCode",
-    role: "supplier",
-    label: "Supplier item code",
+    key: 'supplierCode',
+    role: 'supplier',
+    label: 'Supplier item code',
     required: true,
-    help: "The supplier’s unique product identifier. Used for exact matching.",
-    suggestPatterns: [
-      /\b(item|product|part|stock)?[\s_-]*(code|sku|number|no\.?|id)\b/i,
-    ],
+    help: 'The supplier’s unique product identifier. Used for exact matching.',
+    suggestPatterns: [/\b(item|product|part|stock)?[\s_-]*(code|sku|number|no\.?|id)\b/i],
   },
   {
-    key: "supplierDescription",
-    role: "supplier",
-    label: "Supplier description",
+    key: 'supplierDescription',
+    role: 'supplier',
+    label: 'Supplier description',
     required: true,
-    help: "The supplier’s product name or description. Used only for review and similarity suggestions.",
+    help: 'The supplier’s product name or description. Used only for review and similarity suggestions.',
     suggestPatterns: [/\b(description|desc|name|title|product)\b/i],
   },
   {
-    key: "supplierCost",
-    role: "supplier",
-    label: "Supplier cost",
+    key: 'supplierCost',
+    role: 'supplier',
+    label: 'Supplier cost',
     required: true,
-    help: "Your buy price from the supplier. The markup is applied to this value, converted to exclude GST first if the supplier quotes tax-inclusive prices.",
+    help: 'Your buy price from the supplier. The markup is applied to this value, converted to exclude GST first if the supplier quotes tax-inclusive prices.',
     suggestPatterns: [/\b(item\s*price|cost|buy|trade|net|wholesale)\b/i],
   },
   {
-    key: "supplierBarcode",
-    role: "supplier",
-    label: "Supplier barcode",
+    key: 'supplierBarcode',
+    role: 'supplier',
+    label: 'Supplier barcode',
     required: false,
-    help: "The supplier’s barcode (EAN/UPC). Carried through to new ServiceM8 items and used for secondary match suggestions. Never used for automatic matching on its own.",
+    help: 'The supplier’s barcode (EAN/UPC). Carried through to new ServiceM8 items and used for secondary match suggestions. Never used for automatic matching on its own.',
     suggestPatterns: [/\b(barcode|ean|upc|gtin)\b/i],
   },
   {
-    key: "supplierCategory",
-    role: "supplier",
-    label: "Category",
+    key: 'supplierCategory',
+    role: 'supplier',
+    label: 'Category',
     required: false,
-    help: "The supplier catalogue category. Retained for expansion planning but never imports a new item without explicit operator approval.",
+    help: 'The supplier catalogue category. Retained for expansion planning but never imports a new item without explicit operator approval.',
     suggestPatterns: [/^category$/i, /\b(product[\s_-]*)?category\b/i],
   },
 ];
 
 export const SERVICEM8_FIELDS: FieldDefinition[] = [
   {
-    key: "itemNumber",
-    role: "servicem8",
-    label: "Item Number",
+    key: 'itemNumber',
+    role: 'servicem8',
+    label: 'Item Number',
     required: true,
-    help: "The ServiceM8 material identifier. Matched against the supplier item code and used as the import key.",
-    suggestPatterns: [
-      /^item\s*number$/i,
-      /\b(item)?[\s_-]*(number|no\.?|code|sku|id)\b/i,
-    ],
+    help: 'The ServiceM8 material identifier. Matched against the supplier item code and used as the import key.',
+    suggestPatterns: [/^item\s*number$/i, /\b(item)?[\s_-]*(number|no\.?|code|sku|id)\b/i],
   },
   {
-    key: "itemDescription",
-    role: "servicem8",
-    label: "Name",
+    key: 'itemDescription',
+    role: 'servicem8',
+    label: 'Name',
     required: true,
-    help: "The ServiceM8 item name.",
+    help: 'The ServiceM8 item name.',
     suggestPatterns: [/^name$/i, /\b(description|desc|name|title)\b/i],
   },
   {
-    key: "existingSellPrice",
-    role: "servicem8",
-    label: "Price",
+    key: 'existingSellPrice',
+    role: 'servicem8',
+    label: 'Price',
     required: true,
-    help: "The selling price currently recorded in ServiceM8. This is the value the run compares against and replaces.",
+    help: 'The selling price currently recorded in ServiceM8. This is the value the run compares against and replaces.',
     suggestPatterns: [/^price$/i, /\b(sell|sale|retail|charge)\b/i],
   },
   {
-    key: "priceIncludesTaxes",
-    role: "servicem8",
-    label: "Price Includes Taxes",
+    key: 'priceIncludesTaxes',
+    role: 'servicem8',
+    label: 'Price Includes Taxes',
     required: true,
-    help: "Whether the ServiceM8 price for this row is GST-inclusive. This decides whether GST is added to the marked-up cost, so it is mandatory: guessing it would move every affected price by the GST rate.",
-    suggestPatterns: [
-      /^price\s*includes\s*tax(es)?$/i,
-      /\b(includes?[\s_-]*tax|tax[\s_-]*incl)/i,
-    ],
+    help: 'Whether the ServiceM8 price for this row is GST-inclusive. This decides whether GST is added to the marked-up cost, so it is mandatory: guessing it would move every affected price by the GST rate.',
+    suggestPatterns: [/^price\s*includes\s*tax(es)?$/i, /\b(includes?[\s_-]*tax|tax[\s_-]*incl)/i],
   },
   {
-    key: "existingCost",
-    role: "servicem8",
-    label: "Purchase Cost",
+    key: 'existingCost',
+    role: 'servicem8',
+    label: 'Purchase Cost',
     required: false,
-    help: "The cost currently recorded in ServiceM8. Often zero in real exports, so it is optional and is never the sole basis for detecting a change.",
+    help: 'The cost currently recorded in ServiceM8. Often zero in real exports, so it is optional and is never the sole basis for detecting a change.',
     suggestPatterns: [/^purchase\s*cost$/i, /\b(cost|buy)\b/i],
   },
   {
-    key: "taxRate",
-    role: "servicem8",
-    label: "Tax Rate",
+    key: 'taxRate',
+    role: 'servicem8',
+    label: 'Tax Rate',
     required: false,
-    help: "The ServiceM8 tax rate label, e.g. “GST on Income”. Preserved verbatim on existing items and defaulted on new items.",
+    help: 'The ServiceM8 tax rate label, e.g. “GST on Income”. Preserved verbatim on existing items and defaulted on new items.',
     suggestPatterns: [/^tax\s*rate$/i],
   },
   {
-    key: "quantityInStock",
-    role: "servicem8",
-    label: "Quantity In Stock",
+    key: 'quantityInStock',
+    role: 'servicem8',
+    label: 'Quantity In Stock',
     required: false,
-    help: "Stock quantity. This application never changes stock levels; the value is preserved verbatim.",
+    help: 'Stock quantity. This application never changes stock levels; the value is preserved verbatim.',
     suggestPatterns: [/^quantity\s*in\s*stock$/i, /\b(qty|quantity)\b/i],
   },
   {
-    key: "itemIsInventoried",
-    role: "servicem8",
-    label: "Item is Inventoried",
+    key: 'itemIsInventoried',
+    role: 'servicem8',
+    label: 'Item is Inventoried',
     required: false,
-    help: "Whether ServiceM8 tracks stock for the item. Preserved verbatim on existing items and defaulted on new items.",
+    help: 'Whether ServiceM8 tracks stock for the item. Preserved verbatim on existing items and defaulted on new items.',
     suggestPatterns: [/^item\s*is\s*inventoried$/i, /\binventoried\b/i],
   },
   {
-    key: "barcode",
-    role: "servicem8",
-    label: "Barcode",
+    key: 'barcode',
+    role: 'servicem8',
+    label: 'Barcode',
     required: false,
-    help: "The ServiceM8 barcode. Frequently damaged by spreadsheet round-tripping into scientific notation, which the run detects and reports rather than matching on.",
+    help: 'The ServiceM8 barcode. Frequently damaged by spreadsheet round-tripping into scientific notation, which the run detects and reports rather than matching on.',
     suggestPatterns: [/^barcode$/i, /\b(ean|upc|gtin)\b/i],
   },
 ];
 
 export function fieldsForRole(role: FileRole): FieldDefinition[] {
-  return role === "supplier" ? SUPPLIER_FIELDS : SERVICEM8_FIELDS;
+  return role === 'supplier' ? SUPPLIER_FIELDS : SERVICEM8_FIELDS;
 }

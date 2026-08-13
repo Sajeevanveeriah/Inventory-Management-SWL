@@ -1,23 +1,23 @@
-import { createEbayBrowseProvider } from "./ebayBrowseProvider.mjs";
-import { createSerpApiProvider } from "./serpapiProvider.mjs";
-import { createSerperShoppingProvider } from "./serperShoppingProvider.mjs";
+import { createEbayBrowseProvider } from './ebayBrowseProvider.mjs';
+import { createSerpApiProvider } from './serpapiProvider.mjs';
+import { createSerperShoppingProvider } from './serperShoppingProvider.mjs';
 
 /** Capability contract shared by every retrieval adapter. Credentials stay server-side. */
 export function providerCapabilities(provider, overrides = {}) {
   return Object.freeze({
     id: provider.name,
     displayName: provider.name,
-    mode: "structured-offers",
-    authentication: "none",
+    mode: 'structured-offers',
+    authentication: 'none',
     configured: Boolean(provider.configured),
-    quota: { kind: "unknown" },
+    quota: { kind: 'unknown' },
     limits: { concurrency: 1, requestsPerMinute: 10 },
     cache: { ttlSeconds: 900, persistent: false },
-    health: "unknown",
+    health: 'unknown',
     lastSuccess: null,
     lastErrorCategory: null,
-    dataRights: "Operator must confirm provider terms and authority.",
-    supportedIdentityFields: ["gtin", "mpn", "brand", "model", "title"],
+    dataRights: 'Operator must confirm provider terms and authority.',
+    supportedIdentityFields: ['gtin', 'mpn', 'brand', 'model', 'title'],
     ...overrides,
   });
 }
@@ -27,7 +27,7 @@ export function createDisabledProvider({
   displayName,
   authentication,
   dataRights,
-  mode = "structured-offers",
+  mode = 'structured-offers',
 }) {
   return {
     name: id,
@@ -38,13 +38,13 @@ export function createDisabledProvider({
         displayName,
         authentication,
         mode,
-        health: "not-configured",
+        health: 'not-configured',
         dataRights,
       },
     ),
     async search() {
       const error = new Error(`${displayName} is not configured`);
-      error.name = "ProviderNotConfiguredError";
+      error.name = 'ProviderNotConfiguredError';
       throw error;
     },
   };
@@ -56,50 +56,44 @@ export function optionalProviderRegistry(env = process.env) {
     createSerperShoppingProvider(env),
     createEbayBrowseProvider(env),
     createDisabledProvider({
-      id: "merchant-market-benchmark",
-      displayName: "Google Merchant market benchmark",
-      authentication: "OAuth and eligible Merchant account",
-      mode: "aggregate-benchmark",
-      dataRights:
-        "Aggregate benchmark only; keep separate from individual offers.",
+      id: 'merchant-market-benchmark',
+      displayName: 'Google Merchant market benchmark',
+      authentication: 'OAuth and eligible Merchant account',
+      mode: 'aggregate-benchmark',
+      dataRights: 'Aggregate benchmark only; keep separate from individual offers.',
     }),
     createDisabledProvider({
-      id: "generic-http-json-feed",
-      displayName: "Authorised HTTP JSON feed",
+      id: 'generic-http-json-feed',
+      displayName: 'Authorised HTTP JSON feed',
       authentication: env.SWL_HTTP_FEED_BEARER_TOKEN
-        ? "Bearer token configured"
-        : "Bearer token optional",
-      dataRights:
-        "Only operator-authorised, allowlisted HTTPS supplier endpoints.",
+        ? 'Bearer token configured'
+        : 'Bearer token optional',
+      dataRights: 'Only operator-authorised, allowlisted HTTPS supplier endpoints.',
     }),
     createDisabledProvider({
-      id: "searxng-discovery",
-      displayName: "SearXNG discovery",
-      authentication: "deployment-specific",
-      mode: "web-discovery",
-      dataRights:
-        "Discovery only; obey site terms, robots controls and rate limits. No bypasses.",
+      id: 'searxng-discovery',
+      displayName: 'SearXNG discovery',
+      authentication: 'deployment-specific',
+      mode: 'web-discovery',
+      dataRights: 'Discovery only; obey site terms, robots controls and rate limits. No bypasses.',
     }),
   ];
 }
 
 /** Select one live provider without ever moving a credential into the browser. */
-export function createProviderFromEnvironment(
-  env = process.env,
-  fetchImpl = fetch,
-) {
-  const requested = (env.SWL_SEARCH_PROVIDER ?? "").trim().toLowerCase();
-  if (["serper", "serper-shopping-au"].includes(requested)) {
+export function createProviderFromEnvironment(env = process.env, fetchImpl = fetch) {
+  const requested = (env.SWL_SEARCH_PROVIDER ?? '').trim().toLowerCase();
+  if (['serper', 'serper-shopping-au'].includes(requested)) {
     return createSerperShoppingProvider(env, fetchImpl);
   }
-  if (["ebay", "ebay-browse-au"].includes(requested)) {
+  if (['ebay', 'ebay-browse-au'].includes(requested)) {
     return createEbayBrowseProvider(env, fetchImpl);
   }
-  if (["serpapi", "serpapi-google-shopping-au"].includes(requested)) {
+  if (['serpapi', 'serpapi-google-shopping-au'].includes(requested)) {
     return createSerpApiProvider(env, fetchImpl);
   }
-  if (requested !== "") {
-    throw new Error("SWL_SEARCH_PROVIDER must be serpapi, serper or ebay.");
+  if (requested !== '') {
+    throw new Error('SWL_SEARCH_PROVIDER must be serpapi, serper or ebay.');
   }
   if (createSerperShoppingProvider(env, fetchImpl).configured) {
     return createSerperShoppingProvider(env, fetchImpl);

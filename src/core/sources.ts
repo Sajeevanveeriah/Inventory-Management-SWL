@@ -1,8 +1,5 @@
-import Big from "big.js";
-import {
-  normaliseObservationEx,
-  type CompetitorObservation,
-} from "./competitors";
+import Big from 'big.js';
+import { normaliseObservationEx, type CompetitorObservation } from './competitors';
 
 /**
  * Competitor / supplier source registry.
@@ -17,7 +14,7 @@ import {
  * rather than failing silently. See docs/COMPETITOR-EVIDENCE.md.
  */
 
-export type SourceAccessMethod = "live-api" | "manual-entry" | "file-import";
+export type SourceAccessMethod = 'live-api' | 'manual-entry' | 'file-import';
 
 export interface CompetitorSource {
   id: string;
@@ -30,61 +27,53 @@ export interface CompetitorSource {
 }
 
 const LEGACY_SYNTHETIC_SOURCE_IDS = new Set([
-  "fictionville-security",
-  "fictionville-hardware",
-  "fictionville-auctions",
+  'fictionville-security',
+  'fictionville-hardware',
+  'fictionville-auctions',
 ]);
 
 /**
  * Hide exact synthetic defaults written by older demonstration builds without
  * deleting or rewriting an operator's persistent source registry.
  */
-export function withoutLegacySyntheticSources(
-  sources: CompetitorSource[],
-): CompetitorSource[] {
-  return sources.filter(
-    (source) => !LEGACY_SYNTHETIC_SOURCE_IDS.has(source.id),
-  );
+export function withoutLegacySyntheticSources(sources: CompetitorSource[]): CompetitorSource[] {
+  return sources.filter((source) => !LEGACY_SYNTHETIC_SOURCE_IDS.has(source.id));
 }
 
 /** Production source registry. Synthetic demo competitors never appear here. */
 export function defaultSources(): CompetitorSource[] {
   return [
     {
-      id: "live-provider",
-      name: "Licensed shopping search API (live)",
-      accessMethod: "live-api",
+      id: 'live-provider',
+      name: 'Licensed shopping search API (live)',
+      accessMethod: 'live-api',
       automatedAccessNote:
         "Performed through the application's licensed provider adapter (Australian region, AUD) and rate limited. The server-backed web adapter may cache; native search does not claim a cache. Retailer websites are never scraped directly.",
       enabled: true,
     },
     {
-      id: "manual",
-      name: "Manual operator entry",
-      accessMethod: "manual-entry",
-      automatedAccessNote:
-        "Not applicable: prices are typed in by the operator with a source URL.",
+      id: 'manual',
+      name: 'Manual operator entry',
+      accessMethod: 'manual-entry',
+      automatedAccessNote: 'Not applicable: prices are typed in by the operator with a source URL.',
       enabled: true,
     },
   ];
 }
 
-export function toggleSource(
-  sources: CompetitorSource[],
-  id: string,
-): CompetitorSource[] {
+export function toggleSource(sources: CompetitorSource[], id: string): CompetitorSource[] {
   return sources.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s));
 }
 
 /** Normalise a free-text query: trim, lower-case, collapse whitespace. */
 export function normaliseQuery(raw: string): string {
-  return raw.trim().toLowerCase().replace(/\s+/g, " ");
+  return raw.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /** Heuristic: part numbers / SKUs / barcodes are digit-bearing single tokens. */
 export function looksLikePartNumber(query: string): boolean {
   const q = normaliseQuery(query);
-  return q !== "" && !q.includes(" ") && /\d/.test(q);
+  return q !== '' && !q.includes(' ') && /\d/.test(q);
 }
 
 export interface EvidenceSearchResult {
@@ -100,7 +89,7 @@ export interface EvidenceSearchOutcome {
   sourcesWithoutResults: string[];
   /** Sources switched off in the registry, always disclosed. */
   disabledSources: string[];
-  queryKind: "part-number" | "free-text" | "empty";
+  queryKind: 'part-number' | 'free-text' | 'empty';
 }
 
 /**
@@ -116,18 +105,18 @@ export function searchEvidence(
   const query = normaliseQuery(rawQuery);
   const enabled = sources.filter((s) => s.enabled);
   const disabledSources = sources.filter((s) => !s.enabled).map((s) => s.name);
-  if (query === "") {
+  if (query === '') {
     return {
       results: [],
       sourcesWithoutResults: enabled.map((s) => s.name),
       disabledSources,
-      queryKind: "empty",
+      queryKind: 'empty',
     };
   }
   const enabledNames = new Set(enabled.map((s) => s.name));
   const matches = observations.filter((o) => {
     if (!enabledNames.has(o.sourceName)) return false;
-    const hay = `${o.sku} ${o.sourceName} ${o.url ?? ""}`.toLowerCase();
+    const hay = `${o.sku} ${o.sourceName} ${o.url ?? ''}`.toLowerCase();
     return o.sku.toLowerCase() === query || hay.includes(query);
   });
   const exactFirst = [...matches].sort((a, b) => {
@@ -143,11 +132,9 @@ export function searchEvidence(
   const matchedSources = new Set(results.map((r) => r.sourceName));
   return {
     results,
-    sourcesWithoutResults: enabled
-      .map((s) => s.name)
-      .filter((n) => !matchedSources.has(n)),
+    sourcesWithoutResults: enabled.map((s) => s.name).filter((n) => !matchedSources.has(n)),
     disabledSources,
-    queryKind: looksLikePartNumber(query) ? "part-number" : "free-text",
+    queryKind: looksLikePartNumber(query) ? 'part-number' : 'free-text',
   };
 }
 
@@ -168,12 +155,12 @@ export function priceBand(results: EvidenceSearchResult[]): PriceBand | null {
       return (
         normalisedEx !== null &&
         observation.approvedSource &&
-        observation.currency === "AUD" &&
-        observation.gstBasis !== "unknown" &&
+        observation.currency === 'AUD' &&
+        observation.gstBasis !== 'unknown' &&
         observation.matchConfidence >= 0.8 &&
-        observation.reviewState === "accepted" &&
+        observation.reviewState === 'accepted' &&
         observation.packCompatible &&
-        observation.condition === "new" &&
+        observation.condition === 'new' &&
         observation.productOnly &&
         observation.ambiguousMatch !== true
       );

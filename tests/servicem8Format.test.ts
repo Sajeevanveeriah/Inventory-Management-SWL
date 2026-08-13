@@ -30,17 +30,7 @@ const GENUINE_SHAPE_CSV =
 const GENUINE_SHAPE_ROWS = [
   [...SERVICEM8_COLUMNS],
   ['FIC-001', 'Plain name', '0', '0', '16.25', 'No', 'GST on Income', 'No', ''],
-  [
-    'FIC,002',
-    'Name, with comma',
-    '12.5',
-    '0',
-    '58.5',
-    'Yes',
-    '',
-    'No',
-    '9.34368E+12',
-  ],
+  ['FIC,002', 'Name, with comma', '12.5', '0', '58.5', 'Yes', '', 'No', '9.34368E+12'],
   ['FIC-003', 'Name with "quotes" inside', '0', '0', '2.73', 'Yes', 'GST on Income', 'No', ''],
   ['FIC-004', 'Name with\r\nembedded newline', '0', '0', '0', 'No', 'GST on Income', 'No', ''],
 ];
@@ -51,9 +41,7 @@ describe('ServiceM8 CSV dialect', () => {
     const encoded = encodeServiceM8Csv(headers as string[], rows);
     expect(encoded).toBe(GENUINE_SHAPE_CSV);
     // Byte-level equality, not just string equality.
-    expect(new TextEncoder().encode(encoded)).toEqual(
-      new TextEncoder().encode(GENUINE_SHAPE_CSV),
-    );
+    expect(new TextEncoder().encode(encoded)).toEqual(new TextEncoder().encode(GENUINE_SHAPE_CSV));
   });
 
   it('terminates every line with CRLF, including the last, and emits no BOM', () => {

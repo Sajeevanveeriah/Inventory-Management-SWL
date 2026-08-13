@@ -7,9 +7,9 @@
 
 /** Trim, collapse whitespace. Case is preserved for display, lowered for matching. */
 export function normaliseQuery(raw) {
-  return String(raw ?? "")
+  return String(raw ?? '')
     .trim()
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, ' ');
 }
 
 /**
@@ -19,15 +19,11 @@ export function normaliseQuery(raw) {
  *  - "free-text": everything else
  */
 export function classifyQuery(normalised) {
-  if (normalised === "") return "empty";
-  if (/^\d{8}$|^\d{12,14}$/.test(normalised)) return "barcode";
-  if (
-    !normalised.includes(" ") &&
-    /\d/.test(normalised) &&
-    /[a-z0-9]/i.test(normalised)
-  )
-    return "identifier";
-  return "free-text";
+  if (normalised === '') return 'empty';
+  if (/^\d{8}$|^\d{12,14}$/.test(normalised)) return 'barcode';
+  if (!normalised.includes(' ') && /\d/.test(normalised) && /[a-z0-9]/i.test(normalised))
+    return 'identifier';
+  return 'free-text';
 }
 
 /**
@@ -38,8 +34,6 @@ export function buildProviderQuery(raw) {
   const normalised = normaliseQuery(raw);
   const kind = classifyQuery(normalised);
   const providerQuery =
-    kind === "identifier" || kind === "barcode"
-      ? `"${normalised}"`
-      : normalised;
+    kind === 'identifier' || kind === 'barcode' ? `"${normalised}"` : normalised;
   return { normalised, kind, providerQuery };
 }

@@ -1,31 +1,27 @@
-import type { CompetitorObservation } from "../core/competitors";
-import type {
-  LiveHealth,
-  LiveSearchOutcome,
-  LiveSearchResult,
-} from "../core/liveSearch";
-import type { MappingProfile } from "../core/mapping";
-import type { AppearanceTheme, Settings } from "../core/settings";
-import type { CompetitorSource } from "../core/sources";
-import type { GeneratedOutput } from "../io/exportWorkbooks";
+import type { CompetitorObservation } from '../core/competitors';
+import type { LiveHealth, LiveSearchOutcome, LiveSearchResult } from '../core/liveSearch';
+import type { MappingProfile } from '../core/mapping';
+import type { AppearanceTheme, Settings } from '../core/settings';
+import type { CompetitorSource } from '../core/sources';
+import type { GeneratedOutput } from '../io/exportWorkbooks';
 
-export type PlatformKind = "desktop" | "web";
+export type PlatformKind = 'desktop' | 'web';
 
 export type PlatformErrorCode =
-  | "cancelled"
-  | "conflict"
-  | "integrity_failed"
-  | "invalid_input"
-  | "not_configured"
-  | "offline"
-  | "permission_denied"
-  | "provider_error"
-  | "quota_exhausted"
-  | "rate_limited"
-  | "selection_expired"
-  | "timeout"
-  | "unavailable"
-  | "unsupported_version";
+  | 'cancelled'
+  | 'conflict'
+  | 'integrity_failed'
+  | 'invalid_input'
+  | 'not_configured'
+  | 'offline'
+  | 'permission_denied'
+  | 'provider_error'
+  | 'quota_exhausted'
+  | 'rate_limited'
+  | 'selection_expired'
+  | 'timeout'
+  | 'unavailable'
+  | 'unsupported_version';
 
 export interface PlatformError {
   code: PlatformErrorCode;
@@ -33,8 +29,7 @@ export interface PlatformError {
   retryable: boolean;
 }
 
-export type PlatformResult<T> =
-  { ok: true; value: T } | { ok: false; error: PlatformError };
+export type PlatformResult<T> = { ok: true; value: T } | { ok: false; error: PlatformError };
 
 export function platformOk<T>(value: T): PlatformResult<T> {
   return { ok: true, value };
@@ -68,7 +63,7 @@ export interface CatalogueItem {
   description: string;
   costCents: number;
   sellPriceCents: number;
-  gstBasis: "inc-gst" | "ex-gst" | "unknown";
+  gstBasis: 'inc-gst' | 'ex-gst' | 'unknown';
   updatedAt: string;
 }
 
@@ -126,7 +121,7 @@ export const CONFIGURATION_SCHEMA_VERSION = 1 as const;
 
 export interface ConfigurationEnvelope {
   schemaVersion: typeof CONFIGURATION_SCHEMA_VERSION;
-  application: "swl-pricing-inventory-control";
+  application: 'swl-pricing-inventory-control';
   exportedAt: string;
   counts: {
     profiles: number;
@@ -143,7 +138,7 @@ export interface ConfigurationEnvelope {
 
 function canonicalConfigurationValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalConfigurationValue);
-  if (value !== null && typeof value === "object") {
+  if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
@@ -155,7 +150,7 @@ function canonicalConfigurationValue(value: unknown): unknown {
 
 /** Stable checksum payload: recursively sorted object keys and ordered arrays. */
 export function canonicalConfigurationPayload(
-  envelope: Omit<ConfigurationEnvelope, "sha256">,
+  envelope: Omit<ConfigurationEnvelope, 'sha256'>,
 ): string {
   return JSON.stringify(canonicalConfigurationValue(envelope));
 }
@@ -163,7 +158,7 @@ export function canonicalConfigurationPayload(
 export interface ConfigurationPreview {
   previewToken: string;
   schemaVersion: number;
-  counts: ConfigurationEnvelope["counts"];
+  counts: ConfigurationEnvelope['counts'];
   conflicts: {
     profiles: number;
     aliases: number;
@@ -176,14 +171,13 @@ export interface ConfigurationPreview {
 export interface ConfigurationMigrationStatus {
   legacyConfigurationFound: boolean;
   alreadyImported: boolean;
-  counts: ConfigurationEnvelope["counts"];
+  counts: ConfigurationEnvelope['counts'];
   valid: boolean;
-  invalidCounts: ConfigurationEnvelope["counts"];
+  invalidCounts: ConfigurationEnvelope['counts'];
   validationMessages: string[];
 }
 
-export type BackupReason =
-  "migration" | "import" | "restore" | "reset" | "manual";
+export type BackupReason = 'migration' | 'import' | 'restore' | 'reset' | 'manual';
 
 export interface BackupRecordCounts {
   catalogueItems: number;
@@ -219,14 +213,14 @@ export interface ResetPreview {
 }
 
 export type ProviderState =
-  | "configured"
-  | "fixture"
-  | "not_configured"
-  | "offline"
-  | "timeout"
-  | "quota_exhausted"
-  | "rate_limited"
-  | "provider_error";
+  | 'configured'
+  | 'fixture'
+  | 'not_configured'
+  | 'offline'
+  | 'timeout'
+  | 'quota_exhausted'
+  | 'rate_limited'
+  | 'provider_error';
 
 export interface ProviderStatus {
   provider: string;
@@ -246,7 +240,7 @@ export interface OutputDestinationGrant {
   displayName: string;
 }
 
-export type InputFileRole = "supplier" | "servicem8" | "configuration";
+export type InputFileRole = 'supplier' | 'servicem8' | 'configuration';
 
 export interface PlatformSaveResult {
   written: string[];
@@ -283,9 +277,7 @@ export interface PlatformService {
   };
   sources: {
     list(): Promise<PlatformResult<CompetitorSource[]>>;
-    replace(
-      sources: readonly CompetitorSource[],
-    ): Promise<PlatformResult<CompetitorSource[]>>;
+    replace(sources: readonly CompetitorSource[]): Promise<PlatformResult<CompetitorSource[]>>;
   };
   profiles: {
     list(): Promise<PlatformResult<MappingProfile[]>>;
@@ -303,15 +295,9 @@ export interface PlatformService {
   };
   configuration: {
     export(): Promise<PlatformResult<ConfigurationEnvelope>>;
-    exportToSelectedFolder(
-      filename: string,
-    ): Promise<PlatformResult<string | null>>;
-    previewImport(
-      serialised: string,
-    ): Promise<PlatformResult<ConfigurationPreview>>;
-    applyImport(
-      previewToken: string,
-    ): Promise<PlatformResult<ConfigurationEnvelope["counts"]>>;
+    exportToSelectedFolder(filename: string): Promise<PlatformResult<string | null>>;
+    previewImport(serialised: string): Promise<PlatformResult<ConfigurationPreview>>;
+    applyImport(previewToken: string): Promise<PlatformResult<ConfigurationEnvelope['counts']>>;
     migrationStatus(): Promise<PlatformResult<ConfigurationMigrationStatus>>;
     previewLegacyImport(): Promise<PlatformResult<ConfigurationPreview>>;
   };
@@ -321,10 +307,7 @@ export interface PlatformService {
     previewRestore(backupId?: string): Promise<PlatformResult<RestorePreview>>;
     restore(previewToken: string): Promise<PlatformResult<BackupSummary>>;
     previewReset(): Promise<PlatformResult<ResetPreview>>;
-    reset(
-      resetToken: string,
-      confirmation: string,
-    ): Promise<PlatformResult<BackupSummary>>;
+    reset(resetToken: string, confirmation: string): Promise<PlatformResult<BackupSummary>>;
   };
   search: {
     status(): Promise<PlatformResult<ProviderStatus>>;
@@ -334,18 +317,14 @@ export interface PlatformService {
       costCeilingCents?: number,
       costPerCallCents?: number,
     ): Promise<PlatformResult<ProviderStatus>>;
-    configureCredential(
-      secret: string,
-    ): Promise<PlatformResult<ProviderStatus>>;
+    configureCredential(secret: string): Promise<PlatformResult<ProviderStatus>>;
     validateCredential(): Promise<PlatformResult<ProviderStatus>>;
     replaceCredential(secret: string): Promise<PlatformResult<ProviderStatus>>;
     removeCredential(): Promise<PlatformResult<ProviderStatus>>;
   };
   files: {
     chooseInputFile(role: InputFileRole): Promise<PlatformResult<File | null>>;
-    chooseOutputDestination(): Promise<
-      PlatformResult<OutputDestinationGrant | null>
-    >;
+    chooseOutputDestination(): Promise<PlatformResult<OutputDestinationGrant | null>>;
     saveOutputs(
       destination: OutputDestinationGrant,
       outputs: readonly GeneratedOutput[],
@@ -353,7 +332,7 @@ export interface PlatformService {
     openVerifiedSource(url: string): Promise<PlatformResult<void>>;
   };
 
-  readonly rawImportPersistence: "never";
+  readonly rawImportPersistence: 'never';
   /** Manual evidence is persisted only when it names an existing catalogue item. */
-  readonly manualEvidencePersistence: "catalogue-reference-or-session";
+  readonly manualEvidencePersistence: 'catalogue-reference-or-session';
 }
