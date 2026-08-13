@@ -14,6 +14,7 @@ function readSource(...segments: string[]) {
 const preparation = readSource('scripts', 'prepare-edge-webdriver.ps1');
 const workflow = readSource('.github', 'workflows', 'windows-desktop.yml');
 const desktopRunner = readSource('scripts', 'run-windows-desktop-e2e.ps1');
+const localBrowserRunner = readSource('scripts', 'run-local-e2e.mjs');
 const wdio = readSource('wdio.conf.ts');
 const tauriServicePatch = readSource('scripts', 'patch-tauri-service-edge-driver-label.mjs');
 const supportedDriverBanner =
@@ -22,6 +23,14 @@ const supportedDriverBannerSource =
   "'^Microsoft Edge WebDriver (?<version>\\d+(?:\\.\\d+){3}) \\([0-9a-f]{40}\\)$'";
 
 describe('locked Tauri service EdgeDriver compatibility', () => {
+  it('revalidates the workflow-selected Edge path in the bounded local runner', () => {
+    expect(workflow).toContain('"CHROMIUM_PATH=$edgePath"');
+    expect(localBrowserRunner).toContain('process.env.CHROMIUM_PATH');
+    expect(localBrowserRunner).toContain('Get-AuthenticodeSignature');
+    expect(localBrowserRunner).toContain("ProductName -notlike '*Microsoft Edge*'");
+    expect(localBrowserRunner).toContain("toLocaleLowerCase('en-US')");
+  });
+
   it('patches only reviewed 1.3.0 dependency bytes after npm ci', () => {
     expect(tauriServicePatch).toContain('packageMetadata.version !== "1.3.0"');
     expect(tauriServicePatch).toContain(

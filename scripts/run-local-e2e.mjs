@@ -35,6 +35,7 @@ function browserPath() {
     throw new Error('Automated local acceptance currently requires Microsoft Edge on Windows.');
   }
   const candidates = [
+    process.env.CHROMIUM_PATH,
     process.env['ProgramFiles(x86)']
       ? join(process.env['ProgramFiles(x86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe')
       : undefined,
@@ -42,15 +43,21 @@ function browserPath() {
       ? join(process.env.ProgramFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
       : undefined,
   ].filter(Boolean);
-  const selected = candidates.find((candidate) => existsSync(candidate));
+  const selected = [...new Set(candidates.map((candidate) => resolve(candidate)))].find(
+    (candidate) => existsSync(candidate),
+  );
   if (!selected) {
     throw new Error(
       'Microsoft Edge was not found under Program Files; this runner never downloads it.',
     );
   }
-  const resolved = resolve(selected);
+  const resolved = selected;
   const metadata = lstatSync(resolved);
-  if (!metadata.isFile() || metadata.isSymbolicLink() || realpathSync(resolved) !== resolved) {
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    realpathSync(resolved).toLocaleLowerCase('en-US') !== resolved.toLocaleLowerCase('en-US')
+  ) {
     throw new Error('The selected browser is not a reviewed regular executable file.');
   }
   const verificationEnvironment = cleanEnvironment();
@@ -258,8 +265,15 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(
-    `Local E2E platform failed: ${error instanceof Error ? error.message : String(error)}`,
-  );
+  const details =
+    error instanceof AggregateError
+      ? error.errors
+          .filter(Boolean)
+          .map((cause) => (cause instanceof Error ? cause.message : String(cause)))
+          .join(' | ')
+      : error instanceof Error
+        ? error.message
+        : String(error);
+  console.error(`Local E2E platform failed: ${details}`);
   process.exitCode = 1;
 });
