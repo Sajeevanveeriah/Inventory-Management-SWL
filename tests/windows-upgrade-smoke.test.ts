@@ -242,7 +242,9 @@ describe('Windows desktop offline cleanup', () => {
     );
 
     expect(desktopE2eSource).toContain('$testExitCode = $LASTEXITCODE');
-    expect(desktopE2eSource).toContain('if ($testExitCode -ne 0) { exit $testExitCode }');
+    expect(desktopE2eSource).toContain('if ($testExitCode -ne 0) {');
+    expect(desktopE2eSource).toContain('Native desktop acceptance failed');
+    expect(desktopE2eSource).toContain('exit $testExitCode');
   });
 });
 
