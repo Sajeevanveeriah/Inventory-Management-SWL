@@ -175,6 +175,39 @@ if (!(Get-Command Get-NetTCPConnection -ErrorAction Stop)) {
   throw 'Get-NetTCPConnection is required for the installed-process network boundary check.'
 }
 
+# Enforce the same outbound-Internet denial the WDIO acceptance stage uses,
+# so the launch-sampling boundary is deterministic: without it the WebView2
+# runtime's own background telemetry can intermittently establish a
+# connection that is unrelated to the application under test. Rules are
+# per-program, apply to both launch phases (install and reinstall share the
+# scripted destination) and are removed before the evidence write; on an
+# earlier failure they remain on the disposable runner by design.
+$offlineRulePrefix = 'SWL installer smoke offline ' + [Guid]::NewGuid().ToString('N')
+$offlineRuleNames = [Collections.Generic.List[string]]::new()
+function Add-SmokeOfflineRule {
+  param([string]$Program, [string]$Label)
+  $ruleName = "$offlineRulePrefix $Label"
+  New-NetFirewallRule -Name $ruleName -DisplayName $ruleName -Direction Outbound -Action Block `
+    -Program $Program -RemoteAddress Internet -Profile Any -Enabled True | Out-Null
+  [void]$offlineRuleNames.Add($ruleName)
+  $rule = Get-NetFirewallRule -Name $ruleName -ErrorAction Stop
+  $address = $rule | Get-NetFirewallAddressFilter
+  if ($rule.Enabled -ne 'True' -or $rule.Action -ne 'Block' -or
+      $address.RemoteAddress -notcontains 'Internet') {
+    throw 'The installer-smoke outbound-deny firewall rule was not active.'
+  }
+}
+$smokeWebViewRoots = @(
+  "${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application",
+  "$env:ProgramFiles\Microsoft\EdgeWebView\Application"
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) }
+$smokeWebViewExecutables = @($smokeWebViewRoots | ForEach-Object {
+  Get-ChildItem -LiteralPath $_ -Recurse -File -Filter 'msedgewebview2.exe'
+} | Select-Object -ExpandProperty FullName -Unique)
+if ($smokeWebViewExecutables.Count -eq 0) {
+  throw 'No installed Microsoft WebView2 executable was available for the smoke offline boundary.'
+}
+
 $startMenuRoot = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $linksBefore = @(Get-SwlStartMenuLinks -Root $startMenuRoot | ForEach-Object { $_.FullName })
 $uninstallEntriesBefore = @(Get-SwlUninstallEntries | ForEach-Object { $_.RegistryPath })
@@ -219,6 +252,11 @@ if ($installedApplicationSha256 -ne $packagedApplicationSha256) {
 $applicationSignature = Get-AuthenticodeSignature -LiteralPath $application.FullName
 if ($applicationSignature.Status -ne 'NotSigned') {
   throw "The internal-evaluation application executable must be unsigned; actual status: $($applicationSignature.Status)."
+}
+
+Add-SmokeOfflineRule -Program $application.FullName -Label 'installed-application'
+for ($index = 0; $index -lt $smokeWebViewExecutables.Count; $index++) {
+  Add-SmokeOfflineRule -Program $smokeWebViewExecutables[$index] -Label "webview-$index"
 }
 
 $forbiddenPayload = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File | Where-Object {
@@ -636,8 +674,14 @@ if (($databaseEvidenceAfterSecondUninstall | ConvertTo-Json -Depth 7 -Compress) 
   throw 'Second uninstall changed the exact database schema or record counts.'
 }
 
+foreach ($offlineRuleName in $offlineRuleNames) {
+  Remove-NetFirewallRule -Name $offlineRuleName -ErrorAction Stop
+}
+
 [ordered]@{
   scope = 'GitHub-hosted Windows Server scripted smoke; not interactive Windows 10/11 acceptance'
+  outboundInternetDeniedDuringLaunches = $true
+  outboundDenyRuleCount = $offlineRuleNames.Count
   runnerPrincipalIsAdministrator = [Security.Principal.WindowsPrincipal]::new(
     [Security.Principal.WindowsIdentity]::GetCurrent()
   ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
