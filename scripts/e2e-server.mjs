@@ -3,8 +3,10 @@
 import { spawn, spawnSync } from "node:child_process";
 import { cpSync, rmSync } from "node:fs";
 
-const dataDir = ".e2e-data";
-const seedDataDir = ".e2e-seed-data";
+// playwright.config.ts owns both paths so the browser fixture resets exactly
+// the store this server reads. The defaults keep a direct run self-contained.
+const dataDir = process.env.SWL_LOCAL_TEST_LIVE_DATA_DIR ?? ".e2e-data";
+const seedDataDir = process.env.SWL_LOCAL_TEST_SEED_DATA_DIR ?? ".e2e-seed-data";
 for (const directory of [dataDir, seedDataDir]) {
   rmSync(directory, { recursive: true, force: true });
 }

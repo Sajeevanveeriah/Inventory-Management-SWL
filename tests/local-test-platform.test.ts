@@ -165,4 +165,17 @@ describe('no-install local testing platform', () => {
     expect(runner).toContain('Get-AuthenticodeSignature');
     expect(runner).toContain("['/PID', String(child.pid), '/T', '/F']");
   });
+
+  it('gives the default Playwright runner the seed snapshot its fixture requires', () => {
+    // e2e/fixture.ts refuses to run without both directories, so `npm run e2e`
+    // fails on its first test whenever the default configuration stops
+    // publishing them alongside the server that seeds them.
+    const configuration = readFileSync(path.join(repositoryRoot, 'playwright.config.ts'), 'utf8');
+    const server = readFileSync(path.join(repositoryRoot, 'scripts', 'e2e-server.mjs'), 'utf8');
+    for (const variable of ['SWL_LOCAL_TEST_LIVE_DATA_DIR', 'SWL_LOCAL_TEST_SEED_DATA_DIR']) {
+      expect(configuration).toContain(`process.env.${variable} =`);
+      expect(configuration).toContain(`${variable}: `);
+      expect(server).toContain(`process.env.${variable} ??`);
+    }
+  });
 });

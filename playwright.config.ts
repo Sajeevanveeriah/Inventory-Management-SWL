@@ -1,4 +1,16 @@
 import { defineConfig } from "@playwright/test";
+import { resolve } from "node:path";
+
+/**
+ * e2e/fixture.ts restores the synthetic seed snapshot before every browser
+ * test, so the runner must publish the same directory pair that the Windows
+ * no-install runner supplies. scripts/e2e-server.mjs reads the same variables,
+ * which keeps the seeded directories and the fixture reset in one place.
+ */
+const liveDataDirectory = resolve(".e2e-data");
+const seedDataDirectory = resolve(".e2e-seed-data");
+process.env.SWL_LOCAL_TEST_LIVE_DATA_DIR = liveDataDirectory;
+process.env.SWL_LOCAL_TEST_SEED_DATA_DIR = seedDataDirectory;
 
 /**
  * E2E tests run the production web bundle with deterministic local operational
@@ -23,6 +35,10 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run build && node scripts/e2e-server.mjs",
+    env: {
+      SWL_LOCAL_TEST_LIVE_DATA_DIR: liveDataDirectory,
+      SWL_LOCAL_TEST_SEED_DATA_DIR: seedDataDirectory,
+    },
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
