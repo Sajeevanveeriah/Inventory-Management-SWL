@@ -51,13 +51,9 @@ function browserPath() {
       'Microsoft Edge was not found under Program Files; this runner never downloads it.',
     );
   }
-  const resolved = selected;
+  const resolved = realpathSync(selected);
   const metadata = lstatSync(resolved);
-  if (
-    !metadata.isFile() ||
-    metadata.isSymbolicLink() ||
-    realpathSync(resolved).toLocaleLowerCase('en-US') !== resolved.toLocaleLowerCase('en-US')
-  ) {
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
     throw new Error('The selected browser is not a reviewed regular executable file.');
   }
   const verificationEnvironment = cleanEnvironment();
@@ -72,6 +68,9 @@ function browserPath() {
     ],
     { env: verificationEnvironment, stdio: 'ignore', windowsHide: true },
   );
+  if (verification.error) {
+    throw new Error('Microsoft Edge product and signature verification could not be started.');
+  }
   if (verification.status !== 0) {
     throw new Error(
       'The installed Microsoft Edge executable failed product or signature verification.',

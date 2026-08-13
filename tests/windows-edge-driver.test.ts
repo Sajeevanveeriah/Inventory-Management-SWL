@@ -28,7 +28,8 @@ describe('locked Tauri service EdgeDriver compatibility', () => {
     expect(localBrowserRunner).toContain('process.env.CHROMIUM_PATH');
     expect(localBrowserRunner).toContain('Get-AuthenticodeSignature');
     expect(localBrowserRunner).toContain("ProductName -notlike '*Microsoft Edge*'");
-    expect(localBrowserRunner).toContain("toLocaleLowerCase('en-US')");
+    expect(localBrowserRunner).toContain('const resolved = realpathSync(selected)');
+    expect(localBrowserRunner).toContain('metadata.isSymbolicLink()');
   });
 
   it('patches only reviewed 1.3.0 dependency bytes after npm ci', () => {
