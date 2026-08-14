@@ -59,9 +59,7 @@ export interface PricingResult {
 export function derivePrice(input: PricingInput): PricingResult {
   const gstRate = input.gstRatePercent ?? GST_RATE_PERCENT;
   const costExGst =
-    input.costBasis === 'including-gst'
-      ? removeGst(input.costAmount, gstRate)
-      : input.costAmount;
+    input.costBasis === 'including-gst' ? removeGst(input.costAmount, gstRate) : input.costAmount;
   const sellExGst = applyMarkup(costExGst, input.markupPercent);
   const sellIncGst = addGst(sellExGst, gstRate);
   const price = input.targetBasis === 'including-gst' ? sellIncGst : sellExGst;

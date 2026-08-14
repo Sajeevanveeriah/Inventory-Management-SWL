@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
-import type { FileRole, ParsedTable } from "../core/table";
-import { describeLimits } from "../io/limits";
+import { useRef, useState } from 'react';
+import type { FileRole, ParsedTable } from '../core/table';
+import { describeLimits } from '../io/limits';
 
 interface FileDropProps {
   role: FileRole;
@@ -41,7 +41,7 @@ export function FileDrop({
       <h3 id={headingId}>{label}</h3>
       <p className="muted small">{hint}</p>
       <div
-        className={`dropzone${dragging ? " dragging" : ""}`}
+        className={`dropzone${dragging ? ' dragging' : ''}`}
         onDragOver={(e) => {
           e.preventDefault();
           if (!nativePicker) setDragging(true);
@@ -55,20 +55,18 @@ export function FileDrop({
           if (file !== undefined) onFile(file);
         }}
       >
-        <p className="muted" style={{ marginBottom: "0.6rem" }}>
+        <p className="muted" style={{ marginBottom: '0.6rem' }}>
           {nativePicker
-            ? "Use the native Windows picker to select a CSV or XLSX file."
-            : "Drag a CSV or XLSX file here, or"}
+            ? 'Use the native Windows picker to select a CSV or XLSX file.'
+            : 'Drag a CSV or XLSX file here, or'}
         </p>
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() =>
-            nativePicker ? onChooseFile?.() : inputRef.current?.click()
-          }
+          onClick={() => (nativePicker ? onChooseFile?.() : inputRef.current?.click())}
           disabled={loading}
         >
-          {loading ? "Reading file…" : "Choose file"}
+          {loading ? 'Reading file…' : 'Choose file'}
         </button>
         {!nativePicker && (
           <input
@@ -81,14 +79,11 @@ export function FileDrop({
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file !== undefined) onFile(file);
-              e.target.value = "";
+              e.target.value = '';
             }}
           />
         )}
-        <p
-          className="muted small"
-          style={{ marginTop: "0.6rem", marginBottom: 0 }}
-        >
+        <p className="muted small" style={{ marginTop: '0.6rem', marginBottom: 0 }}>
           {describeLimits()}
         </p>
       </div>
@@ -96,7 +91,7 @@ export function FileDrop({
       {error !== null && (
         <div className="callout callout-danger" role="alert">
           <strong>{error.message}</strong>
-          <p className="small" style={{ marginTop: "0.3rem" }}>
+          <p className="small" style={{ marginTop: '0.3rem' }}>
             {error.detail}
           </p>
         </div>
@@ -112,19 +107,16 @@ export function FileDrop({
             <dt>Size</dt>
             <dd>{(table.byteSize / 1024).toFixed(1)} KB</dd>
             <dt>Sheets</dt>
-            <dd>{table.sheetNames.join(", ")}</dd>
+            <dd>{table.sheetNames.join(', ')}</dd>
             <dt>Data rows</dt>
             <dd>{table.rows.length.toLocaleString()}</dd>
             <dt>Detected headers</dt>
-            <dd>{table.headers.join(" · ")}</dd>
+            <dd>{table.headers.join(' · ')}</dd>
             <dt>Validation</dt>
             <dd>
               <span className="badge badge-approved">Readable</span>
               {table.warnings.length > 0 && (
-                <ul
-                  className="small"
-                  style={{ margin: "0.3rem 0 0", paddingLeft: "1.1rem" }}
-                >
+                <ul className="small" style={{ margin: '0.3rem 0 0', paddingLeft: '1.1rem' }}>
                   {table.warnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}
@@ -133,7 +125,7 @@ export function FileDrop({
             </dd>
           </dl>
           {table.sheetNames.length > 1 && (
-            <div className="field" style={{ marginTop: "0.7rem" }}>
+            <div className="field" style={{ marginTop: '0.7rem' }}>
               <label htmlFor={`${inputId}-sheet`}>Worksheet to use</label>
               <select
                 id={`${inputId}-sheet`}
@@ -148,7 +140,7 @@ export function FileDrop({
               </select>
             </div>
           )}
-          <div className="btn-row" style={{ marginTop: "0.7rem" }}>
+          <div className="btn-row" style={{ marginTop: '0.7rem' }}>
             <button type="button" className="btn btn-sm" onClick={onClear}>
               Remove file
             </button>

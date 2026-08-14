@@ -6,22 +6,22 @@
  * not-configured and server-unreachable.
  */
 export type LiveSearchState =
-  | "ok"
-  | "empty"
-  | "selection_required"
-  | "selection_expired"
-  | "no_comparable_offers"
-  | "not_configured"
-  | "offline"
-  | "timeout"
-  | "provider_error"
-  | "quota_exhausted"
-  | "rate_limited"
-  | "search_in_progress"
-  | "invalid_query"
-  | "server_unreachable";
+  | 'ok'
+  | 'empty'
+  | 'selection_required'
+  | 'selection_expired'
+  | 'no_comparable_offers'
+  | 'not_configured'
+  | 'offline'
+  | 'timeout'
+  | 'provider_error'
+  | 'quota_exhausted'
+  | 'rate_limited'
+  | 'search_in_progress'
+  | 'invalid_query'
+  | 'server_unreachable';
 
-export type ProductCondition = "new" | "used" | "unknown";
+export type ProductCondition = 'new' | 'used' | 'unknown';
 
 export interface LiveProductCandidate {
   /** Opaque SerpAPI token used only to retrieve the selected product's stores. */
@@ -39,8 +39,7 @@ export interface LiveProductCandidate {
   position: number;
 }
 
-export type LivePriceBasis =
-  "provider_total" | "item_plus_shipping" | "not_comparable";
+export type LivePriceBasis = 'provider_total' | 'item_plus_shipping' | 'not_comparable';
 
 export interface LiveSearchResult {
   /** Immutable query and selected product provenance for attached evidence. */
@@ -64,12 +63,12 @@ export interface LiveSearchResult {
   comparisonPriceAud: string | null;
   priceBasis: LivePriceBasis;
   originalPriceText: string;
-  currencyBasis: "explicit-aud" | "inferred-au-localisation";
-  currency: "AUD";
-  gstBasis: "inc-gst" | "ex-gst" | "unknown";
+  currencyBasis: 'explicit-aud' | 'inferred-au-localisation';
+  currency: 'AUD';
+  gstBasis: 'inc-gst' | 'ex-gst' | 'unknown';
   packSize: string | null;
   condition: ProductCondition;
-  availability: "in-stock" | "out-of-stock" | "unknown";
+  availability: 'in-stock' | 'out-of-stock' | 'unknown';
   financing: boolean;
   comparisonEligible: boolean;
   exclusionReasons: string[];
@@ -92,7 +91,7 @@ export interface LiveSearchBand {
 export interface LiveSearchOutcome {
   state: LiveSearchState;
   query: string;
-  queryKind: "identifier" | "barcode" | "free-text" | "empty";
+  queryKind: 'identifier' | 'barcode' | 'free-text' | 'empty';
   provider: string;
   candidates: LiveProductCandidate[];
   selectedProduct?: {
@@ -128,8 +127,7 @@ export interface LiveHealth {
   costCeilingCents?: number;
   costPerCallCents?: number;
   spentCents?: number;
-  paidPolicyState?:
-    "fixture" | "disabled" | "invalid" | "enabled" | "exhausted";
+  paidPolicyState?: 'fixture' | 'disabled' | 'invalid' | 'enabled' | 'exhausted';
   schemaVersion?: number;
 }
 
@@ -138,5 +136,5 @@ export function centsToAud(cents: number): string {
   const abs = Math.abs(Math.trunc(cents));
   const whole = Math.trunc(abs / 100);
   const rem = abs % 100;
-  return `${cents < 0 ? "-" : ""}${whole}.${String(rem).padStart(2, "0")}`;
+  return `${cents < 0 ? '-' : ''}${whole}.${String(rem).padStart(2, '0')}`;
 }

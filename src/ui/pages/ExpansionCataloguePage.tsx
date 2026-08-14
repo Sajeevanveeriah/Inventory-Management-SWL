@@ -1,22 +1,20 @@
-import { useMemo, useState } from "react";
-import { buildExpansionCatalogue } from "../../core/expansion";
-import { formatAmount } from "../../core/money";
-import { useAppState } from "../../state/store";
-import { EmptyState, Page } from "./PageChrome";
+import { useMemo, useState } from 'react';
+import { buildExpansionCatalogue } from '../../core/expansion';
+import { formatAmount } from '../../core/money';
+import { useAppState } from '../../state/store';
+import { EmptyState, Page } from './PageChrome';
 
 const PAGE_SIZE = 100;
-const ENABLED_CATEGORIES_KEY = "swl-expansion-enabled-categories-v1";
+const ENABLED_CATEGORIES_KEY = 'swl-expansion-enabled-categories-v1';
 
 function storedEnabledCategories(): Set<string> {
   try {
-    const value = JSON.parse(
-      window.localStorage.getItem(ENABLED_CATEGORIES_KEY) ?? "[]",
-    );
+    const value = JSON.parse(window.localStorage.getItem(ENABLED_CATEGORIES_KEY) ?? '[]');
     if (!Array.isArray(value) || value.length > 500) return new Set();
     return new Set(
       value.filter(
         (entry): entry is string =>
-          typeof entry === "string" && entry.length > 0 && entry.length <= 256,
+          typeof entry === 'string' && entry.length > 0 && entry.length <= 256,
       ),
     );
   } catch {
@@ -24,32 +22,22 @@ function storedEnabledCategories(): Set<string> {
   }
 }
 
-export function ExpansionCataloguePage({
-  goToNewRun,
-}: {
-  goToNewRun: () => void;
-}) {
+export function ExpansionCataloguePage({ goToNewRun }: { goToNewRun: () => void }) {
   const state = useAppState();
-  const [query, setQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [query, setQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [requestedPage, setRequestedPage] = useState(1);
-  const [enabledCategories, setEnabledCategories] = useState<Set<string>>(
-    storedEnabledCategories,
-  );
+  const [enabledCategories, setEnabledCategories] = useState<Set<string>>(storedEnabledCategories);
   const catalogue = useMemo(
     () => buildExpansionCatalogue(state.comparison?.rows ?? []),
     [state.comparison],
   );
-  const items = useMemo(
-    () => catalogue.flatMap((category) => category.items),
-    [catalogue],
-  );
+  const items = useMemo(() => catalogue.flatMap((category) => category.items), [catalogue]);
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (selectedCategory !== "all" && item.category !== selectedCategory)
-        return false;
-      if (needle === "") return true;
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
+      if (needle === '') return true;
       return `${item.code} ${item.description} ${item.category} ${item.barcode}`
         .toLowerCase()
         .includes(needle);
@@ -65,10 +53,7 @@ export function ExpansionCataloguePage({
       if (enabled) next.add(category);
       else next.delete(category);
       try {
-        window.localStorage.setItem(
-          ENABLED_CATEGORIES_KEY,
-          JSON.stringify([...next].sort()),
-        );
+        window.localStorage.setItem(ENABLED_CATEGORIES_KEY, JSON.stringify([...next].sort()));
       } catch {
         // The in-session switch still works when browser storage is unavailable.
       }
@@ -88,14 +73,11 @@ export function ExpansionCataloguePage({
       <section className="expansion-hero card">
         <div>
           <span className="eyebrow">Future range planning</span>
-          <h2>
-            Supplier range, separated from today&apos;s ServiceM8 catalogue
-          </h2>
+          <h2>Supplier range, separated from today&apos;s ServiceM8 catalogue</h2>
           <p>
-            Supplier-only products are carried across with every category
-            explicitly out of scope. Switch on a category only when SWL is ready
-            to review it; no item is imported until an operator also approves it
-            in the run review.
+            Supplier-only products are carried across with every category explicitly out of scope.
+            Switch on a category only when SWL is ready to review it; no item is imported until an
+            operator also approves it in the run review.
           </p>
         </div>
         <div className="expansion-safety" aria-label="Import safety status">
@@ -110,30 +92,18 @@ export function ExpansionCataloguePage({
           title="Load supplier and ServiceM8 files first"
           detail="Start a run and map the optional Category column. The app will then separate supplier-only products here without changing ServiceM8."
           action={
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={goToNewRun}
-            >
+            <button type="button" className="btn btn-primary" onClick={goToNewRun}>
               Start a run
             </button>
           }
         />
       ) : (
         <>
-          <div
-            className="metric-row"
-            role="group"
-            aria-label="Expansion catalogue summary"
-          >
+          <div className="metric-row" role="group" aria-label="Expansion catalogue summary">
             <div className="metric-card">
               <span className="metric-label">Out-of-scope categories</span>
               <strong className="metric-value">
-                {
-                  catalogue.filter(
-                    (category) => !enabledCategories.has(category.name),
-                  ).length
-                }
+                {catalogue.filter((category) => !enabledCategories.has(category.name)).length}
               </strong>
               <span className="metric-state">off by default</span>
             </div>
@@ -145,9 +115,7 @@ export function ExpansionCataloguePage({
             <div className="metric-card">
               <span className="metric-label">Automatic additions</span>
               <strong className="metric-value">0</strong>
-              <span className="metric-state pill pill-ok">
-                explicit approval gate
-              </span>
+              <span className="metric-state pill pill-ok">explicit approval gate</span>
             </div>
           </div>
 
@@ -160,9 +128,8 @@ export function ExpansionCataloguePage({
               <span className="pill">No automatic imports</span>
             </div>
             <p className="muted">
-              Every supplier category starts out of scope. Enabling one only
-              makes it available for a later reviewed run and is remembered on
-              this computer.
+              Every supplier category starts out of scope. Enabling one only makes it available for
+              a later reviewed run and is remembered on this computer.
             </p>
             <div
               className="table-scroll"
@@ -189,10 +156,8 @@ export function ExpansionCataloguePage({
                         <td>{category.name}</td>
                         <td className="num">{category.items.length}</td>
                         <td>
-                          <span className={enabled ? "pill pill-ok" : "pill"}>
-                            {enabled
-                              ? "Enabled for later review"
-                              : "Out of scope"}
+                          <span className={enabled ? 'pill pill-ok' : 'pill'}>
+                            {enabled ? 'Enabled for later review' : 'Out of scope'}
                           </span>
                         </td>
                         <td>
@@ -200,11 +165,9 @@ export function ExpansionCataloguePage({
                             type="button"
                             className="btn btn-sm"
                             aria-pressed={enabled}
-                            onClick={() =>
-                              setCategoryEnabled(category.name, !enabled)
-                            }
+                            onClick={() => setCategoryEnabled(category.name, !enabled)}
                           >
-                            {enabled ? "Switch off" : "Enable for review"}
+                            {enabled ? 'Switch off' : 'Enable for review'}
                           </button>
                         </td>
                       </tr>
@@ -249,8 +212,8 @@ export function ExpansionCataloguePage({
             </div>
             <p className="result-count" role="status">
               {visible.length === 0 ? 0 : pageStart + 1}-
-              {Math.min(pageStart + PAGE_SIZE, visible.length)} of{" "}
-              {visible.length} matching future products ({items.length} total)
+              {Math.min(pageStart + PAGE_SIZE, visible.length)} of {visible.length} matching future
+              products ({items.length} total)
             </p>
           </section>
 
@@ -288,28 +251,20 @@ export function ExpansionCataloguePage({
                         <span className="category-tag">{item.category}</span>
                       </td>
                       <td className="mono">{item.code}</td>
-                      <td>{item.description || "-"}</td>
+                      <td>{item.description || '-'}</td>
                       <td className="num">
-                        {item.supplierCost === null
-                          ? "-"
-                          : formatAmount(item.supplierCost)}
+                        {item.supplierCost === null ? '-' : formatAmount(item.supplierCost)}
                       </td>
                       <td className="num">
-                        {item.proposedSell === null
-                          ? "-"
-                          : formatAmount(item.proposedSell)}
+                        {item.proposedSell === null ? '-' : formatAmount(item.proposedSell)}
                       </td>
                       <td>
                         <span
-                          className={
-                            enabledCategories.has(item.category)
-                              ? "pill pill-ok"
-                              : "pill"
-                          }
+                          className={enabledCategories.has(item.category) ? 'pill pill-ok' : 'pill'}
                         >
                           {enabledCategories.has(item.category)
-                            ? "Enabled - approval required"
-                            : "Out of scope"}
+                            ? 'Enabled - approval required'
+                            : 'Out of scope'}
                         </span>
                       </td>
                     </tr>
@@ -317,10 +272,7 @@ export function ExpansionCataloguePage({
                 </tbody>
               </table>
               {pageCount > 1 && (
-                <nav
-                  className="expansion-pagination"
-                  aria-label="Expansion catalogue pages"
-                >
+                <nav className="expansion-pagination" aria-label="Expansion catalogue pages">
                   <button
                     type="button"
                     className="btn btn-sm"

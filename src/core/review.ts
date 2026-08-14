@@ -1,5 +1,5 @@
-import type { ComparisonRow } from "./compare";
-import { isApprovable, isExcludable, type DecisionState } from "./statuses";
+import type { ComparisonRow } from './compare';
+import { isApprovable, isExcludable, type DecisionState } from './statuses';
 
 /** Operator decisions keyed by stable row id. */
 export interface RowDecision {
@@ -36,14 +36,10 @@ export const EMPTY_REVIEW: ReviewState = {
 };
 
 export function decisionFor(state: ReviewState, rowId: string): RowDecision {
-  return state.decisions[rowId] ?? { state: "none" };
+  return state.decisions[rowId] ?? { state: 'none' };
 }
 
-function push(
-  state: ReviewState,
-  decisions: DecisionMap,
-  label: string,
-): ReviewState {
+function push(state: ReviewState, decisions: DecisionMap, label: string): ReviewState {
   const entry: HistoryEntry = { label, at: new Date().toISOString() };
   return {
     decisions,
@@ -54,13 +50,10 @@ function push(
   };
 }
 
-function preserveCommittedApprovals(
-  state: ReviewState,
-  decisions: DecisionMap,
-): DecisionMap {
+function preserveCommittedApprovals(state: ReviewState, decisions: DecisionMap): DecisionMap {
   const next = { ...decisions };
   for (const rowId of Object.keys(state.committedApprovals)) {
-    next[rowId] = { state: "approved" };
+    next[rowId] = { state: 'approved' };
   }
   return next;
 }
@@ -78,20 +71,17 @@ export function approveRows(
   let approved = 0;
   let skipped = 0;
   for (const row of rows) {
-    if (
-      !isApprovable(row.status) ||
-      state.committedApprovals[row.id] === true
-    ) {
+    if (!isApprovable(row.status) || state.committedApprovals[row.id] === true) {
       skipped += 1;
       continue;
     }
-    next[row.id] = { state: "approved" };
+    next[row.id] = { state: 'approved' };
     newlyCommitted[row.id] = true;
     approved += 1;
   }
   if (approved === 0) return { state, approved, skipped };
   const entry: HistoryEntry = {
-    label: label ?? `Approved ${approved} record${approved === 1 ? "" : "s"}`,
+    label: label ?? `Approved ${approved} record${approved === 1 ? '' : 's'}`,
     at: new Date().toISOString(),
   };
   return {
@@ -122,14 +112,11 @@ export function excludeRows(
   let excluded = 0;
   let skipped = 0;
   for (const row of rows) {
-    if (
-      !isExcludable(row.status) ||
-      state.committedApprovals[row.id] === true
-    ) {
+    if (!isExcludable(row.status) || state.committedApprovals[row.id] === true) {
       skipped += 1;
       continue;
     }
-    next[row.id] = { state: "excluded", reason };
+    next[row.id] = { state: 'excluded', reason };
     excluded += 1;
   }
   if (excluded === 0) return { state, excluded, skipped };
@@ -137,35 +124,24 @@ export function excludeRows(
     state: push(
       state,
       next,
-      label ??
-        `Excluded ${excluded} record${excluded === 1 ? "" : "s"}: ${reason}`,
+      label ?? `Excluded ${excluded} record${excluded === 1 ? '' : 's'}: ${reason}`,
     ),
     excluded,
     skipped,
   };
 }
 
-export function clearDecision(
-  state: ReviewState,
-  rows: ComparisonRow[],
-): ReviewState {
+export function clearDecision(state: ReviewState, rows: ComparisonRow[]): ReviewState {
   const next: DecisionMap = { ...state.decisions };
   let changed = 0;
   for (const row of rows) {
-    if (
-      next[row.id] !== undefined &&
-      state.committedApprovals[row.id] !== true
-    ) {
+    if (next[row.id] !== undefined && state.committedApprovals[row.id] !== true) {
       delete next[row.id];
       changed += 1;
     }
   }
   if (changed === 0) return state;
-  return push(
-    state,
-    next,
-    `Cleared ${changed} decision${changed === 1 ? "" : "s"}`,
-  );
+  return push(state, next, `Cleared ${changed} decision${changed === 1 ? '' : 's'}`);
 }
 
 export function resetAllDecisions(state: ReviewState): ReviewState {
@@ -174,11 +150,7 @@ export function resetAllDecisions(state: ReviewState): ReviewState {
     (rowId) => state.committedApprovals[rowId] !== true,
   ).length;
   if (resettableCount === 0 && state.past.length === 0) return state;
-  return push(
-    state,
-    retained,
-    `Reset ${resettableCount} reversible review decision(s)`,
-  );
+  return push(state, retained, `Reset ${resettableCount} reversible review decision(s)`);
 }
 
 export function undo(state: ReviewState): ReviewState {
@@ -188,10 +160,7 @@ export function undo(state: ReviewState): ReviewState {
     decisions: preserveCommittedApprovals(state, last.decisions),
     committedApprovals: state.committedApprovals,
     past: state.past.slice(0, -1),
-    future: [
-      { decisions: state.decisions, entry: last.entry },
-      ...state.future,
-    ],
+    future: [{ decisions: state.decisions, entry: last.entry }, ...state.future],
     history: [
       ...state.history,
       { label: `Undid: ${last.entry.label}`, at: new Date().toISOString() },
@@ -231,7 +200,7 @@ export function carryDecisionsForward(
   let kept = 0;
   let dropped = 0;
   for (const [rowId, decision] of Object.entries(state.decisions)) {
-    if (decision.state === "none") continue;
+    if (decision.state === 'none') continue;
     const oldRow = oldById.get(rowId);
     const newRow = newById.get(rowId);
     if (
@@ -242,8 +211,7 @@ export function carryDecisionsForward(
       (oldRow.supplier?.cost ?? null) === (newRow.supplier?.cost ?? null)
     ) {
       carried[rowId] = decision;
-      if (state.committedApprovals[rowId] === true)
-        committedApprovals[rowId] = true;
+      if (state.committedApprovals[rowId] === true) committedApprovals[rowId] = true;
       kept += 1;
     } else {
       dropped += 1;
@@ -258,7 +226,7 @@ export function carryDecisionsForward(
       history: [
         ...state.history,
         {
-          label: `Comparison re-run: kept ${kept} decision${kept === 1 ? "" : "s"}, reset ${dropped}`,
+          label: `Comparison re-run: kept ${kept} decision${kept === 1 ? '' : 's'}, reset ${dropped}`,
           at: new Date().toISOString(),
         },
       ],

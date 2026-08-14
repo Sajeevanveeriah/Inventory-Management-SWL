@@ -13,8 +13,8 @@ export function parseAmountToCents(raw) {
   const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(trimmed);
   if (!match) return null;
   const whole = BigInt(match[1]);
-  const centsPart = (match[2] ?? "").padEnd(2, "0");
-  const amount = whole * 100n + BigInt(centsPart || "0");
+  const centsPart = (match[2] ?? '').padEnd(2, '0');
+  const amount = whole * 100n + BigInt(centsPart || '0');
   if (amount > BigInt(MAX_SUPPORTED_CENTS)) return null;
   return Number(amount);
 }
@@ -25,7 +25,7 @@ export function centsToAmount(cents) {
   const abs = BigInt(Math.trunc(Math.abs(cents)));
   const whole = abs / 100n;
   const rem = abs % 100n;
-  return `${negative ? "-" : ""}${whole}.${rem.toString().padStart(2, "0")}`;
+  return `${negative ? '-' : ''}${whole}.${rem.toString().padStart(2, '0')}`;
 }
 
 /**

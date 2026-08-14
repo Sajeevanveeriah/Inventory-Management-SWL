@@ -237,6 +237,43 @@ describe('secret scanner placeholder handling', () => {
     expect(result.stderr).not.toContain('fixture_shared_credential_value');
   }, 30_000);
 
+  it('reports a historical credential without failing when report-only is requested', () => {
+    const directory = temporaryRepository();
+    const historicalValue = 'syntheticHistoricalCredentialValue123456';
+    writeFileSync(join(directory, '.env.example'), `SERPAPI_KEY=${historicalValue}\n`);
+    execFileSync('git', ['add', '.env.example'], { cwd: directory });
+    commitFixture(directory);
+
+    const result = spawnSync(process.execPath, [scanner, '--scope=history', '--report-only'], {
+      cwd: directory,
+      encoding: 'utf8',
+    });
+
+    // Report-only must weaken the exit status only: the finding is still
+    // detected, still reported, and the value is still never displayed.
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('matches assigned provider credential');
+    expect(result.stdout).toContain('--report-only');
+    expect(result.stdout).not.toContain(historicalValue);
+    expect(result.stderr).not.toContain(historicalValue);
+  }, 30_000);
+
+  it('still fails a proposed-tree credential when report-only is not requested', () => {
+    const directory = temporaryRepository();
+    const stagedValue = 'syntheticProposedCredentialValue123456';
+    writeFileSync(join(directory, '.env.example'), `SERPAPI_KEY=${stagedValue}\n`);
+    execFileSync('git', ['add', '.env.example'], { cwd: directory });
+
+    const result = spawnSync(process.execPath, [scanner, '--scope=current'], {
+      cwd: directory,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('matches assigned provider credential');
+    expect(result.stderr).not.toContain(stagedValue);
+  }, 30_000);
+
   it('does not disclose a detected historical credential on stderr', () => {
     const directory = temporaryRepository();
     const historicalValue = 'syntheticHistoricalCredentialValue123456';

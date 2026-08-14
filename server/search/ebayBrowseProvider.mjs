@@ -1,4 +1,4 @@
-import { ProviderQuotaError, ProviderRequestError } from "./providerErrors.mjs";
+import { ProviderQuotaError, ProviderRequestError } from './providerErrors.mjs';
 import {
   amountToCents,
   boundedProviderText,
@@ -7,15 +7,14 @@ import {
   displayProviderQuery,
   merchantUrl,
   readBoundedProviderJson,
-} from "./freeProviderUtils.mjs";
+} from './freeProviderUtils.mjs';
 
-const TOKEN_ENDPOINT = "https://api.ebay.com/identity/v1/oauth2/token";
-const BROWSE_ENDPOINT =
-  "https://api.ebay.com/buy/browse/v1/item_summary/search";
-const OAUTH_SCOPE = "https://api.ebay.com/oauth/api_scope";
+const TOKEN_ENDPOINT = 'https://api.ebay.com/identity/v1/oauth2/token';
+const BROWSE_ENDPOINT = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
+const OAUTH_SCOPE = 'https://api.ebay.com/oauth/api_scope';
 const MAX_ITEMS = 100;
 const USER_AGENT =
-  "SWL-Pricing-Inventory-Control/1.2.0 (competitor price research; contact: repository owner)";
+  'SWL-Pricing-Inventory-Control/1.2.0 (competitor price research; contact: repository owner)';
 
 function cheapestAudShipping(item) {
   if (!Array.isArray(item.shippingOptions)) return null;
@@ -23,9 +22,9 @@ function cheapestAudShipping(item) {
   for (const option of item.shippingOptions.slice(0, 20)) {
     if (
       !option ||
-      typeof option !== "object" ||
+      typeof option !== 'object' ||
       Array.isArray(option) ||
-      option.shippingCost?.currency !== "AUD"
+      option.shippingCost?.currency !== 'AUD'
     ) {
       continue;
     }
@@ -36,15 +35,15 @@ function cheapestAudShipping(item) {
 }
 
 function ebayOffer(item) {
-  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-  if (item.price?.currency !== "AUD") return null;
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  if (item.price?.currency !== 'AUD') return null;
   const title = boundedProviderText(item.title, 1_000) ? item.title : null;
   const sourceUrl = merchantUrl(item.itemWebUrl);
   const itemPriceCents = amountToCents(item.price.value);
   if (!title || !sourceUrl || itemPriceCents === null) return null;
   const seller = boundedProviderText(item.seller?.username, 512)
     ? item.seller.username
-    : "eBay seller";
+    : 'eBay seller';
   const originalPriceText = `AUD ${item.price.value}`;
   if (!boundedProviderText(originalPriceText, 64)) return null;
   return createStructuredOffer({
@@ -54,11 +53,9 @@ function ebayOffer(item) {
     itemPriceCents,
     shippingCents: cheapestAudShipping(item),
     originalPriceText,
-    currencyBasis: "explicit-aud",
-    conditionText: boundedProviderText(item.condition, 256, true)
-      ? item.condition
-      : "",
-    availabilityText: "available buy it now",
+    currencyBasis: 'explicit-aud',
+    conditionText: boundedProviderText(item.condition, 256, true) ? item.condition : '',
+    availabilityText: 'available buy it now',
     financing: false,
   });
 }
@@ -66,52 +63,40 @@ function ebayOffer(item) {
 async function providerFetch(fetchImpl, url, options) {
   let response;
   try {
-    response = await fetchImpl(url, { ...options, redirect: "manual" });
+    response = await fetchImpl(url, { ...options, redirect: 'manual' });
   } catch (error) {
-    if (error?.name === "AbortError") throw error;
-    throw new ProviderRequestError("provider network request failed");
+    if (error?.name === 'AbortError') throw error;
+    throw new ProviderRequestError('provider network request failed');
   }
   if (response.status >= 300 && response.status < 400) {
-    throw new ProviderRequestError("provider redirect rejected");
+    throw new ProviderRequestError('provider redirect rejected');
   }
   if (response.status === 429) throw new ProviderQuotaError();
   if (!response.ok) throw new ProviderRequestError(`HTTP ${response.status}`);
   return readBoundedProviderJson(response);
 }
 
-export function createEbayBrowseProvider(
-  env = process.env,
-  fetchImpl = fetch,
-  now = Date.now,
-) {
-  const clientId = configuredSecret(env.EBAY_CLIENT_ID)
-    ? env.EBAY_CLIENT_ID
-    : "";
-  const clientSecret = configuredSecret(env.EBAY_CLIENT_SECRET)
-    ? env.EBAY_CLIENT_SECRET
-    : "";
-  const marketplace = env.EBAY_MARKETPLACE_ID ?? "EBAY_AU";
-  const configured =
-    clientId !== "" && clientSecret !== "" && marketplace === "EBAY_AU";
+export function createEbayBrowseProvider(env = process.env, fetchImpl = fetch, now = Date.now) {
+  const clientId = configuredSecret(env.EBAY_CLIENT_ID) ? env.EBAY_CLIENT_ID : '';
+  const clientSecret = configuredSecret(env.EBAY_CLIENT_SECRET) ? env.EBAY_CLIENT_SECRET : '';
+  const marketplace = env.EBAY_MARKETPLACE_ID ?? 'EBAY_AU';
+  const configured = clientId !== '' && clientSecret !== '' && marketplace === 'EBAY_AU';
   let token = null;
 
   async function applicationToken(signal) {
     if (token && token.expiresAt > now() + 30_000) return token.value;
-    const credentials = Buffer.from(
-      `${clientId}:${clientSecret}`,
-      "utf8",
-    ).toString("base64");
+    const credentials = Buffer.from(`${clientId}:${clientSecret}`, 'utf8').toString('base64');
     const body = await providerFetch(fetchImpl, TOKEN_ENDPOINT, {
-      method: "POST",
+      method: 'POST',
       signal,
       headers: {
-        accept: "application/json",
+        accept: 'application/json',
         authorization: `Basic ${credentials}`,
-        "content-type": "application/x-www-form-urlencoded",
-        "user-agent": USER_AGENT,
+        'content-type': 'application/x-www-form-urlencoded',
+        'user-agent': USER_AGENT,
       },
       body: new URLSearchParams({
-        grant_type: "client_credentials",
+        grant_type: 'client_credentials',
         scope: OAUTH_SCOPE,
       }).toString(),
     });
@@ -121,7 +106,7 @@ export function createEbayBrowseProvider(
       body.expires_in <= 0 ||
       body.expires_in > 86_400
     ) {
-      throw new ProviderRequestError("OAuth token response is invalid");
+      throw new ProviderRequestError('OAuth token response is invalid');
     }
     token = {
       value: body.access_token,
@@ -131,53 +116,53 @@ export function createEbayBrowseProvider(
   }
 
   return {
-    name: "ebay-browse-au",
+    name: 'ebay-browse-au',
     requiresPaidCall: false,
     singleStageOffers: true,
     configured,
     capabilities: {
-      id: "ebay-browse-au",
-      displayName: "eBay Browse AU",
-      mode: "single-stage-structured-offers",
-      authentication: "OAuth application credentials",
+      id: 'ebay-browse-au',
+      displayName: 'eBay Browse AU',
+      mode: 'single-stage-structured-offers',
+      authentication: 'OAuth application credentials',
       configured,
-      quota: { kind: "official-api-quota" },
+      quota: { kind: 'official-api-quota' },
       limits: { concurrency: 1, requestsPerMinute: 10 },
       cache: { ttlSeconds: 900, persistent: false },
-      health: configured ? "unknown" : "not-configured",
+      health: configured ? 'unknown' : 'not-configured',
       lastSuccess: null,
       lastErrorCategory: null,
-      dataRights: "Official Browse API and EBAY_AU marketplace terms apply.",
-      supportedIdentityFields: ["gtin", "mpn", "brand", "model", "title"],
+      dataRights: 'Official Browse API and EBAY_AU marketplace terms apply.',
+      supportedIdentityFields: ['gtin', 'mpn', 'brand', 'model', 'title'],
     },
     async search(providerQuery, { signal } = {}) {
       const selectedTitle = displayProviderQuery(providerQuery);
       if (!configured) {
         throw new ProviderRequestError(
-          "EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are not configured for EBAY_AU",
+          'EBAY_CLIENT_ID and EBAY_CLIENT_SECRET are not configured for EBAY_AU',
         );
       }
       if (!selectedTitle) {
-        throw new ProviderRequestError("provider query is invalid");
+        throw new ProviderRequestError('provider query is invalid');
       }
       const accessToken = await applicationToken(signal);
       const url = new URL(BROWSE_ENDPOINT);
-      url.searchParams.set("q", providerQuery);
-      url.searchParams.set("limit", "50");
+      url.searchParams.set('q', providerQuery);
+      url.searchParams.set('limit', '50');
       const body = await providerFetch(fetchImpl, url, {
-        method: "GET",
+        method: 'GET',
         signal,
         headers: {
-          accept: "application/json",
-          "accept-language": "en-AU",
+          accept: 'application/json',
+          'accept-language': 'en-AU',
           authorization: `Bearer ${accessToken}`,
-          "user-agent": USER_AGENT,
-          "x-ebay-c-marketplace-id": marketplace,
+          'user-agent': USER_AGENT,
+          'x-ebay-c-marketplace-id': marketplace,
         },
       });
       const rows = body?.itemSummaries;
       if (!Array.isArray(rows) || rows.length > MAX_ITEMS) {
-        throw new ProviderRequestError("provider result collection is invalid");
+        throw new ProviderRequestError('provider result collection is invalid');
       }
       const offers = [];
       const seen = new Set();
@@ -188,7 +173,7 @@ export function createEbayBrowseProvider(
         offers.push(offer);
       }
       return {
-        stage: "offers",
+        stage: 'offers',
         selectedProduct: {
           title: selectedTitle,
           brand: null,
@@ -197,7 +182,7 @@ export function createEbayBrowseProvider(
         offers,
         providerMeta: {
           observedAt: null,
-          cacheBasis: "provider_cache_bypassed",
+          cacheBasis: 'provider_cache_bypassed',
           storesMayContinue: boundedProviderText(body?.next, 2_048),
         },
       };

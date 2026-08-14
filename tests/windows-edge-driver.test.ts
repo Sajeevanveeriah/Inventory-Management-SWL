@@ -38,7 +38,8 @@ describe('locked Tauri service EdgeDriver compatibility', () => {
   });
 
   it('patches only reviewed 1.3.0 dependency bytes after npm ci', () => {
-    expect(tauriServicePatch).toContain('packageMetadata.version !== "1.3.0"');
+    // The reviewed version gate is the guarantee here, not its quote style.
+    expect(tauriServicePatch).toMatch(/packageMetadata\.version !== ['"]1\.3\.0['"]/u);
     expect(tauriServicePatch).toContain(
       '9f40744cff59af6adfc7d324064de1493aafaa32e88827e1dec5e8f11439b593',
     );

@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import { FileDrop } from "./FileDrop";
+import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { FileDrop } from './FileDrop';
 
-describe("native file selection boundary", () => {
-  it("uses the native picker and does not expose browser file input or drop ingestion", async () => {
+describe('native file selection boundary', () => {
+  it('uses the native picker and does not expose browser file input or drop ingestion', async () => {
     const user = userEvent.setup();
     const onChooseFile = vi.fn();
     const onFile = vi.fn();
@@ -23,17 +23,15 @@ describe("native file selection boundary", () => {
     );
 
     expect(container.querySelector('input[type="file"]')).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Choose file" }));
+    await user.click(screen.getByRole('button', { name: 'Choose file' }));
     expect(onChooseFile).toHaveBeenCalledOnce();
 
-    const dropzone = screen
-      .getByText(/native windows picker/i)
-      .closest(".dropzone");
+    const dropzone = screen.getByText(/native windows picker/i).closest('.dropzone');
     expect(dropzone).not.toBeNull();
     if (dropzone === null) return;
     fireEvent.drop(dropzone, {
       dataTransfer: {
-        files: [new File(["synthetic"], "ignored.csv", { type: "text/csv" })],
+        files: [new File(['synthetic'], 'ignored.csv', { type: 'text/csv' })],
       },
     });
     expect(onFile).not.toHaveBeenCalled();

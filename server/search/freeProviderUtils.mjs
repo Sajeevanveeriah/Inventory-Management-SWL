@@ -1,20 +1,20 @@
-import { TextDecoder } from "node:util";
-import { parseAmountToCents } from "../lib/moneyCents.mjs";
-import { ProviderRequestError } from "./providerErrors.mjs";
+import { TextDecoder } from 'node:util';
+import { parseAmountToCents } from '../lib/moneyCents.mjs';
+import { ProviderRequestError } from './providerErrors.mjs';
 
 export const MAX_FREE_PROVIDER_RESPONSE_BYTES = 1_048_576;
 const MAX_CENTS = 1_000_000_000;
 const INTERMEDIARY_HOSTS = [
-  "google.com",
-  "google.com.au",
-  "googleadservices.com",
-  "serpapi.com",
-  "serper.dev",
+  'google.com',
+  'google.com.au',
+  'googleadservices.com',
+  'serpapi.com',
+  'serper.dev',
 ];
 
 export function boundedProviderText(value, maximum, allowEmpty = false) {
   return (
-    typeof value === "string" &&
+    typeof value === 'string' &&
     value.length <= maximum &&
     (allowEmpty || value.length > 0) &&
     ![...value].some((character) => {
@@ -26,15 +26,13 @@ export function boundedProviderText(value, maximum, allowEmpty = false) {
 
 export function configuredSecret(value) {
   return (
-    boundedProviderText(value, 2_048) &&
-    value.trim() === value &&
-    !/^replace_with_/u.test(value)
+    boundedProviderText(value, 2_048) && value.trim() === value && !/^replace_with_/u.test(value)
   );
 }
 
 export function amountToCents(value) {
   let text;
-  if (typeof value === "number") {
+  if (typeof value === 'number') {
     if (!Number.isFinite(value) || value < 0) return null;
     text = String(value);
   } else if (boundedProviderText(value, 64)) {
@@ -43,13 +41,11 @@ export function amountToCents(value) {
     return null;
   }
   const cleaned = text
-    .replace(/^(?:AUD|AU\$|A\$|\$)\s*/iu, "")
-    .replace(/\s+AUD$/iu, "")
-    .replace(/,/gu, "");
+    .replace(/^(?:AUD|AU\$|A\$|\$)\s*/iu, '')
+    .replace(/\s+AUD$/iu, '')
+    .replace(/,/gu, '');
   const cents = parseAmountToCents(cleaned);
-  return Number.isSafeInteger(cents) && cents >= 0 && cents <= MAX_CENTS
-    ? cents
-    : null;
+  return Number.isSafeInteger(cents) && cents >= 0 && cents <= MAX_CENTS ? cents : null;
 }
 
 export function shippingTextToCents(value) {
@@ -68,21 +64,19 @@ export function packSizeFromTitle(title) {
 }
 
 function conditionFromText(value) {
-  if (!boundedProviderText(value, 1_000, true)) return "unknown";
+  if (!boundedProviderText(value, 1_000, true)) return 'unknown';
   if (/\b(?:used|refurbished|pre[- ]owned|second[- ]hand)\b/iu.test(value)) {
-    return "used";
+    return 'used';
   }
-  return /\bnew\b/iu.test(value) ? "new" : "unknown";
+  return /\bnew\b/iu.test(value) ? 'new' : 'unknown';
 }
 
 function availabilityFromText(value) {
-  if (!boundedProviderText(value, 512, true)) return "unknown";
+  if (!boundedProviderText(value, 512, true)) return 'unknown';
   if (/\b(?:out of stock|unavailable|sold out)\b/iu.test(value)) {
-    return "out-of-stock";
+    return 'out-of-stock';
   }
-  return /\b(?:in stock|available|buy it now)\b/iu.test(value)
-    ? "in-stock"
-    : "unknown";
+  return /\b(?:in stock|available|buy it now)\b/iu.test(value) ? 'in-stock' : 'unknown';
 }
 
 export function merchantUrl(value) {
@@ -94,24 +88,23 @@ export function merchantUrl(value) {
     return null;
   }
   if (
-    parsed.protocol !== "https:" ||
-    parsed.hostname === "" ||
-    parsed.username !== "" ||
-    parsed.password !== ""
+    parsed.protocol !== 'https:' ||
+    parsed.hostname === '' ||
+    parsed.username !== '' ||
+    parsed.password !== ''
   ) {
     return null;
   }
-  const host = parsed.hostname.toLowerCase().replace(/\.$/u, "");
+  const host = parsed.hostname.toLowerCase().replace(/\.$/u, '');
   if (
     INTERMEDIARY_HOSTS.some(
-      (intermediary) =>
-        host === intermediary || host.endsWith(`.${intermediary}`),
+      (intermediary) => host === intermediary || host.endsWith(`.${intermediary}`),
     )
   ) {
     return null;
   }
   parsed.hostname = host;
-  parsed.hash = "";
+  parsed.hash = '';
   return parsed;
 }
 
@@ -123,8 +116,8 @@ export function createStructuredOffer({
   shippingCents,
   originalPriceText,
   currencyBasis,
-  conditionText = "",
-  availabilityText = "",
+  conditionText = '',
+  availabilityText = '',
   financing = false,
 }) {
   if (
@@ -134,11 +127,9 @@ export function createStructuredOffer({
     itemPriceCents < 0 ||
     itemPriceCents > MAX_CENTS ||
     (shippingCents !== null &&
-      (!Number.isSafeInteger(shippingCents) ||
-        shippingCents < 0 ||
-        shippingCents > MAX_CENTS)) ||
+      (!Number.isSafeInteger(shippingCents) || shippingCents < 0 || shippingCents > MAX_CENTS)) ||
     !boundedProviderText(originalPriceText, 64) ||
-    !["explicit-aud", "inferred-au-localisation"].includes(currencyBasis)
+    !['explicit-aud', 'inferred-au-localisation'].includes(currencyBasis)
   ) {
     return null;
   }
@@ -148,20 +139,19 @@ export function createStructuredOffer({
   const availability = availabilityFromText(availabilityText);
   const exclusionReasons = [];
   if (shippingCents === null) {
-    exclusionReasons.push("delivered-total-unavailable");
+    exclusionReasons.push('delivered-total-unavailable');
   }
-  if (condition === "used") exclusionReasons.push("used-or-refurbished");
-  if (availability === "out-of-stock") exclusionReasons.push("out-of-stock");
-  if (financing) exclusionReasons.push("financing-price");
+  if (condition === 'used') exclusionReasons.push('used-or-refurbished');
+  if (availability === 'out-of-stock') exclusionReasons.push('out-of-stock');
+  if (financing) exclusionReasons.push('financing-price');
   const totalPriceCents =
     shippingCents === null || itemPriceCents + shippingCents > MAX_CENTS
       ? null
       : itemPriceCents + shippingCents;
   if (shippingCents !== null && totalPriceCents === null) {
-    exclusionReasons.push("delivered-total-outside-range");
+    exclusionReasons.push('delivered-total-outside-range');
   }
-  const comparisonEligible =
-    exclusionReasons.length === 0 && totalPriceCents !== null;
+  const comparisonEligible = exclusionReasons.length === 0 && totalPriceCents !== null;
   return {
     title,
     itemPriceCents,
@@ -169,10 +159,10 @@ export function createStructuredOffer({
     estimatedTaxCents: null,
     totalPriceCents,
     comparisonPriceCents: comparisonEligible ? totalPriceCents : null,
-    priceBasis: comparisonEligible ? "item_plus_shipping" : "not_comparable",
+    priceBasis: comparisonEligible ? 'item_plus_shipping' : 'not_comparable',
     originalPriceText,
     currencyBasis,
-    gstBasis: "unknown",
+    gstBasis: 'unknown',
     packSize: packSizeFromTitle(title),
     condition,
     availability,
@@ -186,22 +176,19 @@ export function createStructuredOffer({
 }
 
 export async function readBoundedProviderJson(response) {
-  const contentType = response.headers.get("content-type") ?? "";
+  const contentType = response.headers.get('content-type') ?? '';
   if (!/^application\/json(?:\s*;|$)/iu.test(contentType)) {
-    throw new ProviderRequestError("response content type is not JSON");
+    throw new ProviderRequestError('response content type is not JSON');
   }
-  const declaredLength = response.headers.get("content-length");
+  const declaredLength = response.headers.get('content-length');
   if (
     declaredLength !== null &&
-    (!/^\d+$/u.test(declaredLength) ||
-      Number(declaredLength) > MAX_FREE_PROVIDER_RESPONSE_BYTES)
+    (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > MAX_FREE_PROVIDER_RESPONSE_BYTES)
   ) {
-    throw new ProviderRequestError(
-      "response size is outside the supported range",
-    );
+    throw new ProviderRequestError('response size is outside the supported range');
   }
-  if (!response.body || typeof response.body.getReader !== "function") {
-    throw new ProviderRequestError("response body is unavailable");
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    throw new ProviderRequestError('response body is unavailable');
   }
   const reader = response.body.getReader();
   const chunks = [];
@@ -213,9 +200,7 @@ export async function readBoundedProviderJson(response) {
       length += value.byteLength;
       if (length > MAX_FREE_PROVIDER_RESPONSE_BYTES) {
         await reader.cancel();
-        throw new ProviderRequestError(
-          "response size is outside the supported range",
-        );
+        throw new ProviderRequestError('response size is outside the supported range');
       }
       chunks.push(value);
     }
@@ -229,9 +214,9 @@ export async function readBoundedProviderJson(response) {
     offset += chunk.byteLength;
   }
   try {
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch {
-    throw new ProviderRequestError("response JSON is invalid");
+    throw new ProviderRequestError('response JSON is invalid');
   }
 }
 

@@ -1,14 +1,14 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import type { ProviderStatus } from "../../platform/contracts";
-import { ProviderPaidCallsControl } from "./CompetitorSearchPage";
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import type { ProviderStatus } from '../../platform/contracts';
+import { ProviderPaidCallsControl } from './CompetitorSearchPage';
 
 const status: ProviderStatus = {
-  provider: "native-provider",
-  state: "configured",
+  provider: 'native-provider',
+  state: 'configured',
   paidCallsEnabled: false,
-  costCeilingAud: "0.00",
+  costCeilingAud: '0.00',
   costCeilingCents: 0,
   costPerCallCents: 0,
   spentCents: 0,
@@ -17,19 +17,17 @@ const status: ProviderStatus = {
   lastValidatedAt: null,
 };
 
-describe("provider paid-call control", () => {
-  it("stays disabled until validation and an explicit bounded budget are supplied", async () => {
+describe('provider paid-call control', () => {
+  it('stays disabled until validation and an explicit bounded budget are supplied', async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
-    const { rerender } = render(
-      <ProviderPaidCallsControl status={status} onToggle={onToggle} />,
-    );
+    const { rerender } = render(<ProviderPaidCallsControl status={status} onToggle={onToggle} />);
 
-    const unavailable = screen.getByRole("button", {
+    const unavailable = screen.getByRole('button', {
       name: /enable paid provider calls within budget/i,
     });
     expect(unavailable).toBeDisabled();
-    expect(unavailable).toHaveAttribute("aria-pressed", "false");
+    expect(unavailable).toHaveAttribute('aria-pressed', 'false');
 
     rerender(
       <ProviderPaidCallsControl
@@ -37,29 +35,21 @@ describe("provider paid-call control", () => {
         onToggle={onToggle}
       />,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      /validate the protected credential/i,
-    );
+    expect(screen.getByRole('status')).toHaveTextContent(/validate the protected credential/i);
 
     rerender(
       <ProviderPaidCallsControl
         status={{
           ...status,
           credentialConfigured: true,
-          lastValidatedAt: "2026-08-09T00:00:00.000Z",
+          lastValidatedAt: '2026-08-09T00:00:00.000Z',
         }}
         onToggle={onToggle}
       />,
     );
-    await user.type(
-      screen.getByRole("textbox", { name: /total provider budget/i }),
-      "10.00",
-    );
-    await user.type(
-      screen.getByRole("textbox", { name: /reserved cost per call/i }),
-      "0.05",
-    );
-    const enable = screen.getByRole("button", {
+    await user.type(screen.getByRole('textbox', { name: /total provider budget/i }), '10.00');
+    await user.type(screen.getByRole('textbox', { name: /reserved cost per call/i }), '0.05');
+    const enable = screen.getByRole('button', {
       name: /enable paid provider calls within budget/i,
     });
     expect(enable).toBeEnabled();
@@ -71,9 +61,9 @@ describe("provider paid-call control", () => {
         status={{
           ...status,
           credentialConfigured: true,
-          lastValidatedAt: "2026-08-09T00:00:00.000Z",
+          lastValidatedAt: '2026-08-09T00:00:00.000Z',
           paidCallsEnabled: true,
-          costCeilingAud: "10.00",
+          costCeilingAud: '10.00',
           costCeilingCents: 1_000,
           costPerCallCents: 5,
           spentCents: 5,
@@ -81,13 +71,11 @@ describe("provider paid-call control", () => {
         onToggle={onToggle}
       />,
     );
-    const disable = screen.getByRole("button", {
+    const disable = screen.getByRole('button', {
       name: /disable paid provider calls/i,
     });
-    expect(disable).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("status")).toHaveTextContent(
-      /AUD 0.05 reserved of AUD 10.00/i,
-    );
+    expect(disable).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent(/AUD 0.05 reserved of AUD 10.00/i);
     await user.click(disable);
     expect(onToggle).toHaveBeenLastCalledWith(false);
   });

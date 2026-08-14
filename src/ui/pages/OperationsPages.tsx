@@ -197,18 +197,20 @@ export function DashboardPage({ go }: { go: (route: string) => void }) {
             className="metric-card metric-link"
             onClick={() => go(card.route)}
           >
-            <span className={`metric-icon metric-icon-${card.state}`} aria-hidden="true">
-              <MetricIcon name={card.icon} />
+            <span className="metric-label">
+              <span className={`metric-icon metric-icon-${card.state}`} aria-hidden="true">
+                <MetricIcon name={card.icon} />
+              </span>
+              {card.label}
             </span>
-            <span className="metric-label">{card.label}</span>
             <strong className="metric-value">{card.value}</strong>
             <span
-              className={`metric-state pill ${
+              className={`metric-state ${
                 card.state === 'error'
-                  ? 'pill-error'
+                  ? 'state-error'
                   : card.state === 'attention'
-                    ? 'pill-warn'
-                    : 'pill-ok'
+                    ? 'state-warn'
+                    : 'state-ok'
               }`}
             >
               {card.note}

@@ -16,12 +16,17 @@ Responsive behaviour keeps primary actions visible, switches navigation to a com
 - **Text** - `--ink`, `--ink-secondary`, `--ink-faint` and the `--text-muted` alias.
 - **Lines** - `--border`, `--border-strong` and `--border-subtle` for internal divisions that should read lighter than a container edge.
 - **Navigation** - `--nav-bg`, `--nav-ink`, `--nav-ink-muted`, `--nav-hover`, `--nav-active` and `--nav-accent`.
-- **Elevation** - `--shadow-sm` for flat chrome, `--shadow` for resting cards, `--shadow-md` for hover and `--shadow-lg` for overlays.
-- **Geometry** - a `--radius-sm`/`--radius`/`--radius-lg`/`--radius-xl` ladder and a 4 px `--space-1` through `--space-6` scale that component rules step through instead of inventing one-off values.
+- **Elevation** - `--shadow-sm` for flat chrome, `--shadow` for resting cards, `--shadow-md` for hover and `--shadow-lg` for overlays. A resting surface is defined by its hairline border rather than by a drop shadow, and in the dark theme `--shadow-sm` and `--shadow` are `none`: on a dark ground a shadow is invisible, so separation comes from the lighter surface and its border instead.
+- **Geometry** - a `--radius-sm`/`--radius`/`--radius-lg`/`--radius-xl` ladder (6/8/12/16 px) and a 4 px `--space-1` through `--space-6` scale that component rules step through instead of inventing one-off values. The ladder is deliberately tight: large radii read as consumer-app decoration and loosen a dense operational grid.
+- **Rendering** - `color-scheme` is declared for both themes, so the engine paints scrollbars, native select popups, the caret and autofill to match the resolved theme rather than leaving light chrome around a dark window.
 
 ## Hierarchy and state
 
 The page heading is the largest text on any surface, and card headings step down from it. Status is always carried by wording as well as colour: badges and pills are labelled, the current navigation item takes an accent bar as well as a fill, and the current run step is a filled control rather than a tint.
+
+Emphasis comes from size, weight and colour, not from capitals. Table column headers, metric labels and before/after labels are sentence case at medium weight; uppercase tracking is reserved for the navigation group labels, where it separates a section heading from the destinations under it. Uppercase everywhere costs horizontal room in dense tables and shouts over the data it labels.
+
+Metric tiles carry a small icon inline with their label, a value, and a state as a coloured dot plus wording. Reserving two label lines keeps every value in the row on one baseline whether its label wraps or not. Numeric cells use `tabular-nums lining-nums slashed-zero`, so columns align and a zero in a supplier code cannot be misread as a letter O.
 
 Every text and icon colour is measured against WCAG 2.2 AA (4.5:1) in both themes, including small bold labels on the navigation ground. Colour transitions are deliberately absent from the run stepper: its current step changes on navigation, and a mid-transition frame has no guaranteed contrast ratio. Motion elsewhere is capped at short opacity, translate and colour changes and is disabled under `prefers-reduced-motion`.
 

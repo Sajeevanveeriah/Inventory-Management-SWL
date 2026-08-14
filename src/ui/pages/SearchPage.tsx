@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
-import { searchRows } from "../../core/search";
-import { STATUS_LABELS, type BaseStatus } from "../../core/statuses";
-import { useAppState } from "../../state/store";
-import { StatusBadge } from "../StatusBadge";
-import { EmptyState, Page } from "./PageChrome";
+import { useMemo, useState } from 'react';
+import { searchRows } from '../../core/search';
+import { STATUS_LABELS, type BaseStatus } from '../../core/statuses';
+import { useAppState } from '../../state/store';
+import { StatusBadge } from '../StatusBadge';
+import { EmptyState, Page } from './PageChrome';
 
 const ALL_STATUSES = Object.keys(STATUS_LABELS) as BaseStatus[];
 
@@ -47,11 +47,7 @@ export function SearchPage({
           title="No comparison data loaded"
           detail="Search works across the supplier and ServiceM8 files of the current run. Start a run or load the fictional demonstration data first."
           action={
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={goToNewRun}
-            >
+            <button type="button" className="btn btn-primary" onClick={goToNewRun}>
               Start a run
             </button>
           }
@@ -73,16 +69,12 @@ export function SearchPage({
             aria-label="Search products by code, item number or description"
           />
         </div>
-        <div
-          className="chip-row"
-          role="group"
-          aria-label="Filter by record status"
-        >
+        <div className="chip-row" role="group" aria-label="Filter by record status">
           {ALL_STATUSES.map((status) => (
             <button
               key={status}
               type="button"
-              className={`chip${statuses.has(status) ? " chip-active" : ""}`}
+              className={`chip${statuses.has(status) ? ' chip-active' : ''}`}
               aria-pressed={statuses.has(status)}
               onClick={() => toggleStatus(status)}
             >
@@ -101,7 +93,7 @@ export function SearchPage({
         </div>
         <p className="result-count" role="status">
           {hits.length} of {rows.length} records
-          {query.trim() !== "" && " · ranked exact-first"}
+          {query.trim() !== '' && ' · ranked exact-first'}
         </p>
       </section>
 
@@ -111,12 +103,7 @@ export function SearchPage({
           detail="No supplier code, item number or description matched. Check the spelling, clear status filters, or search a shorter fragment of the code."
         />
       ) : (
-        <div
-          className="table-scroll"
-          role="region"
-          aria-label="Search results"
-          tabIndex={0}
-        >
+        <div className="table-scroll" role="region" aria-label="Search results" tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -137,16 +124,14 @@ export function SearchPage({
                   <td>
                     <StatusBadge status={row.status} />
                   </td>
-                  <td className="mono">{row.supplier?.code ?? "-"}</td>
-                  <td className="mono">{row.s8?.itemNumber ?? "-"}</td>
-                  <td>
-                    {row.supplier?.description || row.s8?.description || "-"}
-                  </td>
-                  <td>{row.supplier?.category || "-"}</td>
-                  <td className="num">{row.s8?.existingCost ?? "-"}</td>
-                  <td className="num">{row.supplier?.cost ?? "-"}</td>
-                  <td className="num">{row.proposedSell ?? "-"}</td>
-                  <td>{query.trim() === "" ? "-" : matchedOn}</td>
+                  <td className="mono">{row.supplier?.code ?? '-'}</td>
+                  <td className="mono">{row.s8?.itemNumber ?? '-'}</td>
+                  <td>{row.supplier?.description || row.s8?.description || '-'}</td>
+                  <td>{row.supplier?.category || '-'}</td>
+                  <td className="num">{row.s8?.existingCost ?? '-'}</td>
+                  <td className="num">{row.supplier?.cost ?? '-'}</td>
+                  <td className="num">{row.proposedSell ?? '-'}</td>
+                  <td>{query.trim() === '' ? '-' : matchedOn}</td>
                 </tr>
               ))}
             </tbody>
