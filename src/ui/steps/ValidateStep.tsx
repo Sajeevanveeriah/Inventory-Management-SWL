@@ -38,32 +38,29 @@ export function ValidateStep() {
   return (
     <div>
       <div className="card">
-        <h2>Validation and comparison results</h2>
-        <p className="muted">
-          Every record received exactly one status. Blocked records (ambiguous or invalid) can never
-          enter the import output; missing items are flagged only and never deleted.
-        </p>
+        <div className="panel-head">
+          <h2>Validation and comparison results</h2>
+          <span className="panel-meta">Every record carries exactly one status</span>
+        </div>
         <div className="pipeline" role="list" aria-label="Record counts by category">
           <Stat n={t.supplierRecords} label="Supplier records" tone="neutral" />
           <Stat n={t.s8Records} label="ServiceM8 records" tone="neutral" />
-          <Stat n={t.exactMatches} label="Exact matches" tone="info" />
-          <Stat n={t.aliasMatches} label="Alias matches" tone="info" />
-          <Stat n={t.priceChanged} label="Changed prices" tone="info" />
-          <Stat n={t.newItems} label="New items" tone="ok" />
-          <Stat n={t.unchanged} label="Unchanged" tone="neutral" />
-          <Stat n={t.missingFromSupplier} label="Missing from supplier" tone="warn" />
-          <Stat n={t.ambiguous} label="Ambiguous" tone="warn" />
-          <Stat n={t.invalid} label="Invalid" tone="danger" />
-          <Stat n={t.duplicates} label="Duplicate identifiers" tone="danger" />
-          <Stat n={t.blocked} label="Blocked from import" tone="danger" />
+          <Stat n={t.exactMatches + t.aliasMatches} label="Matched" tone="info" />
+          <Stat n={t.priceChanged} label="Changed" tone="info" />
+          <Stat n={t.newItems} label="New" tone="ok" />
+          <Stat n={t.blocked} label="Blocked" tone="danger" />
+          <Stat n={t.missingFromSupplier} label="Flagged" tone="warn" />
         </div>
+        {/* Match hierarchy, stated once. Similarity never creates a match. */}
+        <p className="hint">
+          Match hierarchy: exact supplier code, then approved alias. Description similarity only
+          ever suggests. {t.duplicates} duplicate identifier
+          {t.duplicates === 1 ? '' : 's'} · {t.ambiguous} ambiguous · {t.invalid} invalid.
+        </p>
       </div>
 
       <div className="card">
         <h3>Where records went</h3>
-        <p className="small muted" style={{ marginBottom: '0.6rem' }}>
-          Processing pipeline for this run:
-        </p>
         <ol style={{ margin: 0, paddingLeft: '1.3rem', fontSize: '0.9rem' }}>
           <li>
             <strong>{t.supplierRecords + t.s8Records}</strong> records read from both files

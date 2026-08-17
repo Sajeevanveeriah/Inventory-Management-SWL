@@ -21,11 +21,15 @@ export function FilesStep() {
 
   return (
     <div>
+      {/* One limits strip in place of three helper paragraphs. */}
       <div className="card">
-        <h2>Add the two files</h2>
-        <p className="muted">
-          Load the untouched supplier export and the current ServiceM8 materials &amp; services
-          export. Files stay in application memory and are never uploaded.
+        <div className="panel-head">
+          <h2>Add the two files</h2>
+          <span className="panel-meta">CSV or XLSX · read locally · SHA-256 recorded</span>
+        </div>
+        <p className="hint" style={{ margin: 0 }}>
+          Load the supplier export exactly as it was sent, and the current ServiceM8 Materials
+          &amp; Services export.
         </p>
       </div>
       <div className="grid-2">
