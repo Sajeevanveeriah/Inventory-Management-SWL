@@ -437,7 +437,7 @@ export function ReviewStep() {
                         {row.supplier?.description ?? row.s8?.description ?? ''}
                       </td>
                       <td>
-                        <StatusBadge status={row.status} />
+                        <StatusBadge status={row.status} compact />
                       </td>
                       <td className="num">
                         {row.s8?.existingCost != null ? formatAmount(row.s8.existingCost) : '—'}
@@ -643,7 +643,9 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
               {row.s8.existingSell != null ? formatAmount(row.s8.existingSell) : '—'}
             </span>
             <div className="small muted">
-              {row.s8.existingCost != null ? `${formatAmount(row.s8.existingCost)} cost` : 'no cost'}
+              {row.s8.existingCost != null
+                ? `${formatAmount(row.s8.existingCost)} cost`
+                : 'no cost'}
             </div>
           </div>
           <div className="cell">

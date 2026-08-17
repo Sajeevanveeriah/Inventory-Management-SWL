@@ -292,9 +292,7 @@ export function PricingRulesPage() {
             {parsed.error}
           </p>
         )}
-        <p className="hint">
-          Decimal-safe arithmetic, {ROUNDING_RULE_LABEL.toLowerCase()}.
-        </p>
+        <p className="hint">Decimal-safe arithmetic, {ROUNDING_RULE_LABEL.toLowerCase()}.</p>
       </Panel>
       <Panel title="Tax handling">
         <dl className="kv">
@@ -465,7 +463,9 @@ export function ExceptionsPage() {
         title={`Exclude ${excluding?.product ?? ''}`}
         onClose={() => setExcluding(null)}
       >
-        <p className="small muted">The exclusion and its reason are preserved in the audit report.</p>
+        <p className="small muted">
+          The exclusion and its reason are preserved in the audit report.
+        </p>
         <div className="field">
           <label htmlFor="exception-exclude-reason">Reason for exclusion</label>
           <input
@@ -790,8 +790,8 @@ export function AuditPage() {
       <Panel title="Session entries" meta={`${state.settingsChanges.length} recorded`}>
         {state.settingsChanges.length === 0 ? (
           <p className="hint">
-            No business-rule changes in this session. Markup and tax-handling changes appear here and
-            in the exported audit summary.
+            No business-rule changes in this session. Markup and tax-handling changes appear here
+            and in the exported audit summary.
           </p>
         ) : (
           <div className="table-scroll" role="region" aria-label="Audit entries" tabIndex={0}>
@@ -837,11 +837,16 @@ export function HelpPage() {
         ? 'Optional competitor search sends only the typed query and selected opaque product token to the supervised local Node service on the same origin.'
         : 'Static GitHub Pages performs no live competitor search and sends no provider request.';
   return (
-    <Page title="Help" lead="What the tool does, what it will not do, and the keys that move you through it.">
+    <Page
+      title="Help"
+      lead="What the tool does, what it will not do, and the keys that move you through it."
+    >
       <Panel title="The workflow">
         <ol className="operational-list">
           <li>Add files — the untouched supplier export and the current ServiceM8 export.</li>
-          <li>Map columns — name which supplier column holds the code, the cost and the category.</li>
+          <li>
+            Map columns — name which supplier column holds the code, the cost and the category.
+          </li>
           <li>Validate and compare — every record receives exactly one status.</li>
           <li>Review changes — approve or exclude each proposed price, record by record.</li>
           <li>Pre-export checks — every blocking gate must pass.</li>
@@ -870,9 +875,9 @@ export function HelpPage() {
       <Panel title="Do not do this" meta="WARNING">
         <ul className="operational-list">
           <li>
-            Do not edit the supplier export in a spreadsheet before loading it. Spreadsheets silently
-            reformat codes, drop leading zeros and round costs, and the run then compares against
-            values the supplier never sent.
+            Do not edit the supplier export in a spreadsheet before loading it. Spreadsheets
+            silently reformat codes, drop leading zeros and round costs, and the run then compares
+            against values the supplier never sent.
           </li>
           <li>Do not hand-edit the generated import CSV; regenerate it from a corrected run.</li>
           <li>Do not approve an ambiguous record by aliasing it to a best guess.</li>

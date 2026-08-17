@@ -364,7 +364,8 @@ export function SettingsPage({ openSettingsDialog }: { openSettingsDialog: () =>
 
   return (
     <Page
-      title="Settings"
+      title="Configuration"
+      lead="Business rules, backup and recovery, and the stored configuration registry."
       primary={
         <button type="button" className="btn btn-primary" onClick={openSettingsDialog}>
           Edit markup, tax and theme

@@ -460,9 +460,7 @@ export default function App() {
             Close
           </button>
           <span className="local-badge">
-            {platform.kind === 'desktop'
-              ? 'Desktop · native local services'
-              : 'Web demonstration · own-origin only'}
+            {platform.kind === 'desktop' ? 'Desktop · local services' : 'Web demo · own origin'}
           </span>
           <nav aria-label="Primary">
             {NAV_GROUPS.map(([group, routes]) => (
@@ -553,9 +551,7 @@ export default function App() {
             {/* Run chip: the identity of the work in progress, not of the
                 operator. The trading name lives in the rail lockup. */}
             <p className="run-chip">
-              {state.comparison !== null && (
-                <span className="run-chip-mark" aria-hidden="true" />
-              )}
+              {state.comparison !== null && <span className="run-chip-mark" aria-hidden="true" />}
               {state.comparison === null ? (
                 'No run open'
               ) : (

@@ -717,6 +717,7 @@ export function CompetitorsPage() {
   return (
     <Page
       title="Competitor search"
+      lead="Reference evidence only: nothing found here changes a proposed price by itself."
       primary={
         liveSearchReady ? (
           <button
@@ -1210,7 +1211,10 @@ export function SourcesPage() {
   const actions = useActions();
   const platform = usePlatform();
   return (
-    <Page title="Source registry">
+    <Page
+      title="Source registry"
+      lead="The sources competitor search may use, and how each one is reached."
+    >
       <div className="table-scroll" role="region" aria-label="Registered sources" tabIndex={0}>
         <table className="data-table">
           <thead>

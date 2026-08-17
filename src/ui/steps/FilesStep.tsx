@@ -28,8 +28,8 @@ export function FilesStep() {
           <span className="panel-meta">CSV or XLSX · read locally · SHA-256 recorded</span>
         </div>
         <p className="hint" style={{ margin: 0 }}>
-          Load the supplier export exactly as it was sent, and the current ServiceM8 Materials
-          &amp; Services export.
+          Load the supplier export exactly as it was sent, and the current ServiceM8 Materials &amp;
+          Services export.
         </p>
       </div>
       <div className="grid-2">

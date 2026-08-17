@@ -52,17 +52,18 @@ test('complete synthetic workflow: load, map, validate, review, export, verify, 
     pipeline.locator('.stat', { hasText: label }).locator('.n').first();
   await expect(stat('Supplier records')).toHaveText('16');
   await expect(stat('ServiceM8 records')).toHaveText('10');
-  await expect(stat('Changed prices')).toHaveText('6');
-  await expect(stat('New items')).toHaveText('2');
-  await expect(stat('Unchanged')).toHaveText('1');
+  await expect(stat('Changed')).toHaveText('6');
+  await expect(stat('New')).toHaveText('2');
   // FIC-900, FIC-060 (whose supplier twin FIC-006 was blocked as ambiguous)
   // and the ServiceM8 row whose identifier a spreadsheet destroyed.
-  await expect(stat('Missing from supplier')).toHaveText('3');
-  // FIC-006 plus both copies of the cost-conflicting duplicate FIC-009.
-  await expect(stat('Ambiguous')).toHaveText('3');
-  // Missing cost, unreadable currency text, and price on application.
-  await expect(stat('Invalid')).toHaveText('3');
-  await expect(stat('Blocked from import')).toHaveText('6');
+  await expect(stat('Flagged')).toHaveText('3');
+  await expect(stat('Blocked')).toHaveText('6');
+  // The blocking breakdown moved out of the pipeline row and into the
+  // match-hierarchy strip beneath it: FIC-006 plus both copies of the
+  // cost-conflicting duplicate FIC-009 are ambiguous, and a missing cost,
+  // unreadable currency text and "price on application" are invalid.
+  await expect(page.getByText('3 ambiguous · 3 invalid')).toBeVisible();
+  // Unchanged records are not a pipeline figure; the review filter counts them.
 
   // --- review: blocked statuses cannot be approved ------------------------
   await page.getByRole('button', { name: 'Review proposed changes' }).click();

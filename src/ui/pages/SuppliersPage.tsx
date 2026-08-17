@@ -101,7 +101,10 @@ export function SuppliersPage() {
   };
 
   return (
-    <Page title="Suppliers">
+    <Page
+      title="Suppliers"
+      lead="Saved column layouts per supplier, so a repeat comparison is one click."
+    >
       <section className="card">
         <h2>Save the current mapping as a profile</h2>
         <div className="form-grid">
