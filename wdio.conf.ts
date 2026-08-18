@@ -24,7 +24,20 @@ export const config: WebdriverIO.Config = {
         autoDownloadEdgeDriver: false,
         captureBackendLogs: false,
         captureFrontendLogs: false,
-        startTimeout: 60_000,
+        /**
+         * WebView2 has to cold-start a release binary that step 30 of the
+         * Windows workflow finished building minutes earlier, against a clean
+         * disposable user-data directory, with freshly applied outbound-deny
+         * firewall rules on that exact executable. Defender scans an unsigned
+         * new binary on first execute, and WebView2 does its full first-run
+         * initialisation, so the driver can wait a long time for the
+         * DevToolsActivePort file the session depends on.
+         *
+         * At 60s that budget was routinely missed: the driver reported
+         * "session not created: DevToolsActivePort file doesn't exist" at
+         * exactly the timeout, and no test body ever ran.
+         */
+        startTimeout: 180_000,
       },
     ],
   ],
@@ -37,7 +50,9 @@ export const config: WebdriverIO.Config = {
   logLevel: 'info',
   bail: 0,
   waitforTimeout: 15_000,
-  connectionRetryTimeout: 120_000,
+  // Must stay above startTimeout, or the HTTP client aborts POST /session
+  // before the driver has finished waiting and the real reason is lost.
+  connectionRetryTimeout: 240_000,
   connectionRetryCount: 1,
   reporters: ['spec'],
   framework: 'jasmine',
