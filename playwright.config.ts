@@ -19,7 +19,14 @@ process.env.SWL_LOCAL_TEST_SEED_DATA_DIR = seedDataDirectory;
  */
 export default defineConfig({
   testDir: './e2e',
-  timeout: 60_000,
+  /**
+   * The journey cases walk load → map → validate → review → approve →
+   * checklist → export in one test, and the export step alone is allowed up to
+   * 90s of CPU-bound workbook generation on a loaded runner. A 60s per-test cap
+   * would cut in before that budget could ever be spent, reporting a test
+   * timeout instead of the real reason.
+   */
+  timeout: 180_000,
   // Browser cases mutate an append-only synthetic Node store. One worker plus
   // the automatic seed-snapshot fixture provides deterministic isolation.
   fullyParallel: false,

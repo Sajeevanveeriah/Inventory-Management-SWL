@@ -113,6 +113,10 @@ record the SerpAPI key in evidence. GitHub Pages is static and must make no prov
 - [ ] Backup, restore and same-file conflict states
 - [ ] No clipping, overlap, horizontal overflow, colour-only meaning or unreachable action
 - [ ] Every reported screenshot was captured from the rendered desktop application and inspected
+- [ ] Rev01 visual system holds: zero radius, 2px section rules, no drop shadow on a resting
+      surface, and brand red only on the mark, the active-nav bar, blocking states and posters
+      (see `docs/UX-DESIGN-SYSTEM.md`)
+- [ ] Archivo renders from the bundled woff2 with no network request for a font
 
 ## Repository hygiene
 

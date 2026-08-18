@@ -51,14 +51,16 @@ export function ChecklistStep() {
   return (
     <div>
       <div className="card">
-        <h2>Release checklist</h2>
-        <p className="muted">
-          Every blocking gate must pass before the import file can be generated. Non-blocking items
-          are shown for awareness.
-        </p>
+        <div className="panel-head">
+          <h2>Release checklist</h2>
+          <span className="panel-meta">
+            {gates.filter((gate) => !gate.ok && gate.blocking).length} blocking gate
+            {gates.filter((gate) => !gate.ok && gate.blocking).length === 1 ? '' : 's'} failing
+          </span>
+        </div>
         <ul className="gate-list">
           {gates.map((gate) => (
-            <li key={gate.id}>
+            <li key={gate.id} className={!gate.ok && gate.blocking ? 'gate-failed' : undefined}>
               <span
                 className={`gate-icon ${gate.ok ? (gate.blocking ? 'gate-pass' : 'gate-info') : gate.blocking ? 'gate-fail' : 'gate-info'}`}
                 aria-hidden="true"
@@ -72,11 +74,12 @@ export function ChecklistStep() {
                 </span>
                 <div className="small muted">{gate.detail}</div>
                 {!gate.ok && gate.repair !== undefined && (
-                  <div className="small" style={{ color: 'var(--danger)' }}>
-                    How to fix: {gate.repair}
-                  </div>
+                  <div className="small gate-repair">How to fix: {gate.repair}</div>
                 )}
               </div>
+              <span className="gate-tag" aria-hidden="true">
+                {gate.blocking ? 'Blocking' : 'Advisory'}
+              </span>
             </li>
           ))}
         </ul>

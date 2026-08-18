@@ -15,8 +15,15 @@ const DIR = 'screenshots';
  * is. The default five-second expectation is not a considered budget for that,
  * and the suite runs with no retries, so a busy CI runner failed the build here
  * while the identical step in workflow.spec.ts passed in the same run.
+ *
+ * Thirty seconds was the first correction and it was still not enough: on the
+ * Windows runner this expectation runs after Clippy, a full verify and a Pages
+ * build have loaded the machine, and it timed out again with the outputs still
+ * being written. Ninety seconds is three times the budget that demonstrably
+ * failed. It weakens nothing — generation that never completes still fails the
+ * test, only later.
  */
-const GENERATE_OUTPUTS_TIMEOUT = 30_000;
+const GENERATE_OUTPUTS_TIMEOUT = 90_000;
 test.beforeAll(() => {
   fs.mkdirSync(DIR, { recursive: true });
 });

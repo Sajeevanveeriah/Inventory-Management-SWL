@@ -59,35 +59,37 @@ export function ExportStep() {
 
   return (
     <div>
+      {/* Ink poster, not red: this banner states the size of the handoff, and
+          red is reserved for what blocks it. */}
+      <section className="poster poster-ink" aria-label="Import file summary">
+        <div>
+          <span className="poster-kicker">Approved changes to write</span>
+          <strong className="poster-figure">{String(importCount).padStart(2, '0')}</strong>
+          <p>
+            Unchanged, excluded, ambiguous and invalid records are never written. Columns this
+            application does not own are carried through from the ServiceM8 export untouched.
+          </p>
+        </div>
+      </section>
+
       <div className="card">
         <h2>Generate outputs</h2>
         <div className="callout callout-warn">
-          <strong>Do not open the import file in Excel.</strong> The generated CSV carries
-          ServiceM8’s exact column contract. Opening it in a spreadsheet and saving rewrites long
-          item numbers and barcodes into scientific notation, which cannot be undone. Import it into
-          ServiceM8 straight from where it is saved.
+          <strong>Do not open the import file in Excel.</strong> Saving the CSV from a spreadsheet
+          rewrites long item numbers and barcodes into scientific notation, which cannot be undone.
+          Import it into ServiceM8 straight from where it is saved.
         </div>
-        <div className="callout">
-          <strong>ServiceM8 handoff:</strong> generate the files, choose one output folder, then
-          import the file whose name contains
+        <p className="hint">
+          Generate the files, choose one output folder, then import the file whose name contains
           <span className="mono"> servicem8-import</span> through ServiceM8 Materials &amp;
-          Services. No manual header or row patching is needed.
-        </div>
-        <p className="muted">
-          {importCount} approved change(s) will be written to the ServiceM8 import file. Unchanged,
-          excluded, ambiguous and invalid records are never included. Every column this application
-          does not own is carried through from your ServiceM8 export untouched. All outputs are
-          generated locally and{' '}
-          {platform.kind === 'desktop'
-            ? 'remain inside the application until you write them through the native folder picker.'
-            : 'downloaded through this browser demonstration.'}
+          Services.
         </p>
         {!passes && (
           <div className="callout callout-danger" role="alert">
             The release checklist has failing gates. Return to the checklist step to repair them.
           </div>
         )}
-        <div className="btn-row">
+        <div className="btn-row" style={{ marginTop: 'var(--space-4)' }}>
           <button
             type="button"
             className="btn btn-primary"
@@ -140,7 +142,7 @@ export function GeneratedFilesPanel({
               <strong>{out.label}</strong>
               <div className="small mono muted">{out.filename}</div>
               {out.sanitizedCells > 0 && (
-                <div className="small" style={{ color: 'var(--warn)' }}>
+                <div className="small gate-repair">
                   {out.sanitizedCells} formula-like value(s) were neutralised for safety.
                 </div>
               )}
@@ -153,7 +155,7 @@ export function GeneratedFilesPanel({
                   {out.serviceM8.formulaLikeValues.length > 0 && (
                     <>
                       {' · '}
-                      <span style={{ color: 'var(--warn)' }}>
+                      <span className="gate-repair">
                         {out.serviceM8.formulaLikeValues.length} value(s) start with a formula
                         character and were written verbatim so ServiceM8 receives them unchanged
                       </span>
@@ -162,7 +164,7 @@ export function GeneratedFilesPanel({
                   {out.serviceM8.damagedIdentifiers.length > 0 && (
                     <>
                       {' · '}
-                      <span style={{ color: 'var(--danger)' }}>
+                      <span className="gate-repair">
                         {out.serviceM8.damagedIdentifiers.length} item number(s) were already
                         damaged into scientific notation by a spreadsheet
                       </span>
@@ -183,9 +185,8 @@ export function GeneratedFilesPanel({
           </li>
         ))}
       </ul>
-      <p className="muted small" style={{ marginTop: '0.7rem' }}>
-        Keep the rollback workbook and audit summary with your records. Nothing was transmitted
-        anywhere.{' '}
+      <p className="hint">
+        Keep the rollback workbook and the audit summary with your records.{' '}
         {platformKind === 'desktop'
           ? 'Use the native folder picker above to write them to this computer.'
           : 'Files exist only on this computer once downloaded.'}

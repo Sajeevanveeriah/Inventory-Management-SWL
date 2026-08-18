@@ -385,7 +385,7 @@ describe('application workflow (jsdom integration)', () => {
 
     // Start screen: the rail carries the Stan Wootton Locksmiths lock-up.
     expect(screen.getByText('Stan Wootton')).toBeInTheDocument();
-    expect(screen.getByText('Pricing & Inventory')).toBeInTheDocument();
+    expect(screen.getByText('Pricing & Inventory Control')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Stan Wootton Locksmiths' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getAllByText(/local processing only/i).length).toBeGreaterThan(0);

@@ -42,7 +42,10 @@ export function SearchPage({
 
   if (rows === null) {
     return (
-      <Page title="Inventory search">
+      <Page
+        title="Inventory search"
+        lead="Deterministic search across the supplier and ServiceM8 files of the current run."
+      >
         <EmptyState
           title="No comparison data loaded"
           detail="Search works across the supplier and ServiceM8 files of the current run. Start a run or load the fictional demonstration data first."
@@ -57,7 +60,10 @@ export function SearchPage({
   }
 
   return (
-    <Page title="Inventory search">
+    <Page
+      title="Inventory search"
+      lead="Exact identifiers rank first; description matches follow, and similarity never creates a match."
+    >
       <section className="card">
         <div className="search-bar">
           <input

@@ -64,6 +64,7 @@ export function ExpansionCataloguePage({ goToNewRun }: { goToNewRun: () => void 
   return (
     <Page
       title="Expansion catalogue"
+      lead="Supplier products that are not in ServiceM8 yet, every category out of scope until switched on."
       primary={
         <button type="button" className="btn btn-primary" onClick={goToNewRun}>
           Review in current run

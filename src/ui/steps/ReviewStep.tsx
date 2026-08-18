@@ -25,17 +25,22 @@ const TABS: { id: TabId; label: string }[] = [
 
 type SortKey = 'identifier' | 'status' | 'cost' | 'delta';
 
-const OPTIONAL_COLUMNS = [
-  { id: 'description', label: 'Description' },
-  { id: 'existingCost', label: 'Existing cost' },
-  { id: 'proposedSell', label: 'Proposed sell' },
-  { id: 'delta', label: 'Cost movement' },
-  { id: 'method', label: 'Match method' },
-] as const;
-type ColumnId = (typeof OPTIONAL_COLUMNS)[number]['id'];
-
 function identifierOf(row: ComparisonRow): string {
   return row.supplier?.code ?? row.s8?.itemNumber ?? '';
+}
+
+/**
+ * Signed cost movement as a percentage of the cost ServiceM8 holds today.
+ * Display only: the comparison engine keeps the decimal-safe amounts.
+ */
+function deltaPercent(row: ComparisonRow): number | null {
+  const before = row.s8?.existingCost;
+  const after = row.supplier?.cost;
+  if (before == null || after == null) return null;
+  const from = Number(before);
+  const to = Number(after);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from === 0) return null;
+  return ((to - from) / from) * 100;
 }
 
 function methodLabel(row: ComparisonRow): string {
@@ -54,9 +59,6 @@ export function ReviewStep() {
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('identifier');
   const [sortDir, setSortDir] = useState<1 | -1>(1);
-  const [visibleCols, setVisibleCols] = useState<Set<ColumnId>>(
-    () => new Set(['description', 'existingCost', 'proposedSell', 'delta', 'method']),
-  );
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [detailId, setDetailId] = useState<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -120,7 +122,11 @@ export function ReviewStep() {
     );
   }
 
-  const detailRow = detailId === null ? null : (rows.find((r) => r.id === detailId) ?? null);
+  // The detail panel is always populated while there is anything to show, so
+  // the operator never faces an empty 340px column beside a full table.
+  const activeDetailId = detailId ?? filtered[0]?.id ?? null;
+  const detailRow =
+    activeDetailId === null ? null : (rows.find((r) => r.id === activeDetailId) ?? null);
   const selectedRows = filtered.filter((r) => selected.has(r.id));
   const actionTargets = selectedRows.length > 0 ? selectedRows : [];
   const eligibleApprove = actionTargets.filter(
@@ -212,14 +218,15 @@ export function ReviewStep() {
   return (
     <div>
       <div className="card">
-        <h2>Review proposed changes</h2>
-        <p className="muted small">
-          {decisionCounts.approved} approved · {decisionCounts.excluded} excluded ·{' '}
-          {comparison.totals.blocked} blocked (cannot be approved). Keyboard: arrow keys move, Space
-          selects, Enter opens details.
-        </p>
+        <div className="panel-head">
+          <h2>Review proposed changes</h2>
+          <span className="panel-meta">
+            {decisionCounts.approved} approved · {decisionCounts.excluded} excluded ·{' '}
+            {comparison.totals.blocked} blocked
+          </span>
+        </div>
 
-        <div className="status-tabs" role="group" aria-label="Filter by status">
+        <div className="chip-row" role="group" aria-label="Filter by status">
           {TABS.map((t) => {
             const count =
               t.id === 'all' ? rows.length : rows.filter((r) => r.status === t.id).length;
@@ -227,6 +234,7 @@ export function ReviewStep() {
               <button
                 key={t.id}
                 type="button"
+                className={`chip${tab === t.id ? ' chip-active' : ''}`}
                 aria-pressed={tab === t.id}
                 onClick={() => {
                   setTab(t.id);
@@ -248,45 +256,6 @@ export function ReviewStep() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <details>
-            <summary className="btn btn-sm" style={{ listStyle: 'none', cursor: 'pointer' }}>
-              Columns
-            </summary>
-            <div
-              className="card"
-              style={{
-                position: 'absolute',
-                zIndex: 5,
-                marginTop: '0.3rem',
-                padding: '0.7rem',
-              }}
-            >
-              {OPTIONAL_COLUMNS.map((c) => (
-                <label
-                  key={c.id}
-                  style={{
-                    display: 'block',
-                    fontWeight: 400,
-                    marginBottom: '0.2rem',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={visibleCols.has(c.id)}
-                    onChange={(e) => {
-                      setVisibleCols((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(c.id);
-                        else next.delete(c.id);
-                        return next;
-                      });
-                    }}
-                  />{' '}
-                  {c.label}
-                </label>
-              ))}
-            </div>
-          </details>
           <button
             type="button"
             className="btn btn-sm"
@@ -365,9 +334,23 @@ export function ReviewStep() {
             aria-label="Comparison results table container"
           >
             <table aria-rowcount={total + 1} aria-label="Comparison results">
+              {/* Fixed widths on every scanned column; the description takes the
+                  remainder and truncates. Old sell and the match method live in
+                  the detail panel — they are not scanning columns. */}
+              <colgroup>
+                <col className="col-select" />
+                <col className="col-code" />
+                <col />
+                <col className="col-status" />
+                <col className="col-cost" />
+                <col className="col-cost" />
+                <col className="col-delta" />
+                <col className="col-sell" />
+                <col className="col-decision" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}>
+                  <th>
                     <input
                       type="checkbox"
                       aria-label="Select all visible rows"
@@ -385,41 +368,34 @@ export function ReviewStep() {
                       className="sort-btn"
                       onClick={() => toggleSort('identifier')}
                     >
-                      Identifier {sortKey === 'identifier' ? (sortDir === 1 ? '▲' : '▼') : ''}
+                      Code {sortKey === 'identifier' ? (sortDir === 1 ? '▲' : '▼') : ''}
                     </button>
                   </th>
-                  {visibleCols.has('description') && <th>Description</th>}
+                  <th>Description</th>
                   <th aria-sort={ariaSortFor('status')}>
                     <button type="button" className="sort-btn" onClick={() => toggleSort('status')}>
                       Status {sortKey === 'status' ? (sortDir === 1 ? '▲' : '▼') : ''}
                     </button>
                   </th>
+                  <th className="num">Cost now</th>
                   <th className="num" aria-sort={ariaSortFor('cost')}>
                     <button type="button" className="sort-btn" onClick={() => toggleSort('cost')}>
-                      New cost {sortKey === 'cost' ? (sortDir === 1 ? '▲' : '▼') : ''}
+                      Cost new {sortKey === 'cost' ? (sortDir === 1 ? '▲' : '▼') : ''}
                     </button>
                   </th>
-                  {visibleCols.has('existingCost') && <th className="num">Existing cost</th>}
-                  {visibleCols.has('delta') && (
-                    <th className="num" aria-sort={ariaSortFor('delta')}>
-                      <button
-                        type="button"
-                        className="sort-btn"
-                        onClick={() => toggleSort('delta')}
-                      >
-                        Movement {sortKey === 'delta' ? (sortDir === 1 ? '▲' : '▼') : ''}
-                      </button>
-                    </th>
-                  )}
-                  {visibleCols.has('proposedSell') && <th className="num">Proposed sell</th>}
-                  {visibleCols.has('method') && <th>Method</th>}
+                  <th className="num" aria-sort={ariaSortFor('delta')}>
+                    <button type="button" className="sort-btn" onClick={() => toggleSort('delta')}>
+                      Δ% {sortKey === 'delta' ? (sortDir === 1 ? '▲' : '▼') : ''}
+                    </button>
+                  </th>
+                  <th className="num">Sell</th>
                   <th>Decision</th>
                 </tr>
               </thead>
               <tbody>
                 {start > 0 && (
                   <tr aria-hidden="true" style={{ height: start * ROW_HEIGHT }}>
-                    <td colSpan={10} style={{ padding: 0, border: 0 }} />
+                    <td colSpan={9} style={{ padding: 0, border: 0 }} />
                   </tr>
                 )}
                 {windowRows.map((row, i) => {
@@ -431,7 +407,7 @@ export function ReviewStep() {
                       data-row-id={row.id}
                       tabIndex={0}
                       aria-rowindex={index + 2}
-                      aria-selected={detailId === row.id}
+                      aria-selected={activeDetailId === row.id}
                       style={{ height: ROW_HEIGHT, cursor: 'pointer' }}
                       onClick={() => setDetailId(row.id)}
                       onKeyDown={(e) => onRowKeyDown(e, index, row)}
@@ -454,57 +430,36 @@ export function ReviewStep() {
                       <td className="mono">
                         {identifierOf(row) || <span className="muted">(blank)</span>}
                       </td>
-                      {visibleCols.has('description') && (
-                        <td
-                          style={{
-                            maxWidth: 260,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={row.supplier?.description ?? row.s8?.description ?? ''}
-                        >
-                          {row.supplier?.description ?? row.s8?.description ?? ''}
-                        </td>
-                      )}
+                      <td
+                        className="col-description"
+                        title={row.supplier?.description ?? row.s8?.description ?? ''}
+                      >
+                        {row.supplier?.description ?? row.s8?.description ?? ''}
+                      </td>
                       <td>
-                        <StatusBadge status={row.status} />
+                        <StatusBadge status={row.status} compact />
                       </td>
                       <td className="num">
-                        {row.supplier?.cost != null ? formatAmount(row.supplier.cost) : '-'}
+                        {row.s8?.existingCost != null ? formatAmount(row.s8.existingCost) : '—'}
                       </td>
-                      {visibleCols.has('existingCost') && (
-                        <td className="num">
-                          {row.s8?.existingCost != null ? formatAmount(row.s8.existingCost) : '-'}
-                        </td>
-                      )}
-                      {visibleCols.has('delta') && (
-                        <td className="num">
-                          {row.costDelta !== null ? (
-                            <span
-                              style={{
-                                color:
-                                  Number(row.costDelta) > 0
-                                    ? 'var(--danger)'
-                                    : Number(row.costDelta) < 0
-                                      ? 'var(--ok)'
-                                      : 'inherit',
-                              }}
-                            >
-                              {Number(row.costDelta) > 0 ? '+' : ''}
-                              {formatAmount(row.costDelta)}
+                      <td className="num">
+                        {row.supplier?.cost != null ? formatAmount(row.supplier.cost) : '—'}
+                      </td>
+                      <td className="num">
+                        {(() => {
+                          const percent = deltaPercent(row);
+                          if (percent === null) return '—';
+                          return (
+                            <span className={percent > 0 ? 'delta-up' : 'delta-down'}>
+                              {percent > 0 ? '+' : ''}
+                              {percent.toFixed(1)}%
                             </span>
-                          ) : (
-                            '-'
-                          )}
-                        </td>
-                      )}
-                      {visibleCols.has('proposedSell') && (
-                        <td className="num">
-                          {row.proposedSell !== null ? formatAmount(row.proposedSell) : '-'}
-                        </td>
-                      )}
-                      {visibleCols.has('method') && <td>{methodLabel(row)}</td>}
+                          );
+                        })()}
+                      </td>
+                      <td className="num sell">
+                        {row.proposedSell !== null ? formatAmount(row.proposedSell) : '—'}
+                      </td>
                       <td>
                         <DecisionBadge decision={decision.state} />
                         {decision.state === 'none' &&
@@ -528,13 +483,13 @@ export function ReviewStep() {
                 })}
                 {end < total && (
                   <tr aria-hidden="true" style={{ height: (total - end) * ROW_HEIGHT }}>
-                    <td colSpan={10} style={{ padding: 0, border: 0 }} />
+                    <td colSpan={9} style={{ padding: 0, border: 0 }} />
                   </tr>
                 )}
                 {total === 0 && (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={9}
                       className="muted"
                       style={{ textAlign: 'center', padding: '1.5rem' }}
                     >
@@ -550,16 +505,25 @@ export function ReviewStep() {
             {detailRow === null ? (
               <div className="card">
                 <h3>Record details</h3>
-                <p className="muted">
-                  Select a row to see before/after values, the pricing formula, match method and
-                  validation messages.
-                </p>
+                <p className="muted">No records match the current filter.</p>
               </div>
             ) : (
               <DetailPanel row={detailRow} />
             )}
           </aside>
         </div>
+
+        <div className="table-foot">
+          <span>
+            {total} of {rows.length} records shown
+          </span>
+          <span>
+            {decisionCounts.approved} approved · {decisionCounts.excluded} excluded
+          </span>
+        </div>
+        <p className="hint">
+          Arrow keys move between records, Space selects, Enter opens the record detail.
+        </p>
 
         <div className="btn-row" style={{ marginTop: '0.9rem' }}>
           <button
@@ -669,26 +633,28 @@ function DetailPanel({ row }: { row: ComparisonRow }) {
       <h3>
         {identifierOf(row) || 'Record'} <StatusBadge status={row.status} />
       </h3>
-      {row.status === 'price-changed' && row.s8 !== null && row.supplier !== null && (
+      {/* Sell over cost, before and after: the sell price is the number being
+          decided, so it is the one set in the display size. */}
+      {row.s8 !== null && row.supplier !== null && (
         <div className="before-after">
           <div className="cell">
-            <span className="label">Before (ServiceM8)</span>
+            <span className="label">Before</span>
             <span className="value">
-              {row.s8.existingCost != null ? formatAmount(row.s8.existingCost) : '-'} cost
+              {row.s8.existingSell != null ? formatAmount(row.s8.existingSell) : '—'}
             </span>
             <div className="small muted">
-              {row.s8.existingSell != null
-                ? `${formatAmount(row.s8.existingSell)} sell`
-                : 'sell not recorded'}
+              {row.s8.existingCost != null
+                ? `${formatAmount(row.s8.existingCost)} cost`
+                : 'no cost'}
             </div>
           </div>
           <div className="cell">
-            <span className="label">After (proposed)</span>
+            <span className="label">After</span>
             <span className="value">
-              {row.supplier.cost != null ? formatAmount(row.supplier.cost) : '-'} cost
+              {row.proposedSell !== null ? formatAmount(row.proposedSell) : '—'}
             </span>
             <div className="small muted">
-              {row.proposedSell !== null ? `${formatAmount(row.proposedSell)} sell` : ''}
+              {row.supplier.cost != null ? `${formatAmount(row.supplier.cost)} cost` : 'no cost'}
             </div>
           </div>
         </div>

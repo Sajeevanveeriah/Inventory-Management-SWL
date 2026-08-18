@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { APP_NAME, APP_VERSION } from './core/audit';
+import { buildApprovalProposals, deriveExceptions } from './core/operations';
+import { datePrefix } from './core/run';
 import type { Settings } from './core/settings';
 import { usePlatform } from './platform/context';
 import { STEP_ORDER, STEP_TITLES, useAppDispatch, useAppState, type StepId } from './state/store';
 import { useActions } from './state/useActions';
 import { AppearanceControl } from './ui/AppearanceControl';
-import { BrandLockup, BrandMark } from './ui/Brand';
+import { BrandLockup } from './ui/Brand';
+import { NAV_GROUPS, ROUTES, routeIndex, routeTitle, type Route } from './ui/routes';
 import { PrivacyDialog } from './ui/PrivacyDialog';
 import { SettingsDialog } from './ui/SettingsDialog';
 import { RecoveryPanel, SettingsPage } from './ui/pages/ConfigPages';
@@ -21,7 +24,7 @@ import {
   PricingRulesPage,
   RunsPage,
 } from './ui/pages/OperationsPages';
-import { Page } from './ui/pages/PageChrome';
+import { Page, Panel } from './ui/pages/PageChrome';
 import { SearchPage } from './ui/pages/SearchPage';
 import { SuppliersPage } from './ui/pages/SuppliersPage';
 import { ChecklistStep } from './ui/steps/ChecklistStep';
@@ -31,59 +34,6 @@ import { MappingStep } from './ui/steps/MappingStep';
 import { ReviewStep } from './ui/steps/ReviewStep';
 import { StartStep } from './ui/steps/StartStep';
 import { ValidateStep } from './ui/steps/ValidateStep';
-
-const ROUTES = [
-  ['#/dashboard', 'Dashboard'],
-  ['#/new-run', 'New run'],
-  ['#/runs', 'Runs'],
-  ['#/inventory', 'Inventory search'],
-  ['#/expansion', 'Expansion catalogue'],
-  ['#/suppliers', 'Suppliers'],
-  ['#/mapping-profiles', 'Mapping profiles'],
-  ['#/pricing-rules', 'Pricing rules'],
-  ['#/competitors', 'Competitor search'],
-  ['#/sources', 'Source registry'],
-  ['#/exceptions', 'Exceptions'],
-  ['#/approvals', 'Approvals'],
-  ['#/exports', 'Exports'],
-  ['#/integrations', 'Integrations'],
-  ['#/audit', 'Audit'],
-  ['#/settings', 'Configuration'],
-  ['#/help', 'Help'],
-] as const;
-
-type Route = (typeof ROUTES)[number][0];
-
-/** Left rail grouping: section label + routes, commercial-platform style. */
-const NAV_GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<Route>]> = [
-  ['Overview', ['#/dashboard', '#/new-run', '#/runs']],
-  ['Catalogue', ['#/inventory', '#/expansion', '#/suppliers', '#/mapping-profiles']],
-  ['Pricing', ['#/pricing-rules', '#/competitors', '#/sources']],
-  ['Review', ['#/exceptions', '#/approvals', '#/exports']],
-  ['System', ['#/integrations', '#/audit', '#/settings', '#/help']],
-];
-
-/** 16px stroke icons keyed by route. Decorative: labels carry the meaning. */
-const NAV_ICONS: Record<Route, string> = {
-  '#/dashboard': 'M2 9h4v5H2zM7 5h4v9H7zM12 2h4v12h-4z',
-  '#/new-run': 'M8 3v10M3 8h10',
-  '#/runs': 'M3 4h10M3 8h10M3 12h6',
-  '#/inventory': 'M7 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM10 10l4 4',
-  '#/expansion': 'M3 13V7l5-4 5 4v6M8 3v10M5 8h6',
-  '#/suppliers': 'M2 12V6l6-3 6 3v6l-6 3zM8 3v6M2 6l6 3 6-3',
-  '#/mapping-profiles': 'M3 3h4v4H3zM9 9h4v4H9zM7 5h4M11 5v4',
-  '#/pricing-rules': 'M8 2v12M5 5h4.5a2 2 0 1 1 0 4H6a2 2 0 1 0 0 4h5',
-  '#/competitors': 'M2 13l3-4 3 2 3-5 3 3M2 3v10h12',
-  '#/sources': 'M8 2c3 0 6 .8 6 2s-3 2-6 2-6-.8-6-2 3-2 6-2zM2 4v8c0 1.2 3 2 6 2s6-.8 6-2V4',
-  '#/exceptions': 'M8 2l6 11H2zM8 6.5v3M8 11.5v.5',
-  '#/approvals': 'M3 8.5l3.5 3.5L13 5',
-  '#/exports': 'M8 10V2M5 5l3-3 3 3M3 10v3h10v-3',
-  '#/integrations': 'M5 8H2M14 8h-3M8 5V2M8 14v-3M5.5 5.5h5v5h-5z',
-  '#/audit': 'M4 2h8v12H4zM6 5h4M6 8h4M6 11h2',
-  '#/settings':
-    'M8 5.5A2.5 2.5 0 1 1 8 10.5 2.5 2.5 0 0 1 8 5.5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4',
-  '#/help': 'M6 6a2 2 0 1 1 3 1.7c-.7.4-1 .8-1 1.8M8 12v.5',
-};
 
 function ShieldIcon() {
   return (
@@ -122,23 +72,6 @@ function GearIcon() {
   );
 }
 
-function NavIcon({ route }: { route: Route }) {
-  return (
-    <svg
-      className="nav-icon"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d={NAV_ICONS[route]} />
-    </svg>
-  );
-}
-
 function currentRoute(): Route {
   const hash = window.location.hash || '#/new-run';
   return ROUTES.some(([route]) => route === hash) ? (hash as Route) : '#/dashboard';
@@ -157,25 +90,41 @@ function RunWorkspace() {
   const dispatch = useAppDispatch();
   const stepIndex = STEP_ORDER.indexOf(state.step);
   return (
-    <Page title="Run workspace">
+    <Page
+      title="New run"
+      lead="Seven stages, in order: nothing reaches the import file until every one of them has been completed."
+    >
+      {/* Stage strip: one bordered container of seven equal cells. The index,
+          the tick and the state word are aria-hidden, so each control keeps
+          its stage title as its accessible name and aria-current="step"
+          carries the position. */}
       <nav className="run-stepper" aria-label="Run workflow">
         <ol>
-          {STEP_ORDER.map((step, i) => (
-            <li key={step}>
-              <button
-                type="button"
-                className={i < stepIndex ? 'step-done' : ''}
-                aria-current={state.step === step ? 'step' : undefined}
-                disabled={!stepEnabled(step, state)}
-                onClick={() => dispatch({ type: 'go-to-step', step })}
-              >
-                <span className="step-index" aria-hidden="true">
-                  {i < stepIndex ? '✓' : i + 1}
-                </span>
-                {STEP_TITLES[step]}
-              </button>
-            </li>
-          ))}
+          {STEP_ORDER.map((step, i) => {
+            const done = i < stepIndex;
+            const enabled = stepEnabled(step, state);
+            const current = state.step === step;
+            return (
+              <li key={step}>
+                <button
+                  type="button"
+                  className={done ? 'step-done' : ''}
+                  aria-current={current ? 'step' : undefined}
+                  disabled={!enabled}
+                  onClick={() => dispatch({ type: 'go-to-step', step })}
+                >
+                  <span className="step-index" aria-hidden="true">
+                    {String(i + 1).padStart(2, '0')}
+                    {done ? ' ✓' : ''}
+                  </span>
+                  <span className="step-title">{STEP_TITLES[step]}</span>
+                  <span className="step-state" aria-hidden="true">
+                    {current ? 'Current' : done ? 'Done' : enabled ? 'Ready' : 'Locked'}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ol>
       </nav>
       {state.step === 'start' && <StartStep />}
@@ -189,17 +138,100 @@ function RunWorkspace() {
   );
 }
 
-function MappingProfilesPage() {
+/**
+ * Saved column layouts, read-only. Editing a mapping happens in the run's
+ * mapping stage, which owns the duplicate-column detection and the save
+ * dialog; rendering that whole step here duplicated it on two routes.
+ */
+function MappingProfilesPage({ goToNewRun }: { goToNewRun: () => void }) {
+  const state = useAppState();
+  const mappedCount = (mapping: Record<string, number | null>) =>
+    Object.values(mapping).filter((index) => index !== null).length;
+  const columnFor = (profile: (typeof state.profiles)[number], key: string) => {
+    const index = (profile.supplierMapping as Record<string, number | null>)[key];
+    return index === null || index === undefined ? '—' : (profile.supplierHeaders[index] ?? '—');
+  };
   return (
-    <Page title="Mapping profiles">
-      <MappingStep />
+    <Page
+      title="Mapping profiles"
+      lead="Saved supplier column layouts; the ServiceM8 side is a fixed contract and cannot be remapped."
+      primary={
+        <button type="button" className="btn btn-primary" onClick={goToNewRun}>
+          Edit in a run
+        </button>
+      }
+    >
+      <Panel title="Saved profiles" meta={`${state.profiles.length} saved`}>
+        {state.profiles.length === 0 ? (
+          <p className="hint">
+            No profiles saved yet. Map a supplier&rsquo;s columns in a run, then save the layout.
+          </p>
+        ) : (
+          <div className="table-scroll" role="region" aria-label="Mapping profiles" tabIndex={0}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Profile</th>
+                  <th scope="col" className="num">
+                    Fields mapped
+                  </th>
+                  <th scope="col">Code column</th>
+                  <th scope="col">Cost column</th>
+                  <th scope="col">Category column</th>
+                  <th scope="col">Saved</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.profiles.map((profile) => (
+                  <tr key={profile.id}>
+                    <td data-label="Profile">
+                      {profile.name} <span className="mono muted">v{profile.version}</span>
+                    </td>
+                    <td className="num" data-label="Fields mapped">
+                      {mappedCount(profile.supplierMapping as Record<string, number | null>)}
+                    </td>
+                    <td className="mono" data-label="Code column">
+                      {columnFor(profile, 'supplierCode')}
+                    </td>
+                    <td className="mono" data-label="Cost column">
+                      {columnFor(profile, 'supplierCost')}
+                    </td>
+                    <td className="mono" data-label="Category column">
+                      {columnFor(profile, 'supplierCategory')}
+                    </td>
+                    <td className="mono" data-label="Saved">
+                      {profile.updatedAt.slice(0, 10)}
+                    </td>
+                  </tr>
+                ))}
+                <tr>
+                  <td data-label="Profile">ServiceM8 Materials &amp; Services</td>
+                  <td className="num" data-label="Fields mapped">
+                    —
+                  </td>
+                  <td colSpan={3} data-label="Columns">
+                    <span className="badge badge-invalid">Locked contract</span> Column names and
+                    order are fixed by the import format.
+                  </td>
+                  <td className="mono" data-label="Saved">
+                    built in
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </Page>
   );
 }
 
 function ExportsPage() {
   return (
-    <Page title="Exports">
+    <Page
+      title="Exports"
+      lead="Every blocking check must pass before the five workflow outputs can be generated."
+    >
       <ChecklistStep />
       <ExportStep />
     </Page>
@@ -223,11 +255,27 @@ export default function App() {
   const pendingRouteFocusRef = useRef(false);
   const appearanceSavingRef = useRef(false);
   const settingsRef = useRef(state.settings);
-  const pageTitle = ROUTES.find(([id]) => id === route)?.[1] ?? 'Dashboard';
+  const pageTitle = routeTitle(route);
   const totalRecords = state.comparison?.rows.length ?? 0;
   const approvedCount = Object.values(state.review.decisions).filter(
     (decision) => decision.state === 'approved',
   ).length;
+
+  /**
+   * Rail counts, fed by the same selectors the destination screens use. A
+   * count is rendered only when it is non-zero, and it is aria-hidden: the
+   * label is the control's accessible name, and the number is repeated in the
+   * heading of the screen it points at.
+   */
+  const navCounts: Partial<Record<Route, number>> = {
+    '#/inventory': totalRecords,
+    '#/expansion': (state.comparison?.rows ?? []).filter((row) => row.status === 'new-item').length,
+    '#/suppliers': state.profiles.length,
+    '#/exceptions': deriveExceptions(state.comparison).length,
+    '#/approvals': buildApprovalProposals(state.comparison, state.review.decisions).filter(
+      (proposal) => proposal.approvable && state.review.decisions[proposal.id] === undefined,
+    ).length,
+  };
 
   const go = (next: Route, focusHeading = true) => {
     pendingRouteFocusRef.current = focusHeading;
@@ -332,7 +380,7 @@ export default function App() {
         <div className="recovery-shell">
           <main id="main-content" className="recovery-main">
             <div className="recovery-brand">
-              <BrandLockup productName="Pricing &amp; Inventory" />
+              <BrandLockup productName="Pricing &amp; Inventory Control" />
               <span>Configuration recovery</span>
             </div>
             <div className="recovery-surface">
@@ -398,7 +446,7 @@ export default function App() {
           aria-modal={menuOpen ? 'true' : undefined}
         >
           <div className="nav-brand">
-            <BrandLockup productName="Pricing &amp; Inventory" />
+            <BrandLockup productName="Pricing &amp; Inventory Control" />
           </div>
           <button
             type="button"
@@ -412,9 +460,7 @@ export default function App() {
             Close
           </button>
           <span className="local-badge">
-            {platform.kind === 'desktop'
-              ? 'Desktop · native local services'
-              : 'Web demonstration · own-origin only'}
+            {platform.kind === 'desktop' ? 'Desktop · local services' : 'Web demo · own origin'}
           </span>
           <nav aria-label="Primary">
             {NAV_GROUPS.map(([group, routes]) => (
@@ -423,7 +469,7 @@ export default function App() {
                   {group}
                 </span>
                 {routes.map((id) => {
-                  const label = ROUTES.find(([r]) => r === id)?.[1] ?? id;
+                  const count = navCounts[id] ?? 0;
                   return (
                     <button
                       key={id}
@@ -431,8 +477,15 @@ export default function App() {
                       aria-current={route === id ? 'page' : undefined}
                       onClick={() => go(id)}
                     >
-                      <NavIcon route={id} />
-                      {label}
+                      <span className="nav-index" aria-hidden="true">
+                        {routeIndex(id)}
+                      </span>
+                      <span className="nav-label">{routeTitle(id)}</span>
+                      {count > 0 && (
+                        <span className="nav-count" aria-hidden="true">
+                          {count}
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -495,6 +548,26 @@ export default function App() {
               />
               {state.demoMode && <span className="demo-indicator">Fictional demo data</span>}
             </div>
+            {/* Run chip: the identity of the work in progress, not of the
+                operator. The trading name lives in the rail lockup. */}
+            <p className="run-chip">
+              {state.comparison !== null && <span className="run-chip-mark" aria-hidden="true" />}
+              {state.comparison === null ? (
+                'No run open'
+              ) : (
+                <>
+                  <span>RUN {datePrefix()}</span>
+                  <span className="run-chip-sep" aria-hidden="true">
+                    |
+                  </span>
+                  <span>{totalRecords} records</span>
+                  <span className="run-chip-sep" aria-hidden="true">
+                    |
+                  </span>
+                  <span>{approvedCount} approved</span>
+                </>
+              )}
+            </p>
             <div className="topbar-actions">
               <AppearanceControl
                 value={state.settings.theme}
@@ -521,20 +594,6 @@ export default function App() {
               >
                 <GearIcon />
               </button>
-              <button
-                type="button"
-                className="workspace-chip"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <BrandMark size={32} />
-                <span className="workspace-text">
-                  <span className="workspace-name">Stan Wootton Locksmiths</span>
-                  <span className="workspace-role">
-                    {platform.kind === 'desktop' ? 'Windows desktop' : 'Browser demonstration'}
-                    {totalRecords > 0 && ` · ${totalRecords} records · ${approvedCount} approved`}
-                  </span>
-                </span>
-              </button>
             </div>
           </header>
           <main id="main-content">
@@ -553,7 +612,9 @@ export default function App() {
                 <ExpansionCataloguePage goToNewRun={() => go('#/new-run')} />
               )}
               {route === '#/suppliers' && <SuppliersPage />}
-              {route === '#/mapping-profiles' && <MappingProfilesPage />}
+              {route === '#/mapping-profiles' && (
+                <MappingProfilesPage goToNewRun={() => go('#/new-run')} />
+              )}
               {route === '#/pricing-rules' && <PricingRulesPage />}
               {route === '#/competitors' && <CompetitorsPage />}
               {route === '#/sources' && <SourcesPage />}

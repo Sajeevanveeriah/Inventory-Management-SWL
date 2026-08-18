@@ -37,7 +37,10 @@ const ADAPTERS: AdapterCard[] = [
 export function IntegrationsPage() {
   const platform = usePlatform();
   return (
-    <Page title="Integrations">
+    <Page
+      title="Integrations"
+      lead="Every external system is a file handoff; nothing is written to ServiceM8 or Xero directly."
+    >
       <div className="integration-grid">
         {ADAPTERS.map((adapter) => (
           <section key={adapter.name} className="card">
