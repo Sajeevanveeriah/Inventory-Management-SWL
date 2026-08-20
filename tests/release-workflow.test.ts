@@ -25,6 +25,21 @@ describe('Windows draft-release workflow detector', () => {
     temporaryDirectories.push(directory);
     const defectivePath = join(directory, 'windows-desktop.yml');
     const reviewed = readFileSync('.github/workflows/windows-desktop.yml', 'utf8');
+    const crlfPath = join(directory, 'windows-desktop-crlf.yml');
+    writeFileSync(crlfPath, reviewed.replace(/\r?\n/g, '\r\n'), 'utf8');
+
+    const acceptedCrlf = spawnSync(
+      process.execPath,
+      ['scripts/check-windows-release-workflow.mjs'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, SWL_RELEASE_WORKFLOW_PATH: crlfPath },
+      },
+    );
+    expect(acceptedCrlf.status, acceptedCrlf.stderr).toBe(0);
+    expect(acceptedCrlf.stdout).toContain('manual-only draft, 8 exact assets');
+
     writeFileSync(defectivePath, reviewed.replace('--draft --verify-tag', '--verify-tag'), 'utf8');
 
     const rejected = spawnSync(process.execPath, ['scripts/check-windows-release-workflow.mjs'], {

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const workflowPath =
   process.env.SWL_RELEASE_WORKFLOW_PATH ?? '.github/workflows/windows-desktop.yml';
-const workflow = await readFile(workflowPath, 'utf8');
+const workflow = (await readFile(workflowPath, 'utf8')).replace(/\r\n?/g, '\n');
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
 const packageLock = JSON.parse(await readFile('package-lock.json', 'utf8'));
 const cargoToml = await readFile('src-tauri/Cargo.toml', 'utf8');
