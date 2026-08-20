@@ -82,7 +82,8 @@ describe('buildAuditText', () => {
     });
 
     expect(text).toContain('RUN123');
-    expect(text).toContain('30% on supplier cost');
+    expect(text).toContain('30% on GST-exclusive supplier cost');
+    expect(text).toContain('product override > brand blanket > global default');
     expect(text).toContain('Round half up to 2 decimal places');
     expect(text).toContain('abc123'); // input hash
     expect(text).toContain('Exact identifier match:  2');

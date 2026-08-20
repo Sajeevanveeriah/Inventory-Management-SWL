@@ -2,12 +2,11 @@
 
 ## Static browser application
 
-The public browser application can be deployed through GitHub Pages or Vercel. A push to `main`
-runs `.github/workflows/deploy-pages.yml`, verifies the application, builds it for the
+The public browser demonstration is deployed through GitHub Pages. A push to `main` runs
+`.github/workflows/deploy-pages.yml`, verifies the application, builds it for the
 `/Inventory-Management-SWL/` project path and publishes only the generated `dist/` directory.
-`vercel.json` applies the same explicit static-demonstration boundary at the domain root.
 
-Both targets are static hosting, so these deployments deliberately use the browser-only adapter:
+The Pages deployment deliberately uses the browser-only adapter:
 
 - imports, comparison, review and exports run locally in the browser;
 - fictional demonstration records remain in the current browser session;
@@ -98,25 +97,32 @@ npm test -- real-file-verification
 
 ## Operations hub revamp
 
-The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, expansion catalogue, suppliers, mapping profiles, pricing rules, competitor search, source registry, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
+The app uses a GitHub Pages-compatible hash-routed operations shell with these destinations: dashboard, new run, runs, inventory search, expansion catalogue, products and suppliers, saved import layouts, pricing rules, competitor search, price sources, exceptions, approvals, exports, integrations, audit, settings and help. The seven-stage run workflow remains inside the New run workspace.
 
 Key operational capabilities:
 
 - **Product search** (`#/inventory` and the topbar search, shortcut `/`): deterministic,
-  exact-first ranked search across supplier codes, ServiceM8 item numbers and descriptions,
-  with status filter chips. See `src/core/search.ts`.
+  exact-first search across item number, supplier SKU, Xero and ServiceM8 references, barcode or
+  GTIN, approved aliases and descriptions. Every priced result shows its selected supplier offer,
+  GST bases and product, brand or global markup provenance. Description-only matches never attach
+  a price. See `src/core/search.ts`.
 - **Expansion catalogue** (`#/expansion`): retains the supplier's optional Category column and
   groups valid supplier-only products for future range planning. The page is read-only and does
   not bypass review: a new ServiceM8 item is emitted only after explicit operator approval.
-- **Supplier profiles** (`#/suppliers`): save, apply, export, import (JSON) and delete mapping
-  profiles through the selected platform adapter (IndexedDB for the web demonstration, SQLite for
-  the Windows application).
+- **Products and suppliers** (`#/suppliers`): edit product identity and kind, product and brand
+  markup, supplier identity and dated AUD offers, then explicitly confirm which valid offer is
+  selected for pricing. Missing or ambiguous selections remain blocked.
+- **Saved import layouts** (`#/mapping-profiles`): save and apply supplier-column mappings through
+  the selected platform adapter.
 - **Exceptions** (`#/exceptions`): searchable queue with exclude-with-reason for eligible rows;
   ambiguous and invalid rows stay blocked.
 - **Approvals** (`#/approvals`): per-proposal approve and withdraw actions backed by the same
   reviewed decision state as the Review step.
-- **Integrations** (`#/integrations`): honest adapter status for ServiceM8 (file handoff) and
-  Xero (locked boundary). No live external writes are possible from the application.
+- **Integrations** (`#/integrations`): local run, checkpoint and per-item outcome history plus the
+  enforced provider boundary. Xero exposes a fixed read-only Items reader. ServiceM8 permits only
+  explicitly approved Material fields with idempotency, bounded retry and reconciliation; it never
+  writes quantity, deletes or deactivates. The current UI makes no live provider call, and account,
+  credential and production enablement remain separate approval gates.
 - **Competitor search** (`#/competitors`): optional explicit internet search for a typed-in product
   name, part number, SKU, brand, partial description or barcode - no prior import required. The
   web demonstration calls its Node adapter on the same origin; the desktop adapter calls the Rust
@@ -134,7 +140,7 @@ Key operational capabilities:
   distinct visible states. Manual entry stays
   as the fallback. Attaching a result to a catalogue item stores reference information only: it
   is provably incapable of altering a cost or sell price (asserted byte-for-byte in tests).
-- **Source registry** (`#/sources`): every competitor/supplier source with its access method
+- **Price sources** (`#/sources`): every competitor/supplier source with its access method
   and an enable/disable toggle, including the live provider.
 
 ## Windows desktop application (Tauri)
@@ -203,7 +209,11 @@ Competitor evidence supports local manual records and the optional explicit prov
 described above. The nested Python prototype remains preserved as legacy reference material until
 documented feature-parity criteria are met.
 
-Configuration is represented by a versioned typed registry in `src/core/configRegistry.ts`; locked safety invariants cannot be changed by imported configuration.
+The four adjustable global settings are defined once in `SETTING_DEFINITIONS` in
+`src/core/settings.ts`. The runtime schema, defaults, settings editor and settings reference consume
+those definitions. Product and brand markup overrides are catalogue rules, not global settings;
+their fixed precedence is product, then brand, then global. Locked safety invariants cannot be
+changed by imported configuration.
 
 ## Privacy model
 
@@ -500,17 +510,21 @@ excludable record. A "Fictional demo data" badge is shown while active.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - module layout and workflow diagram
 - [docs/DATA-PRIVACY.md](docs/DATA-PRIVACY.md) - privacy guarantees and verification
+- [docs/ENTERPRISE-GAP-REGISTER.md](docs/ENTERPRISE-GAP-REGISTER.md) - open production and enterprise acceptance gates
 - [docs/FILE-FORMAT-CONTRACT.md](docs/FILE-FORMAT-CONTRACT.md) - input/output contracts and limits
 - [docs/TEST-STRATEGY.md](docs/TEST-STRATEGY.md) - test levels and how to run them
 - [docs/RELEASE-CHECKLIST.md](docs/RELEASE-CHECKLIST.md) - gates before shipping a build
 
 ## Current limitations
 
-- Phase 1 has no ServiceM8 or Xero API integration (deliberate).
+- Xero and ServiceM8 provider ports are bounded and covered by synthetic contract tests, but no
+  live provider execution is enabled or proven in this release. Xero remains read-only and
+  ServiceM8 writes require an exact approved intent set.
 - Legacy `.xls` workbooks are not supported - re-save as `.xlsx`.
 - Selecting a different worksheet re-reads the file from the in-memory copy; browsers may
   invalidate very large `File` handles if the file changes on disk mid-session.
-- GST/tax transformations are intentionally not implemented.
+- GST-aware pricing is implemented with the Australian 10% rate and commercial half-up rounding.
+  Supplier cost basis must be confirmed, and the target price basis is read per ServiceM8 row.
 - Hosted Windows Server 2025 compilation, production-binary WebDriver, the documented former-source
   1.0.0-to-1.1.0 migration smoke and installer lifecycle smoke do not replace the release
   checklist's interactive Windows 10/11 DPI, upgrade, restart, spreadsheet-open or complete visual

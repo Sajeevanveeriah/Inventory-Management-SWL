@@ -33,6 +33,7 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "check:pages": "node scripts/check-pages-build.mjs",
     "check:desktop-boundaries": "node scripts/check-desktop-production-boundaries.mjs",
+    "check:release-workflow": "node scripts/check-windows-release-workflow.mjs",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {

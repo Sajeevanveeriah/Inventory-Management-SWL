@@ -22,6 +22,14 @@ const backup: BackupSummary = {
     profiles: 1,
     aliases: 1,
     settings: 1,
+    brands: 1,
+    suppliers: 1,
+    productSupplierOffers: 2,
+    productOfferSelections: 1,
+    syncRuns: 0,
+    syncCheckpoints: 0,
+    syncItemOutcomes: 0,
+    settingsAudit: 1,
   },
 };
 

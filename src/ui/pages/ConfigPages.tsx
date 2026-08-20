@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { changeImpact, SETTING_REGISTRY } from '../../core/configRegistry';
+import {
+  APPEARANCE_THEME_OPTIONS,
+  GLASS_TINT_OPTIONS,
+  SETTING_DEFINITION_LIST,
+  TAX_HANDLING_OPTIONS,
+  type SettingKey,
+  type Settings,
+} from '../../core/settings';
 import { datePrefix } from '../../core/run';
 import { triggerDownload } from '../../io/download';
 import { usePlatform } from '../../platform/context';
@@ -10,10 +17,24 @@ import type {
   PlatformService,
   RestorePreview,
 } from '../../platform/contracts';
+import { useAppState } from '../../state/store';
 import { useActions } from '../../state/useActions';
 import { Page } from './PageChrome';
 
 const MAX_CONFIGURATION_BYTES = 10 * 1024 * 1024;
+
+function settingValueLabel(key: SettingKey, value: Settings[SettingKey]): string {
+  switch (key) {
+    case 'markupPercent':
+      return `${value}%`;
+    case 'taxHandling':
+      return TAX_HANDLING_OPTIONS[value as Settings['taxHandling']];
+    case 'theme':
+      return APPEARANCE_THEME_OPTIONS[value as Settings['theme']];
+    case 'glassTint':
+      return GLASS_TINT_OPTIONS[value as Settings['glassTint']];
+  }
+}
 
 export function RecoveryPanel({
   platform,
@@ -223,7 +244,7 @@ export function RecoveryPanel({
 export function SettingsPage({ openSettingsDialog }: { openSettingsDialog: () => void }) {
   const platform = usePlatform();
   const actions = useActions();
-  const [query, setQuery] = useState('');
+  const state = useAppState();
   const [draft, setDraft] = useState('');
   const [preview, setPreview] = useState<ConfigurationPreview | null>(null);
   const [migration, setMigration] = useState<ConfigurationMigrationStatus | null>(null);
@@ -245,10 +266,6 @@ export function SettingsPage({ openSettingsDialog }: { openSettingsDialog: () =>
       cancelled = true;
     };
   }, [platform]);
-
-  const settings = SETTING_REGISTRY.filter((setting) =>
-    `${setting.key} ${setting.category}`.toLowerCase().includes(query.toLowerCase()),
-  );
 
   const exportConfiguration = async () => {
     setWorking(true);
@@ -364,170 +381,180 @@ export function SettingsPage({ openSettingsDialog }: { openSettingsDialog: () =>
 
   return (
     <Page
-      title="Configuration"
-      lead="Business rules, backup and recovery, and the stored configuration registry."
+      title="Settings"
+      lead="Change the four settings the application uses. Product and brand markup are managed with their catalogue records."
       primary={
         <button type="button" className="btn btn-primary" onClick={openSettingsDialog}>
-          Edit markup, tax and theme
+          Change settings
         </button>
       }
     >
-      <section className="card" aria-labelledby="configuration-transfer-title">
-        <h2 id="configuration-transfer-title">Configuration transfer</h2>
+      <section className="card" aria-labelledby="active-settings-title">
+        <h2 id="active-settings-title">Settings used by the application</h2>
+        <div className="settings-grid">
+          {SETTING_DEFINITION_LIST.map((definition) => {
+            const key = definition.key as SettingKey;
+            return (
+              <article className="setting-row" key={key}>
+                <strong>{definition.name}</strong>
+                <span>{definition.help}</span>
+                <span>
+                  Current: <strong>{settingValueLabel(key, state.settings[key])}</strong>
+                </span>
+                <span>
+                  Default: {settingValueLabel(key, definition.defaultValue)}
+                  {'unit' in definition
+                    ? `; range ${definition.min}-${definition.max}${definition.unit}`
+                    : ''}
+                </span>
+                <span>
+                  {key === 'markupPercent'
+                    ? 'Used after product and brand overrides'
+                    : 'No inherited value'}
+                </span>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <details className="card advanced-settings">
+        <summary>Advanced - Backup and transfer</summary>
         <p className="hint">
-          The versioned export contains mapping profiles, approved aliases and settings only. It
-          excludes imported business rows, operational prices and provider credentials.
+          Use these tools only to move saved layouts and settings, recover a backup, or reset local
+          application data. Provider credentials and imported business rows are excluded.
         </p>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn"
-            disabled={working}
-            onClick={() => void exportConfiguration()}
-          >
-            Export versioned configuration
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={working}
-            onClick={() => void chooseConfigurationFile()}
-          >
-            Choose configuration JSON
-          </button>
-          {platform.kind === 'web' && (
-            <input
-              ref={importInput}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              aria-label="Choose a versioned configuration JSON file"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void readImportFile(file);
-                event.target.value = '';
-              }}
-            />
+        <section aria-labelledby="configuration-transfer-title">
+          <h2 id="configuration-transfer-title">Backup and transfer</h2>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn"
+              disabled={working}
+              onClick={() => void exportConfiguration()}
+            >
+              Export settings and saved layouts
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={working}
+              onClick={() => void chooseConfigurationFile()}
+            >
+              Choose a previous export
+            </button>
+            {platform.kind === 'web' && (
+              <input
+                ref={importInput}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                aria-label="Choose a previous settings and layouts export"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void readImportFile(file);
+                  event.target.value = '';
+                }}
+              />
+            )}
+            {platform.kind === 'desktop' &&
+              migration?.legacyConfigurationFound &&
+              !migration.alreadyImported && (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={working || !migration.valid}
+                  onClick={() => void previewLegacy()}
+                >
+                  Preview settings from the previous desktop version
+                </button>
+              )}
+          </div>
+          {platform.kind === 'desktop' && migration?.legacyConfigurationFound && (
+            <div className={migration.valid ? 'callout' : 'callout callout-danger'} role="status">
+              <strong>Previous desktop settings found</strong>
+              <p>
+                Found {migration.counts.profiles} saved layout(s), {migration.counts.aliases}{' '}
+                approved alias(es) and {migration.counts.settings} settings record. Invalid:{' '}
+                {migration.invalidCounts.profiles} layouts, {migration.invalidCounts.aliases}{' '}
+                aliases and {migration.invalidCounts.settings} settings record.
+              </p>
+              {migration.alreadyImported && (
+                <p>This exact data was already imported and verified.</p>
+              )}
+              {migration.validationMessages.length > 0 && (
+                <ul>
+                  {migration.validationMessages.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
-          {platform.kind === 'desktop' &&
-            migration?.legacyConfigurationFound &&
-            !migration.alreadyImported && (
-              <button
-                type="button"
-                className="btn"
-                disabled={working || !migration.valid}
-                onClick={() => void previewLegacy()}
-              >
-                Preview legacy WebView configuration
-              </button>
-            )}
-        </div>
-        {platform.kind === 'desktop' && migration?.legacyConfigurationFound && (
-          <div className={migration.valid ? 'callout' : 'callout callout-danger'} role="status">
-            <strong>Legacy WebView migration inspection</strong>
-            <p>
-              Found {migration.counts.profiles} profile record(s), {migration.counts.aliases} alias
-              record(s) and {migration.counts.settings} settings record. Invalid:{' '}
-              {migration.invalidCounts.profiles} profiles, {migration.invalidCounts.aliases} aliases
-              and {migration.invalidCounts.settings} settings record.
-            </p>
-            {migration.alreadyImported && (
-              <p>This exact legacy configuration was already imported and verified.</p>
-            )}
-            {migration.validationMessages.length > 0 && (
-              <ul>
-                {migration.validationMessages.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            )}
+          <label>
+            Previous export contents
+            <textarea
+              className="config-textarea"
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setPreview(null);
+              }}
+              aria-label="Previous settings and layouts export contents"
+              placeholder="Choose an export, or paste its complete contents, then preview it"
+              spellCheck={false}
+            />
+          </label>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={working || draft.trim() === ''}
+              onClick={() => void previewImport()}
+            >
+              Preview changes
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={preview === null || working || !preview.valid}
+              onClick={() => void applyImport()}
+            >
+              Confirm import after backup
+            </button>
           </div>
-        )}
-        <label>
-          Versioned configuration JSON
-          <textarea
-            className="config-textarea"
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setPreview(null);
-            }}
-            aria-label="Versioned configuration JSON"
-            placeholder="Paste a complete SWL configuration export, then preview it"
-            spellCheck={false}
-          />
-        </label>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={working || draft.trim() === ''}
-            onClick={() => void previewImport()}
-          >
-            Preview import
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={preview === null || working || !preview.valid}
-            onClick={() => void applyImport()}
-          >
-            Confirm import after backup
-          </button>
-        </div>
-        {preview !== null && (
-          <div className="callout callout-warn" role="status">
-            <strong>Validated preview, schema {preview.schemaVersion}</strong>
-            <p>
-              Incoming: {preview.counts.profiles} profiles, {preview.counts.aliases} aliases and{' '}
-              {preview.counts.settings} settings record. Conflicts: {preview.conflicts.profiles}{' '}
-              profiles, {preview.conflicts.aliases} aliases and {preview.conflicts.settings}{' '}
-              settings record. Applying requires this separate confirmation and creates a verified
-              backup first.
+          {preview !== null && (
+            <div className="callout callout-warn" role="status">
+              <strong>Validated preview</strong>
+              <p>
+                Incoming: {preview.counts.profiles} saved layouts, {preview.counts.aliases} aliases
+                and {preview.counts.settings} settings record. Conflicts:{' '}
+                {preview.conflicts.profiles} layouts, {preview.conflicts.aliases} aliases and{' '}
+                {preview.conflicts.settings} settings record. Applying requires this separate
+                confirmation and creates a verified backup first.
+              </p>
+              {preview.validationMessages.length > 0 && (
+                <ul>
+                  {preview.validationMessages.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {message !== '' && (
+            <p className={preview?.valid ? 'hint' : 'form-error'} role="status">
+              {message}
             </p>
-            {preview.validationMessages.length > 0 && (
-              <ul>
-                {preview.validationMessages.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-        {message !== '' && (
-          <p className={preview?.valid ? 'hint' : 'form-error'} role="status">
-            {message}
-          </p>
-        )}
-      </section>
+          )}
+        </section>
 
-      <RecoveryPanel
-        platform={platform}
-        announce={actions.announce}
-        afterRestore={actions.reloadAfterRestore}
-      />
-
-      <section className="card">
-        <h2>Configuration registry</h2>
-        <label>
-          Search settings
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
-        </label>
-        <p className="hint">{changeImpact('pricing.markupPercent', 30)}</p>
-      </section>
-      <div className="settings-grid">
-        {settings.map((setting) => (
-          <article className="setting-row" key={setting.key}>
-            <strong>{setting.key}</strong>
-            <span>{setting.category}</span>
-            <span>
-              {String(setting.defaultValue)}
-              {'unit' in setting ? setting.unit : ''}
-            </span>
-            <span>{setting.locked ? 'Locked invariant' : 'Adjustable'}</span>
-          </article>
-        ))}
-      </div>
+        <RecoveryPanel
+          platform={platform}
+          announce={actions.announce}
+          afterRestore={actions.reloadAfterRestore}
+        />
+      </details>
     </Page>
   );
 }

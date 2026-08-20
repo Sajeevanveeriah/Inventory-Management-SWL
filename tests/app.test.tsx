@@ -4,17 +4,39 @@ import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import App from '../src/App';
 import { centsToAud } from '../src/core/liveSearch';
-import { DEFAULT_SETTINGS, type Settings } from '../src/core/settings';
+import { DEFAULT_SETTINGS, SETTING_DEFINITION_LIST, type Settings } from '../src/core/settings';
 import { defaultSources } from '../src/core/sources';
 import { PlatformProvider } from '../src/platform/context';
-import type { PlatformResult, PlatformService } from '../src/platform/contracts';
+import type { CatalogueItem, PlatformResult, PlatformService } from '../src/platform/contracts';
 import { platformFail, platformOk } from '../src/platform/contracts';
 import { createWebPlatformService } from '../src/platform/web';
 import { AppStateProvider } from '../src/state/store';
 
+function catalogueItem(overrides: Partial<CatalogueItem> = {}): CatalogueItem {
+  return {
+    id: 'LW4570',
+    itemNumber: 'LW4570',
+    description: 'Synthetic Lockwood deadlatch',
+    itemKind: 'physical-product',
+    brandId: null,
+    markupOverridePercent: null,
+    xeroReference: 'XERO-LW4570',
+    servicem8Reference: 'LW4570',
+    barcodeGtin: null,
+    selectedOfferId: 'offer-LW4570',
+    costCents: 10_000,
+    sellPriceCents: 13_000,
+    gstBasis: 'inc-gst',
+    sellPriceGstBasis: 'inc-gst',
+    updatedAt: '2026-08-09T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 function publicationService(
   succeeds: boolean,
   observe?: (changes: Parameters<PlatformService['catalogue']['publishApproved']>[0]) => void,
+  initialSettings: Settings = DEFAULT_SETTINGS,
 ): PlatformService {
   const service = createWebPlatformService();
   return {
@@ -22,7 +44,7 @@ function publicationService(
     settings: {
       ...service.settings,
       async load() {
-        return platformOk(DEFAULT_SETTINGS);
+        return platformOk(initialSettings);
       },
       async save(settings) {
         return platformOk(settings);
@@ -61,6 +83,9 @@ function publicationService(
     },
     catalogue: {
       ...service.catalogue,
+      async list() {
+        return platformOk([]);
+      },
       async publishApproved(changes) {
         observe?.(changes);
         if (!succeeds) {
@@ -85,6 +110,24 @@ function publicationService(
               costCents: change.item.costCents,
               sellPriceCents: change.item.sellPriceCents,
               approvalId: `approval-${index}`,
+              selectedOfferId: change.pricingProvenance.selectedOfferId,
+              supplierId: change.pricingProvenance.supplierId,
+              supplierName: change.pricingProvenance.supplierName,
+              supplierSku: change.pricingProvenance.supplierSku,
+              costGstBasis: change.pricingProvenance.costGstBasis,
+              sellPriceGstBasis: change.pricingProvenance.sellPriceGstBasis,
+              currency: change.pricingProvenance.currency,
+              costBasisCents: change.item.costCents,
+              markupSourceType: change.pricingProvenance.markupSource,
+              markupSourceId: change.pricingProvenance.markupSourceId,
+              appliedMarkupHundredths: Math.round(
+                Number(change.pricingProvenance.markupPercent) * 100,
+              ),
+              brandId: change.pricingProvenance.brandId,
+              itemKind: change.pricingProvenance.itemKind,
+              pricingExplanation: change.pricingProvenance.explanation,
+              ruleVersion: change.pricingProvenance.ruleVersion,
+              provenanceState: 'resolved' as const,
               recordedAt: '2026-08-09T00:00:00.000Z',
             },
           })),
@@ -259,17 +302,33 @@ describe('application workflow (jsdom integration)', () => {
               profiles: 1,
               aliases: 0,
               settings: 1,
+              brands: 0,
+              suppliers: 0,
+              productSupplierOffers: 0,
+              productOfferSelections: 0,
+              syncRuns: 0,
+              syncCheckpoints: 0,
+              syncItemOutcomes: 0,
+              settingsAudit: 0,
             },
           });
         },
       },
     };
-    window.location.hash = '#/suppliers';
+    window.location.hash = '#/mapping-profiles';
     await renderApp(service);
 
     await screen.findByRole('cell', { name: /synthetic desktop profile/i });
     expect(screen.queryByRole('button', { name: /export json/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/configuration transfer/i)).toBeInTheDocument();
+
+    window.location.hash = '#/settings';
+    window.dispatchEvent(new Event('hashchange'));
+    await screen.findByRole('heading', { name: 'Settings', level: 1 });
+    await user.click(screen.getByText(/advanced - backup and transfer/i));
+    expect(screen.getByRole('heading', { name: /backup and transfer/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /export settings and saved layouts/i }),
+    ).toBeInTheDocument();
 
     window.location.hash = '#/runs';
     window.dispatchEvent(new Event('hashchange'));
@@ -321,7 +380,7 @@ describe('application workflow (jsdom integration)', () => {
 
     window.location.hash = '#/sources';
     window.dispatchEvent(new Event('hashchange'));
-    await screen.findByRole('heading', { name: 'Source registry', level: 1 });
+    await screen.findByRole('heading', { name: 'Price sources', level: 1 });
     expect(screen.getByText(/performs no live provider retrieval/i)).toBeInTheDocument();
     expect(screen.getByText(/bulk evidence-file import is not available/i)).toBeInTheDocument();
 
@@ -376,12 +435,30 @@ describe('application workflow (jsdom integration)', () => {
     await user.click(screen.getByRole('button', { name: /review proposed changes/i }));
     await user.click(screen.getByRole('button', { name: /^Price changed \(\d+\)$/ }));
     await user.click(screen.getAllByRole('button', { name: /^Approve$/ })[0]!);
-    expect(published[0]?.item.gstBasis).toBe('unknown');
+    expect(published).toEqual([]);
+    expect(
+      await screen.findAllByText(/one or more selected records are blocked or already recorded/i),
+    ).not.toHaveLength(0);
   }, 30_000);
+
+  it('renders every authoritative setting definition in the settings editor', async () => {
+    const user = userEvent.setup();
+    await renderApp(publicationService(true));
+    await user.click(screen.getByRole('button', { name: /^open settings$/i }));
+
+    for (const definition of SETTING_DEFINITION_LIST) {
+      expect(screen.getAllByText(new RegExp(definition.name, 'i')).length).toBeGreaterThan(0);
+    }
+  });
 
   it('walks the synthetic demo from start to the review workspace', async () => {
     const user = userEvent.setup();
-    await renderApp(publicationService(true));
+    await renderApp(
+      publicationService(true, undefined, {
+        ...DEFAULT_SETTINGS,
+        taxHandling: 'prices-ex-gst',
+      }),
+    );
 
     // Start screen: the rail carries the Stan Wootton Locksmiths lock-up.
     expect(screen.getByText('Stan Wootton')).toBeInTheDocument();
@@ -434,7 +511,7 @@ describe('application workflow (jsdom integration)', () => {
 
     // A published approval is durable and never becomes a session-only undo.
     await user.click(approveButtons[0]!);
-    expect(screen.getAllByText('Approved').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText('Approved').length).toBeGreaterThan(0));
     expect(screen.getByRole('button', { name: /^Undo$/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /^Redo$/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /clear exclusion/i })).toBeDisabled();
@@ -446,7 +523,13 @@ describe('application workflow (jsdom integration)', () => {
 
   it('does not apply a web approval when atomic publication fails', async () => {
     const user = userEvent.setup();
-    await renderApp(publicationService(false));
+    let attempted: Parameters<PlatformService['catalogue']['publishApproved']>[0] = [];
+    await renderApp(
+      publicationService(false, (changes) => (attempted = changes), {
+        ...DEFAULT_SETTINGS,
+        taxHandling: 'prices-ex-gst',
+      }),
+    );
     await user.click(screen.getByRole('button', { name: /load synthetic demonstration/i }));
     await screen.findByText('DEMO-fictionville-supplier-price-list.csv');
     await user.click(screen.getByRole('button', { name: /continue to column mapping/i }));
@@ -462,6 +545,7 @@ describe('application workflow (jsdom integration)', () => {
     await user.click(screen.getByRole('button', { name: /^Price changed \(\d+\)$/ }));
     await user.click(screen.getAllByRole('button', { name: /^Approve$/ })[0]!);
 
+    await waitFor(() => expect(attempted).toHaveLength(1));
     expect(
       await screen.findAllByText(/approval was not recorded: synthetic publication failed/i),
     ).not.toHaveLength(0);
@@ -545,17 +629,7 @@ describe('application workflow (jsdom integration)', () => {
       catalogue: {
         ...base.catalogue,
         async list() {
-          return platformOk([
-            {
-              id: 'LW4570',
-              itemNumber: 'LW4570',
-              description: 'Synthetic Lockwood deadlatch',
-              costCents: 10_000,
-              sellPriceCents: 13_000,
-              gstBasis: 'inc-gst',
-              updatedAt: '2026-08-09T00:00:00.000Z',
-            },
-          ]);
+          return platformOk([catalogueItem()]);
         },
       },
       references: {
@@ -574,6 +648,10 @@ describe('application workflow (jsdom integration)', () => {
     await renderApp(service);
 
     await user.click(screen.getByRole('button', { name: /^Competitor search$/ }));
+    await user.type(screen.getByRole('textbox', { name: /catalogue item/i }), 'LW4570');
+    expect(
+      await screen.findByText(/reference attachment available for LW4570/i),
+    ).toBeInTheDocument();
     await user.type(screen.getByRole('textbox', { name: /sku or product/i }), 'LW4570');
     await user.type(screen.getByRole('textbox', { name: /observed price/i }), '95.00');
     await user.type(screen.getByRole('textbox', { name: /observed shipping/i }), '0');

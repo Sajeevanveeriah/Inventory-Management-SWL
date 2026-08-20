@@ -3,7 +3,7 @@ import type { BaseStatus } from './statuses';
 import { amountDelta, amountEquals } from './money';
 import {
   basisFromIncludesTaxes,
-  derivePrice,
+  resolvePricingDecision,
   type PriceBasis,
   type PricingResult,
 } from './pricing';
@@ -16,6 +16,9 @@ import {
   type PreparedDescription,
 } from './similarity';
 import type { TaxConvention } from './conventions';
+import type { ItemKind } from './catalogue';
+import { resolveSupplierOffer, type OfferSelectionMethod, type SupplierOffer } from './offers';
+import type { MarkupSource } from './pricingRules';
 
 /**
  * Deterministic, safety-first comparison engine.
@@ -69,6 +72,8 @@ export interface ComparisonRow {
   targetBasis: PriceBasis | null;
   /** Full derivation of the proposed price, for display and audit. */
   pricing: PricingResult | null;
+  /** Exact supplier offer and markup facts used for this proposed price. */
+  pricingProvenance: ComparisonPricingProvenance | null;
   /** Signed cost movement (supplier cost ex GST − existing purchase cost). */
   costDelta: string | null;
   /** Signed price movement (proposed price − existing ServiceM8 price). */
@@ -77,6 +82,46 @@ export interface ComparisonRow {
   duplicateSourceRows: number[];
   messages: RowMessage[];
   suggestions: MatchSuggestion[];
+}
+
+export interface ComparisonPricingProvenance {
+  productId: string;
+  itemKind: ItemKind;
+  brandId: string | null;
+  brandName: string | null;
+  xeroReference: string | null;
+  servicem8Reference: string | null;
+  barcodeGtin: string | null;
+  offerId: string;
+  supplierId: string;
+  supplierName: string;
+  supplierSku: string;
+  currency: 'AUD';
+  costAmount: string;
+  costBasis: PriceBasis;
+  observedAt: string;
+  selectionMethod: OfferSelectionMethod;
+  markupPercent: string;
+  markupSource: MarkupSource;
+  markupSourceId: string | null;
+  markupExplanation: string;
+  offerExplanation: string;
+  ruleVersion: 'pricing-rule-v1';
+}
+
+export interface CataloguePricingContext {
+  productId: string;
+  itemKind: ItemKind;
+  brandId: string | null;
+  brandName: string | null;
+  brandMarkupPercent: string | null;
+  productMarkupPercent: string | null;
+  xeroReference: string | null;
+  servicem8Reference: string | null;
+  barcodeGtin: string | null;
+  offers: readonly SupplierOffer[];
+  selectedOfferId: string | null;
+  supplierNames: ReadonlyMap<string, string>;
 }
 
 export interface ComparisonTotals {
@@ -124,6 +169,9 @@ export interface ComparisonOptions {
   /** Tax convention applied to items that do not yet exist in ServiceM8. */
   newItemConvention: TaxConvention;
   gstRatePercent?: string;
+  cataloguePricingByIdentifier?: ReadonlyMap<string, CataloguePricingContext>;
+  catalogueIdentifierConflicts?: ReadonlySet<string>;
+  asOf?: string;
 }
 
 export function runComparison(
@@ -132,8 +180,15 @@ export function runComparison(
   aliases: AliasMap,
   options: ComparisonOptions,
 ): ComparisonResult {
-  const { markupPercent, costBasis, costBasisConfirmed, newItemConvention, gstRatePercent } =
-    options;
+  const {
+    markupPercent,
+    costBasis,
+    costBasisConfirmed,
+    newItemConvention,
+    gstRatePercent,
+    cataloguePricingByIdentifier,
+    catalogueIdentifierConflicts,
+  } = options;
   const newItemBasis: PriceBasis = newItemConvention.includesTaxes
     ? 'including-gst'
     : 'excluding-gst';
@@ -141,14 +196,108 @@ export function runComparison(
   let duplicateCount = 0;
   let collapsedCount = 0;
 
-  const priceFor = (cost: string, targetBasis: PriceBasis): PricingResult =>
-    derivePrice({
-      costAmount: cost,
-      costBasis,
-      markupPercent,
+  const priceFor = (
+    supplier: SupplierRecord,
+    target: S8Record | null,
+    targetBasis: PriceBasis,
+  ):
+    | { ok: true; pricing: PricingResult; provenance: ComparisonPricingProvenance }
+    | { ok: false; explanation: string } => {
+    if (
+      catalogueIdentifierConflicts?.has(supplier.codeNorm) ||
+      (target && catalogueIdentifierConflicts?.has(target.itemNumberNorm))
+    ) {
+      return {
+        ok: false,
+        explanation:
+          'This identifier belongs to more than one catalogue product. Choose the product explicitly before pricing.',
+      };
+    }
+    const context =
+      (target ? cataloguePricingByIdentifier?.get(target.itemNumberNorm) : undefined) ??
+      cataloguePricingByIdentifier?.get(supplier.codeNorm);
+    let offer: SupplierOffer;
+    let selectionMethod: OfferSelectionMethod;
+    let offerExplanation: string;
+    if (context) {
+      const selection = resolveSupplierOffer({
+        productId: context.productId,
+        offers: context.offers,
+        selectedOfferId: context.selectedOfferId,
+        asOf: options.asOf ?? '1970-01-01T00:00:00.000Z',
+      });
+      if (!selection.ok) return { ok: false, explanation: selection.explanation };
+      offer = selection.offer;
+      selectionMethod = selection.method;
+      offerExplanation = selection.explanation;
+    } else {
+      offer = {
+        id: `supplier-file:${supplier.codeNorm}:${supplier.rowIndex}`,
+        productId: target ? `servicem8:${target.itemNumberNorm}` : `supplier:${supplier.codeNorm}`,
+        supplierId: 'current-supplier-file',
+        supplierSku: supplier.code,
+        costAmount: supplier.cost as string,
+        costBasis,
+        currency: 'AUD',
+        active: true,
+        preferred: true,
+        observedAt: options.asOf ?? '1970-01-01T00:00:00.000Z',
+        provenance: {
+          sourceSystem: 'supplier-file',
+          sourceRecordId: String(supplier.sourceRow),
+          evidenceKind: 'supplier-import',
+          observedAt: options.asOf ?? '1970-01-01T00:00:00.000Z',
+          description: 'Current reviewed supplier file row',
+        },
+      };
+      selectionMethod = 'sole-valid';
+      offerExplanation = 'The current supplier file provides the sole reviewed offer';
+    }
+    const decision = resolvePricingDecision({
+      costAmount: offer.costAmount,
+      costBasis: offer.costBasis,
       targetBasis,
+      globalMarkupPercent: markupPercent,
+      brandMarkupPercent: context?.brandMarkupPercent,
+      productMarkupPercent: context?.productMarkupPercent,
       ...(gstRatePercent === undefined ? {} : { gstRatePercent }),
     });
+    const { markup, pricing } = decision;
+    if (pricing.floor?.blocked) return { ok: false, explanation: pricing.floor.explanation };
+    return {
+      ok: true,
+      pricing,
+      provenance: {
+        productId: context?.productId ?? offer.productId,
+        itemKind: context?.itemKind ?? 'physical-product',
+        brandId: context?.brandId ?? null,
+        brandName: context?.brandName ?? null,
+        xeroReference: context?.xeroReference ?? null,
+        servicem8Reference: context?.servicem8Reference ?? target?.itemNumber ?? null,
+        barcodeGtin: context?.barcodeGtin ?? supplier.barcode ?? null,
+        offerId: offer.id,
+        supplierId: offer.supplierId,
+        supplierName: context?.supplierNames.get(offer.supplierId) ?? 'Current supplier file',
+        supplierSku: offer.supplierSku,
+        currency: offer.currency,
+        costAmount: offer.costAmount,
+        costBasis: offer.costBasis,
+        observedAt: offer.observedAt,
+        selectionMethod,
+        markupPercent: markup.markupPercent,
+        markupSource: markup.level,
+        markupSourceId:
+          markup.level === 'product'
+            ? (context?.productId ?? offer.productId)
+            : markup.level === 'brand'
+              ? (context?.brandId ?? null)
+              : null,
+        markupExplanation: markup.explanation,
+        offerExplanation,
+        ruleVersion: 'pricing-rule-v1',
+      },
+    };
+  };
 
   // --- supplier-side grouping ----------------------------------------------
   // Group by code so a code that appears many times produces one proposal.
@@ -357,10 +506,25 @@ export function runComparison(
         continue;
       }
 
-      const cost = sup.cost as string;
       const existingSell = s8.existingSell as string;
       const targetBasis = basisFromIncludesTaxes(s8.includesTaxes);
-      const pricing = priceFor(cost, targetBasis);
+      const resolvedPricing = priceFor(sup, s8, targetBasis);
+      if (!resolvedPricing.ok) {
+        messages.push({ severity: 'error', message: resolvedPricing.explanation });
+        rows.push(
+          blankRow({
+            id: `sup:${sup.codeNorm}`,
+            status: 'ambiguous',
+            matchMethod: method,
+            supplier: sup,
+            s8,
+            messages,
+            duplicateSourceRows,
+          }),
+        );
+        continue;
+      }
+      const { pricing, provenance } = resolvedPricing;
       const costDelta =
         s8.existingCost !== null ? amountDelta(s8.existingCost, pricing.costExGst) : null;
       const priceDelta = amountDelta(existingSell, pricing.price);
@@ -383,6 +547,7 @@ export function runComparison(
         proposedSell: pricing.price,
         targetBasis,
         pricing,
+        pricingProvenance: provenance,
         costDelta,
         priceDelta,
         duplicateSourceRows,
@@ -430,7 +595,22 @@ export function runComparison(
       continue;
     }
 
-    const pricing = priceFor(sup.cost as string, newItemBasis);
+    const resolvedPricing = priceFor(sup, null, newItemBasis);
+    if (!resolvedPricing.ok) {
+      messages.push({ severity: 'error', message: resolvedPricing.explanation });
+      rows.push(
+        blankRow({
+          id: `sup:${sup.codeNorm}`,
+          status: 'ambiguous',
+          supplier: sup,
+          messages,
+          suggestions: top,
+          duplicateSourceRows,
+        }),
+      );
+      continue;
+    }
+    const { pricing, provenance } = resolvedPricing;
     messages.push({
       severity: 'info',
       message:
@@ -445,6 +625,7 @@ export function runComparison(
       proposedSell: pricing.price,
       targetBasis: newItemBasis,
       pricing,
+      pricingProvenance: provenance,
       costDelta: null,
       priceDelta: null,
       duplicateSourceRows,
@@ -536,6 +717,7 @@ function blankRow(input: BlankRowInput): ComparisonRow {
     proposedSell: null,
     targetBasis: null,
     pricing: null,
+    pricingProvenance: null,
     costDelta: null,
     priceDelta: null,
     duplicateSourceRows: input.duplicateSourceRows ?? [],

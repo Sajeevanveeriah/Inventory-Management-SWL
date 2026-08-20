@@ -98,12 +98,13 @@ export function useActions() {
         announce('Comparison is blocked until stored configuration is loaded and verified.');
         return;
       }
-      const comparison = computeComparison(current);
+      const startedAt = new Date().toISOString();
+      const comparison = computeComparison(current, startedAt);
       if (comparison === null) return;
       dispatch({
         type: 'comparison-run',
         comparison,
-        startedAt: new Date().toISOString(),
+        startedAt,
       });
       dispatch({ type: 'go-to-step', step: goTo });
       announce(
@@ -248,14 +249,18 @@ export function useActions() {
           (row.status === 'new-item' || row.status === 'price-changed') &&
           row.supplier?.cost != null &&
           row.proposedSell !== null &&
+          row.pricing !== null &&
+          row.pricingProvenance !== null &&
+          row.pricing.floor?.blocked !== true &&
           state.review.committedApprovals[row.id] !== true,
       );
-      if (rows.length !== uniqueRowIds.length) {
+      if (rows.length !== uniqueRowIds.length || state.comparison?.costBasisConfirmed !== true) {
         announce('One or more selected records are blocked or already recorded.');
         return false;
       }
       const guards = rows.map(
-        (row) => `${row.id}\u0000${row.supplier?.cost ?? ''}\u0000${row.proposedSell ?? ''}`,
+        (row) =>
+          `${row.id}\u0000${row.pricingProvenance?.offerId ?? ''}\u0000${row.pricingProvenance?.markupSource ?? ''}\u0000${row.pricingProvenance?.markupPercent ?? ''}\u0000${row.proposedSell ?? ''}`,
       );
       if (guards.some((guard) => approvalGuards.current.has(guard))) {
         announce('This approval is already being recorded or has already been recorded.');
@@ -263,27 +268,50 @@ export function useActions() {
       }
       for (const guard of guards) approvalGuards.current.set(guard, 'pending');
       const changes = rows.map((row) => {
+        const provenance = row.pricingProvenance!;
+        const pricing = row.pricing!;
+        const existing = state.catalogueItems.find((item) => item.id === provenance.productId);
         const gstBasis =
-          state.settings.taxHandling === 'prices-inc-gst'
-            ? ('inc-gst' as const)
-            : state.settings.taxHandling === 'prices-ex-gst'
-              ? ('ex-gst' as const)
-              : ('unknown' as const);
+          provenance.costBasis === 'including-gst' ? ('inc-gst' as const) : ('ex-gst' as const);
+        const sellPriceGstBasis =
+          row.targetBasis === 'including-gst' ? ('inc-gst' as const) : ('ex-gst' as const);
         const item = {
-          id: row.s8?.itemNumber || row.supplier?.code || row.id,
+          id: provenance.productId,
           itemNumber: row.s8?.itemNumber || row.supplier?.code || row.id,
           description: row.supplier?.description || row.s8?.description || '',
-          costCents: Number(new Big(row.supplier?.cost as string).times(100).toFixed(0)),
+          itemKind: provenance.itemKind,
+          brandId: provenance.brandId,
+          markupOverridePercent: existing?.markupOverridePercent ?? null,
+          xeroReference: provenance.xeroReference,
+          servicem8Reference: provenance.servicem8Reference,
+          barcodeGtin: provenance.barcodeGtin,
+          selectedOfferId: provenance.offerId,
+          costCents: Number(new Big(provenance.costAmount).times(100).toFixed(0)),
           sellPriceCents: Number(new Big(row.proposedSell as string).times(100).toFixed(0)),
-          // Record the operator's explicit GST selection without inferring or
-          // transforming any source value.
           gstBasis,
+          sellPriceGstBasis,
           updatedAt: new Date().toISOString(),
         };
         return {
           item,
           approvedBy: 'Local operator',
           reason: `Explicit operator approval of ${row.status}`,
+          pricingProvenance: {
+            selectedOfferId: provenance.offerId,
+            supplierId: provenance.supplierId,
+            supplierName: provenance.supplierName,
+            supplierSku: provenance.supplierSku,
+            costGstBasis: gstBasis,
+            currency: provenance.currency,
+            markupPercent: provenance.markupPercent,
+            markupSource: provenance.markupSource,
+            markupSourceId: provenance.markupSourceId,
+            brandId: provenance.brandId,
+            itemKind: provenance.itemKind,
+            sellPriceGstBasis,
+            explanation: `${provenance.offerExplanation}; ${provenance.markupExplanation}; ${pricing.explanation}`,
+            ruleVersion: provenance.ruleVersion,
+          },
         };
       });
       let published: Awaited<ReturnType<typeof platform.catalogue.publishApproved>>;
@@ -301,6 +329,10 @@ export function useActions() {
       }
       for (const guard of guards) approvalGuards.current.set(guard, 'committed');
       dispatch({ type: 'approve', rowIds: uniqueRowIds });
+      dispatch({
+        type: 'catalogue-items-published',
+        items: published.value.map((record) => record.item),
+      });
       announce(`Approved and recorded ${rowIds.length} record${rowIds.length === 1 ? '' : 's'}.`);
       return true;
     };

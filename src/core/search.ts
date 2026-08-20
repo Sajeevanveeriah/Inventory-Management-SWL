@@ -2,6 +2,9 @@ import type { ComparisonRow } from './compare';
 import type { BaseStatus } from './statuses';
 import { normalizeDescription, normalizeIdentifier } from './normalize';
 import { descriptionSimilarity } from './similarity';
+import type { ItemKind, ProductSearchDocument } from './catalogue';
+import type { MarkupSource } from './pricingRules';
+import type { PriceBasis } from './pricing';
 
 /**
  * Deterministic product search across the loaded supplier and ServiceM8 data.
@@ -110,4 +113,146 @@ export function searchRows(
 
 function keyOf(row: ComparisonRow): string {
   return row.supplier?.code ?? row.s8?.itemNumber ?? row.id;
+}
+
+export type CataloguePriceResolution =
+  | {
+      kind: 'resolved';
+      offerId: string;
+      supplierId: string;
+      supplierName: string;
+      supplierSku: string;
+      purchaseCost: string;
+      costBasis: PriceBasis;
+      currency: 'AUD';
+      observedAt: string;
+      markupPercent: string;
+      markupSource: MarkupSource;
+      sellPrice: string;
+      sellPriceBasis: PriceBasis;
+      explanation: string;
+    }
+  | {
+      kind: 'ambiguous' | 'unavailable';
+      explanation: string;
+      candidateOfferIds: readonly string[];
+    }
+  | {
+      kind: 'identity-only';
+      explanation: string;
+    };
+
+export interface CatalogueSearchRecord {
+  document: ProductSearchDocument;
+  price: CataloguePriceResolution;
+}
+
+export type CatalogueMatchMethod =
+  | 'xero-item-code'
+  | 'servicem8-item-number'
+  | 'supplier-sku'
+  | 'approved-alias'
+  | 'barcode-gtin'
+  | 'brand'
+  | 'description'
+  | 'none';
+
+export interface CatalogueSearchHit {
+  document: ProductSearchDocument;
+  price: CataloguePriceResolution;
+  score: number;
+  matchedOn: CatalogueMatchMethod;
+}
+
+function bestCatalogueIdentifier(
+  document: ProductSearchDocument,
+  queryNorm: string,
+): { score: number; matchedOn: CatalogueMatchMethod } {
+  const candidates: Array<{ score: number; matchedOn: CatalogueMatchMethod }> = [
+    {
+      score: scoreIdentifier(document.xeroItemCode ?? undefined, queryNorm) + 30,
+      matchedOn: 'xero-item-code' as const,
+    },
+    {
+      score: scoreIdentifier(document.servicem8ItemNumber ?? undefined, queryNorm) + 25,
+      matchedOn: 'servicem8-item-number' as const,
+    },
+    ...document.supplierSkus.map((value) => ({
+      score: scoreIdentifier(value, queryNorm) + 20,
+      matchedOn: 'supplier-sku' as const,
+    })),
+    ...document.approvedAliases.map((value) => ({
+      score: scoreIdentifier(value, queryNorm) + 15,
+      matchedOn: 'approved-alias' as const,
+    })),
+    {
+      score: scoreIdentifier(document.barcodeGtin ?? undefined, queryNorm) + 10,
+      matchedOn: 'barcode-gtin' as const,
+    },
+  ].filter((candidate) => candidate.score > 30);
+  return (
+    candidates.sort((left, right) => right.score - left.score)[0] ?? {
+      score: 0,
+      matchedOn: 'none',
+    }
+  );
+}
+
+/**
+ * Search canonical product identities while keeping price resolution separate.
+ * Description similarity can return an identity candidate, but that hit is
+ * deliberately downgraded to identity-only and never carries a price.
+ */
+export function searchCatalogue(
+  records: readonly CatalogueSearchRecord[],
+  query: string,
+  kinds?: ReadonlySet<ItemKind>,
+): CatalogueSearchHit[] {
+  const trimmed = query.trim();
+  const queryNorm = normalizeIdentifier(trimmed);
+  const queryTokens = normalizeDescription(trimmed).split(' ').filter(Boolean);
+  const hits: CatalogueSearchHit[] = [];
+  for (const record of records) {
+    if (kinds && kinds.size > 0 && !kinds.has(record.document.kind)) continue;
+    if (trimmed === '') {
+      hits.push({ ...record, score: 0, matchedOn: 'none' });
+      continue;
+    }
+    const identifier = bestCatalogueIdentifier(record.document, queryNorm);
+    let score = identifier.score;
+    let matchedOn = identifier.matchedOn;
+    if (score === 0 && record.document.brandName) {
+      const brand = normalizeDescription(record.document.brandName);
+      const queryDescription = normalizeDescription(trimmed);
+      if (brand === queryDescription || brand.includes(queryDescription)) {
+        score = brand === queryDescription ? 70 : 65;
+        matchedOn = 'brand';
+      }
+    }
+    if (score === 0) {
+      const descriptionScore = scoreDescription(record.document.description, trimmed, queryTokens);
+      if (descriptionScore > 0) {
+        score = descriptionScore;
+        matchedOn = 'description';
+      }
+    }
+    if (score === 0) continue;
+    hits.push({
+      document: record.document,
+      score,
+      matchedOn,
+      price:
+        matchedOn === 'description'
+          ? {
+              kind: 'identity-only',
+              explanation:
+                'Description similarity found this product identity only. Choose or verify the product identifier before any price is attached.',
+            }
+          : record.price,
+    });
+  }
+  return hits.sort(
+    (left, right) =>
+      right.score - left.score || left.document.productId.localeCompare(right.document.productId),
+  );
 }

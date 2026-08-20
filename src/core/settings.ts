@@ -39,27 +39,86 @@ export const GLASS_TINT_OPTIONS = {
 } as const;
 export type GlassTint = keyof typeof GLASS_TINT_OPTIONS;
 
-export const SettingsSchema = z
-  .object({
-    markupPercent: z
+/**
+ * One authoritative definition for every adjustable global setting.
+ *
+ * Runtime validation, defaults and the settings UI all consume this object.
+ * Product and brand markup overrides intentionally do not appear here: they
+ * are typed catalogue rules with the fixed product > brand > global order.
+ */
+export const SETTING_DEFINITIONS = {
+  markupPercent: {
+    key: 'markupPercent',
+    name: 'Global markup',
+    help: 'Used only when a product and its brand do not have their own markup.',
+    group: 'Pricing',
+    control: 'decimal',
+    unit: '%',
+    min: 30,
+    max: 999.99,
+    step: 0.01,
+    defaultValue: '30',
+    consequential: true,
+    schema: z
       .string()
       .regex(/^\d{1,3}(\.\d{1,2})?$/, 'Markup must be a number between 30 and 999.99')
       .refine((value) => Number(value) >= 30, 'Markup must not be below the 30% minimum'),
-    taxHandling: z.enum(['not-configured', 'prices-ex-gst', 'prices-inc-gst']),
-    theme: z.enum(['system', 'light', 'dark']),
-    // Added as a defaulted field so valid settings saved by earlier versions
-    // migrate without weakening strict validation for unknown fields.
-    glassTint: z.enum(['clear', 'tinted']).default('clear'),
+  },
+  taxHandling: {
+    key: 'taxHandling',
+    name: 'Supplier cost GST basis',
+    help: 'States whether supplier purchase costs include GST before markup is applied.',
+    group: 'Pricing',
+    control: 'select',
+    options: TAX_HANDLING_OPTIONS,
+    defaultValue: 'not-configured',
+    consequential: true,
+    schema: z.enum(['not-configured', 'prices-ex-gst', 'prices-inc-gst']),
+  },
+  theme: {
+    key: 'theme',
+    name: 'Theme',
+    help: 'System follows the current Windows light or dark appearance.',
+    group: 'Appearance',
+    control: 'select',
+    options: APPEARANCE_THEME_OPTIONS,
+    defaultValue: 'system',
+    consequential: false,
+    schema: z.enum(['system', 'light', 'dark']),
+  },
+  glassTint: {
+    key: 'glassTint',
+    name: 'Glass finish',
+    help: 'Changes the interface material only and never changes status colours or prices.',
+    group: 'Appearance',
+    control: 'select',
+    options: GLASS_TINT_OPTIONS,
+    defaultValue: 'clear',
+    consequential: false,
+    // Defaulting this one field migrates valid settings saved before the
+    // appearance finish was introduced while strict mode still rejects drift.
+    schema: z.enum(['clear', 'tinted']).default('clear'),
+  },
+} as const;
+
+export type SettingKey = keyof typeof SETTING_DEFINITIONS;
+export const SETTING_DEFINITION_LIST = Object.values(SETTING_DEFINITIONS);
+
+export const SettingsSchema = z
+  .object({
+    markupPercent: SETTING_DEFINITIONS.markupPercent.schema,
+    taxHandling: SETTING_DEFINITIONS.taxHandling.schema,
+    theme: SETTING_DEFINITIONS.theme.schema,
+    glassTint: SETTING_DEFINITIONS.glassTint.schema,
   })
   .strict();
 export type Settings = z.infer<typeof SettingsSchema>;
 
-export const DEFAULT_SETTINGS: Settings = {
-  markupPercent: '30',
-  taxHandling: 'not-configured',
-  theme: 'system',
-  glassTint: 'clear',
-};
+export const DEFAULT_SETTINGS: Settings = SettingsSchema.parse(
+  Object.fromEntries(
+    SETTING_DEFINITION_LIST.map((definition) => [definition.key, definition.defaultValue]),
+  ),
+);
 
 export interface SettingsChangeLogEntry {
   at: string;

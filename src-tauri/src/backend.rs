@@ -22,7 +22,7 @@ const APPLICATION_ID: &str = "swl-pricing-inventory-control";
 const APPLICATION_READY_TITLE: &str = "SWL Pricing and Inventory Control";
 const DATABASE_FILENAME: &str = "swl-pricing.sqlite3";
 const BACKUP_DIRECTORY: &str = "backups";
-const CURRENT_SCHEMA_VERSION: i64 = 3;
+const CURRENT_SCHEMA_VERSION: i64 = 6;
 const CONFIGURATION_SCHEMA_VERSION: i64 = 1;
 const MAX_IDENTIFIER_BYTES: usize = 128;
 const MAX_DESCRIPTION_BYTES: usize = 2_000;
@@ -81,6 +81,19 @@ const COUNT_TABLES: &[(&str, &str)] = &[
     ("profiles", "mapping_profiles"),
     ("aliases", "approved_aliases"),
     ("settings", "settings"),
+    ("brands", "brands"),
+    ("suppliers", "suppliers"),
+    ("productSupplierOffers", "product_supplier_offers"),
+    ("productOfferSelections", "product_offer_selections"),
+    ("supplierOfferVersions", "supplier_offer_versions"),
+    ("offerSelectionVersions", "offer_selection_versions"),
+    ("supplierVersions", "supplier_versions"),
+    ("brandVersions", "brand_versions"),
+    ("productMetadataVersions", "product_metadata_versions"),
+    ("syncRuns", "sync_runs"),
+    ("syncCheckpoints", "sync_checkpoints"),
+    ("syncItemOutcomes", "sync_item_outcomes"),
+    ("settingsAudit", "settings_audit"),
 ];
 
 const MIGRATIONS: &[(i64, &str, &str)] = &[
@@ -200,6 +213,241 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         UPDATE schema_metadata SET version=3;
         "#,
     ),
+    (
+        4,
+        "catalogue-supplier-provenance-and-sync-ledger",
+        r#"
+        CREATE TABLE brands(
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          markup_hundredths INTEGER CHECK(markup_hundredths IS NULL OR markup_hundredths BETWEEN 0 AND 99999),
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE suppliers(
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+          external_reference TEXT,
+          updated_at TEXT NOT NULL
+        );
+        ALTER TABLE catalogue_items ADD COLUMN item_kind TEXT NOT NULL DEFAULT 'physical-product'
+          CHECK(item_kind IN ('physical-product','service','labour'));
+        ALTER TABLE catalogue_items ADD COLUMN brand_id TEXT REFERENCES brands(id) ON DELETE SET NULL;
+        ALTER TABLE catalogue_items ADD COLUMN product_markup_hundredths INTEGER
+          CHECK(product_markup_hundredths IS NULL OR product_markup_hundredths BETWEEN 0 AND 99999);
+        ALTER TABLE catalogue_items ADD COLUMN description_source TEXT NOT NULL DEFAULT 'legacy-local';
+        ALTER TABLE catalogue_items ADD COLUMN upstream_reference TEXT;
+        ALTER TABLE catalogue_items ADD COLUMN servicem8_reference TEXT;
+        ALTER TABLE catalogue_items ADD COLUMN barcode TEXT;
+        ALTER TABLE catalogue_items ADD COLUMN sell_price_gst_basis TEXT NOT NULL DEFAULT 'unknown'
+          CHECK(sell_price_gst_basis IN ('inc-gst','ex-gst','unknown'));
+        CREATE TABLE product_supplier_offers(
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+          supplier_id TEXT NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+          supplier_sku TEXT NOT NULL,
+          cost_cents INTEGER NOT NULL CHECK(cost_cents BETWEEN 0 AND 1000000000),
+          gst_basis TEXT NOT NULL CHECK(gst_basis IN ('inc-gst','ex-gst','unknown')),
+          currency TEXT NOT NULL DEFAULT 'AUD' CHECK(currency='AUD'),
+          active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
+          is_preferred INTEGER NOT NULL DEFAULT 0 CHECK(is_preferred IN (0,1)),
+          valid_from TEXT,
+          valid_until TEXT,
+          provenance_type TEXT NOT NULL CHECK(provenance_type IN ('legacy-local','manual','supplier-file','xero')),
+          provenance_reference TEXT,
+          observed_at TEXT NOT NULL,
+          UNIQUE(id,product_id)
+        );
+        CREATE UNIQUE INDEX one_active_preferred_offer_per_product
+          ON product_supplier_offers(product_id) WHERE active=1 AND is_preferred=1;
+        CREATE TABLE product_offer_selections(
+          product_id TEXT PRIMARY KEY REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+          offer_id TEXT NOT NULL,
+          selected_by TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          selected_at TEXT NOT NULL,
+          FOREIGN KEY(offer_id,product_id) REFERENCES product_supplier_offers(id,product_id) ON DELETE RESTRICT
+        );
+        ALTER TABLE price_history ADD COLUMN selected_offer_id TEXT REFERENCES product_supplier_offers(id) ON DELETE RESTRICT;
+        ALTER TABLE price_history ADD COLUMN cost_basis_cents INTEGER NOT NULL DEFAULT 0
+          CHECK(cost_basis_cents BETWEEN 0 AND 1000000000);
+        ALTER TABLE price_history ADD COLUMN markup_source_type TEXT NOT NULL DEFAULT 'legacy-global'
+          CHECK(markup_source_type IN ('product','brand','global','legacy-global'));
+        ALTER TABLE price_history ADD COLUMN markup_source_id TEXT;
+        ALTER TABLE price_history ADD COLUMN applied_markup_hundredths INTEGER
+          CHECK(applied_markup_hundredths IS NULL OR applied_markup_hundredths BETWEEN 0 AND 99999);
+        ALTER TABLE price_history ADD COLUMN supplier_id_snapshot TEXT;
+        ALTER TABLE price_history ADD COLUMN supplier_name_snapshot TEXT;
+        ALTER TABLE price_history ADD COLUMN supplier_sku_snapshot TEXT;
+        ALTER TABLE price_history ADD COLUMN cost_gst_basis TEXT NOT NULL DEFAULT 'unknown'
+          CHECK(cost_gst_basis IN ('inc-gst','ex-gst','unknown'));
+        ALTER TABLE price_history ADD COLUMN currency TEXT CHECK(currency IS NULL OR currency='AUD');
+        ALTER TABLE price_history ADD COLUMN sell_price_gst_basis TEXT NOT NULL DEFAULT 'unknown'
+          CHECK(sell_price_gst_basis IN ('inc-gst','ex-gst','unknown'));
+        ALTER TABLE price_history ADD COLUMN brand_id_snapshot TEXT;
+        ALTER TABLE price_history ADD COLUMN item_kind_snapshot TEXT
+          CHECK(item_kind_snapshot IS NULL OR item_kind_snapshot IN ('physical-product','service','labour'));
+        ALTER TABLE price_history ADD COLUMN pricing_explanation TEXT NOT NULL DEFAULT 'Legacy price record; offer and markup provenance unresolved';
+        ALTER TABLE price_history ADD COLUMN pricing_rule_version TEXT NOT NULL DEFAULT 'legacy-unresolved';
+        ALTER TABLE price_history ADD COLUMN provenance_state TEXT NOT NULL DEFAULT 'legacy-unresolved'
+          CHECK(provenance_state IN ('resolved','legacy-unresolved'));
+        DROP TRIGGER price_history_no_update;
+        UPDATE price_history SET cost_basis_cents=cost_cents;
+        CREATE TRIGGER price_history_no_update BEFORE UPDATE ON price_history BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TABLE sync_runs(
+          id TEXT PRIMARY KEY,
+          system TEXT NOT NULL CHECK(system IN ('xero','servicem8')),
+          direction TEXT NOT NULL CHECK(direction IN ('upstream-read','downstream-write')),
+          status TEXT NOT NULL CHECK(status IN ('preview','running','completed','partial','failed')),
+          mode TEXT NOT NULL CHECK(mode IN ('preview','approved')),
+          started_at TEXT NOT NULL,
+          completed_at TEXT,
+          approved_by TEXT,
+          summary_json TEXT NOT NULL DEFAULT '{}'
+        );
+        CREATE TABLE sync_checkpoints(
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL REFERENCES sync_runs(id) ON DELETE RESTRICT,
+          cursor_value TEXT NOT NULL,
+          recorded_at TEXT NOT NULL
+        );
+        CREATE TABLE sync_item_outcomes(
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL REFERENCES sync_runs(id) ON DELETE RESTRICT,
+          item_id TEXT REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+          external_id TEXT,
+          action TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('planned','succeeded','skipped','failed')),
+          message TEXT NOT NULL,
+          idempotency_key TEXT NOT NULL UNIQUE,
+          attempt_count INTEGER NOT NULL CHECK(attempt_count BETWEEN 0 AND 100),
+          retryable INTEGER NOT NULL CHECK(retryable IN (0,1)),
+          error_class TEXT,
+          reconciliation TEXT NOT NULL CHECK(reconciliation IN ('not-run','matched','mismatch','not-applicable')),
+          recorded_at TEXT NOT NULL
+        );
+        CREATE TABLE settings_audit(
+          id TEXT PRIMARY KEY,
+          previous_json TEXT,
+          current_json TEXT NOT NULL,
+          changed_by TEXT NOT NULL,
+          changed_at TEXT NOT NULL
+        );
+        CREATE TRIGGER settings_audit_no_update BEFORE UPDATE ON settings_audit BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER settings_audit_no_delete BEFORE DELETE ON settings_audit BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER sync_item_outcomes_no_update BEFORE UPDATE ON sync_item_outcomes BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER sync_item_outcomes_no_delete BEFORE DELETE ON sync_item_outcomes BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        UPDATE settings SET settings_json=json_set(settings_json,'$.glassTint','clear')
+          WHERE json_type(settings_json,'$.glassTint') IS NULL;
+        INSERT INTO settings_audit(id,previous_json,current_json,changed_by,changed_at)
+          SELECT 'schema4-settings-' || lower(hex(randomblob(8))),NULL,settings_json,'schema-migration',updated_at
+          FROM settings;
+        INSERT OR IGNORE INTO suppliers(id,name,active,external_reference,updated_at)
+          SELECT 'legacy-supplier','Legacy catalogue supplier',1,NULL,datetime('now')
+          WHERE EXISTS(SELECT 1 FROM catalogue_items);
+        INSERT INTO product_supplier_offers(id,product_id,supplier_id,supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,provenance_type,provenance_reference,observed_at)
+          SELECT 'legacy-offer-' || id,id,'legacy-supplier',item_number,cost_cents,gst_basis,'AUD',1,1,'legacy-local',item_number,updated_at
+          FROM catalogue_items;
+        INSERT INTO product_offer_selections(product_id,offer_id,selected_by,reason,selected_at)
+          SELECT id,'legacy-offer-' || id,'schema-migration','Preserved legacy catalogue cost',updated_at
+          FROM catalogue_items;
+        UPDATE schema_metadata SET version=4;
+        "#,
+    ),
+    (
+        5,
+        "auditable-stale-safe-offer-mutations",
+        r#"
+        ALTER TABLE brands ADD COLUMN canonical_key TEXT;
+        ALTER TABLE product_supplier_offers ADD COLUMN normalized_supplier_sku TEXT;
+        CREATE TABLE supplier_offer_versions(
+          offer_id TEXT NOT NULL REFERENCES product_supplier_offers(id) ON DELETE RESTRICT,
+          version INTEGER NOT NULL CHECK(version >= 1),
+          snapshot_json TEXT NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY(offer_id,version)
+        );
+        CREATE TABLE offer_selection_versions(
+          product_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+          version INTEGER NOT NULL CHECK(version >= 1),
+          snapshot_json TEXT NOT NULL,
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY(product_id,version)
+        );
+        INSERT INTO supplier_offer_versions(offer_id,version,snapshot_json,changed_at)
+          SELECT id,1,json_object(
+            'id',id,'productId',product_id,'supplierId',supplier_id,'supplierSku',supplier_sku,
+            'costCents',cost_cents,'gstBasis',gst_basis,'currency',currency,'active',json(active),
+            'isPreferred',json(is_preferred),'validFrom',valid_from,'validUntil',valid_until,
+            'provenanceType',provenance_type,'provenanceReference',provenance_reference,
+            'observedAt',observed_at),observed_at
+          FROM product_supplier_offers;
+        INSERT INTO offer_selection_versions(product_id,version,snapshot_json,changed_at)
+          SELECT product_id,1,json_object(
+            'productId',product_id,'offerId',offer_id,'selectedBy',selected_by,
+            'reason',reason,'selectedAt',selected_at),selected_at
+          FROM product_offer_selections;
+        CREATE TRIGGER supplier_offer_versions_no_update BEFORE UPDATE ON supplier_offer_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER supplier_offer_versions_no_delete BEFORE DELETE ON supplier_offer_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER offer_selection_versions_no_update BEFORE UPDATE ON offer_selection_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER offer_selection_versions_no_delete BEFORE DELETE ON offer_selection_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        UPDATE schema_metadata SET version=5;
+        "#,
+    ),
+    (
+        6,
+        "auditable-stale-safe-pricing-rule-inputs",
+        r#"
+        UPDATE suppliers
+          SET updated_at=substr(updated_at,1,10) || 'T' || substr(updated_at,12,8) || 'Z'
+          WHERE length(updated_at)=19 AND substr(updated_at,11,1)=' ';
+        CREATE TABLE supplier_versions(
+          supplier_id TEXT NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+          version INTEGER NOT NULL CHECK(version >= 1),
+          snapshot_json TEXT NOT NULL CHECK(length(snapshot_json) BETWEEN 2 AND 1048576 AND json_valid(snapshot_json) AND json_type(snapshot_json)='object'),
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY(supplier_id,version)
+        );
+        INSERT INTO supplier_versions(supplier_id,version,snapshot_json,changed_at)
+          SELECT id,1,json_object(
+            'id',id,'name',name,'active',json(CASE active WHEN 1 THEN 'true' ELSE 'false' END),
+            'externalReference',external_reference,'updatedAt',updated_at),updated_at
+          FROM suppliers;
+        CREATE TRIGGER supplier_versions_no_update BEFORE UPDATE ON supplier_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER supplier_versions_no_delete BEFORE DELETE ON supplier_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TABLE brand_versions(
+          brand_id TEXT NOT NULL REFERENCES brands(id) ON DELETE RESTRICT,
+          version INTEGER NOT NULL CHECK(version >= 1),
+          snapshot_json TEXT NOT NULL CHECK(length(snapshot_json) BETWEEN 2 AND 1048576 AND json_valid(snapshot_json) AND json_type(snapshot_json)='object'),
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY(brand_id,version)
+        );
+        INSERT INTO brand_versions(brand_id,version,snapshot_json,changed_at)
+          SELECT id,1,json_object(
+            'id',id,'name',name,'markupHundredths',markup_hundredths,
+            'updatedAt',updated_at),updated_at
+          FROM brands;
+        CREATE TRIGGER brand_versions_no_update BEFORE UPDATE ON brand_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER brand_versions_no_delete BEFORE DELETE ON brand_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TABLE product_metadata_versions(
+          product_id TEXT NOT NULL REFERENCES catalogue_items(id) ON DELETE RESTRICT,
+          version INTEGER NOT NULL CHECK(version >= 1),
+          snapshot_json TEXT NOT NULL CHECK(length(snapshot_json) BETWEEN 2 AND 1048576 AND json_valid(snapshot_json) AND json_type(snapshot_json)='object'),
+          changed_at TEXT NOT NULL,
+          PRIMARY KEY(product_id,version)
+        );
+        INSERT INTO product_metadata_versions(product_id,version,snapshot_json,changed_at)
+          SELECT id,1,json_object(
+            'productId',id,'itemKind',item_kind,'brandId',brand_id,
+            'markupOverrideHundredths',product_markup_hundredths,
+            'xeroReference',upstream_reference,'servicem8Reference',servicem8_reference,
+            'barcodeGtin',barcode,'updatedAt',updated_at),updated_at
+          FROM catalogue_items;
+        CREATE TRIGGER product_metadata_versions_no_update BEFORE UPDATE ON product_metadata_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        CREATE TRIGGER product_metadata_versions_no_delete BEFORE DELETE ON product_metadata_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;
+        UPDATE schema_metadata SET version=6;
+        "#,
+    ),
 ];
 
 #[derive(Debug, Clone, Serialize, Default, PartialEq)]
@@ -221,6 +469,15 @@ struct CatalogueItem {
     cost_cents: i64,
     sell_price_cents: i64,
     gst_basis: String,
+    sell_price_gst_basis: String,
+    item_kind: String,
+    brand_id: Option<String>,
+    markup_override_percent: Option<String>,
+    xero_reference: Option<String>,
+    servicem8_reference: Option<String>,
+    #[serde(rename = "barcodeGtin")]
+    barcode: Option<String>,
+    selected_offer_id: Option<String>,
     updated_at: String,
 }
 
@@ -245,7 +502,155 @@ struct PriceHistoryRecord {
     cost_cents: i64,
     sell_price_cents: i64,
     approval_id: String,
+    selected_offer_id: Option<String>,
+    cost_basis_cents: i64,
+    markup_source_type: String,
+    markup_source_id: Option<String>,
+    applied_markup_hundredths: Option<i64>,
+    #[serde(rename = "supplierId")]
+    supplier_id_snapshot: Option<String>,
+    #[serde(rename = "supplierName")]
+    supplier_name_snapshot: Option<String>,
+    #[serde(rename = "supplierSku")]
+    supplier_sku_snapshot: Option<String>,
+    cost_gst_basis: String,
+    sell_price_gst_basis: String,
+    currency: Option<String>,
+    #[serde(rename = "brandId")]
+    brand_id_snapshot: Option<String>,
+    #[serde(rename = "itemKind")]
+    item_kind_snapshot: Option<String>,
+    pricing_explanation: String,
+    #[serde(rename = "ruleVersion")]
+    pricing_rule_version: String,
+    provenance_state: String,
     recorded_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BrandRecord {
+    id: String,
+    name: String,
+    markup_hundredths: Option<i64>,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SupplierRecord {
+    id: String,
+    name: String,
+    active: bool,
+    external_reference: Option<String>,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SupplierOfferRecord {
+    id: String,
+    product_id: String,
+    supplier_id: String,
+    supplier_sku: String,
+    cost_cents: i64,
+    gst_basis: String,
+    currency: String,
+    active: bool,
+    is_preferred: bool,
+    valid_from: Option<String>,
+    valid_until: Option<String>,
+    provenance_type: String,
+    provenance_reference: Option<String>,
+    observed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OfferSelectionRecord {
+    product_id: String,
+    offer_id: String,
+    selected_by: String,
+    reason: String,
+    selected_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SyncRunRecord {
+    id: String,
+    system: String,
+    direction: String,
+    status: String,
+    mode: String,
+    started_at: String,
+    completed_at: Option<String>,
+    approved_by: Option<String>,
+    summary: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SyncCheckpointRecord {
+    id: String,
+    run_id: String,
+    cursor_value: String,
+    recorded_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SyncItemOutcomeRecord {
+    id: String,
+    run_id: String,
+    item_id: Option<String>,
+    external_id: Option<String>,
+    action: String,
+    status: String,
+    message: String,
+    idempotency_key: String,
+    attempt_count: i64,
+    retryable: bool,
+    error_class: Option<String>,
+    reconciliation: String,
+    recorded_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SettingsAuditRecord {
+    id: String,
+    previous: Option<Value>,
+    current: Value,
+    changed_by: String,
+    changed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProductMetadataUpdate {
+    product_id: String,
+    item_kind: String,
+    brand_id: Option<String>,
+    markup_override_percent: Option<String>,
+    xero_reference: Option<String>,
+    servicem8_reference: Option<String>,
+    #[serde(rename = "barcodeGtin")]
+    barcode: Option<String>,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProductMetadataVersionSnapshot {
+    product_id: String,
+    item_kind: String,
+    brand_id: Option<String>,
+    markup_override_hundredths: Option<i64>,
+    xero_reference: Option<String>,
+    servicem8_reference: Option<String>,
+    barcode_gtin: Option<String>,
+    updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +659,27 @@ struct PublishApprovedChange {
     item: CatalogueItem,
     approved_by: String,
     reason: String,
+    #[serde(default)]
+    pricing_provenance: Option<PricingProvenance>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PricingProvenance {
+    selected_offer_id: Option<String>,
+    supplier_id: Option<String>,
+    supplier_name: Option<String>,
+    supplier_sku: Option<String>,
+    cost_gst_basis: String,
+    currency: String,
+    markup_percent: String,
+    markup_source: String,
+    markup_source_id: Option<String>,
+    brand_id: Option<String>,
+    item_kind: String,
+    sell_price_gst_basis: String,
+    explanation: String,
+    rule_version: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -400,7 +826,7 @@ struct ConfigurationMigrationStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 struct BackupRecordCounts {
     catalogue_items: i64,
     approvals: i64,
@@ -410,6 +836,19 @@ struct BackupRecordCounts {
     profiles: i64,
     aliases: i64,
     settings: i64,
+    brands: i64,
+    suppliers: i64,
+    product_supplier_offers: i64,
+    product_offer_selections: i64,
+    supplier_offer_versions: i64,
+    offer_selection_versions: i64,
+    supplier_versions: i64,
+    brand_versions: i64,
+    product_metadata_versions: i64,
+    sync_runs: i64,
+    sync_checkpoints: i64,
+    sync_item_outcomes: i64,
+    settings_audit: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1130,6 +1569,25 @@ fn validate_timestamp(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn timestamp_order_key(value: &str) -> Result<[u32; 7], String> {
+    validate_timestamp(value)?;
+    let parse = |range: std::ops::Range<usize>| {
+        value[range]
+            .parse::<u32>()
+            .map_err(|_| "Timestamp is invalid.".to_string())
+    };
+    let milliseconds = if value.len() == 24 { parse(20..23)? } else { 0 };
+    Ok([
+        parse(0..4)?,
+        parse(5..7)?,
+        parse(8..10)?,
+        parse(11..13)?,
+        parse(14..16)?,
+        parse(17..19)?,
+        milliseconds,
+    ])
+}
+
 fn validate_cents(value: i64, label: &str) -> Result<(), String> {
     if !(0..=1_000_000_000).contains(&value) {
         return Err(format!("{label} is outside the supported range."));
@@ -1144,6 +1602,118 @@ fn minimum_sell_cents(cost_cents: i64) -> Result<i64, String> {
         .and_then(|value| value.checked_add(50))
         .map(|value| value / 100)
         .ok_or_else(|| "The markup calculation exceeded the supported range.".to_string())
+}
+
+fn gst_exclusive_cost_cents(cost_cents: i64, gst_basis: &str) -> Result<i64, String> {
+    validate_cents(cost_cents, "Cost")?;
+    match gst_basis {
+        "inc-gst" => cost_cents
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(5))
+            .map(|value| value / 11)
+            .ok_or_else(|| {
+                "The GST-exclusive cost calculation exceeded the supported range.".to_string()
+            }),
+        "ex-gst" | "unknown" => Ok(cost_cents),
+        _ => Err("GST basis is invalid.".to_string()),
+    }
+}
+
+fn expected_sell_cents(
+    offer_cost_cents: i64,
+    cost_gst_basis: &str,
+    markup_hundredths: i64,
+    sell_gst_basis: &str,
+) -> Result<i64, String> {
+    if !matches!(cost_gst_basis, "inc-gst" | "ex-gst") {
+        return Err("The selected offer GST basis must be confirmed before publication.".into());
+    }
+    if !(0..=99_999).contains(&markup_hundredths) {
+        return Err("The resolved markup is outside the supported range.".into());
+    }
+    let cost_ex_gst_cents = gst_exclusive_cost_cents(offer_cost_cents, cost_gst_basis)?;
+    let sell_ex_gst_cents = cost_ex_gst_cents
+        .checked_mul(10_000 + markup_hundredths)
+        .and_then(|value| value.checked_add(5_000))
+        .map(|value| value / 10_000)
+        .ok_or_else(|| {
+            "The exact sell-price calculation exceeded the supported range.".to_string()
+        })?;
+    let sell_cents = match sell_gst_basis {
+        "ex-gst" => sell_ex_gst_cents,
+        "inc-gst" => sell_ex_gst_cents
+            .checked_mul(11)
+            .and_then(|value| value.checked_add(5))
+            .map(|value| value / 10)
+            .ok_or_else(|| {
+                "The GST-inclusive sell-price calculation exceeded the supported range.".to_string()
+            })?,
+        _ => return Err("The sell-price GST basis must be confirmed before publication.".into()),
+    };
+    validate_cents(sell_cents, "Expected sell price")?;
+    Ok(sell_cents)
+}
+
+struct SelectedOfferPricingBasis {
+    offer_id: Option<String>,
+    offer_cost_cents: i64,
+    cost_basis_cents: i64,
+    supplier_id: Option<String>,
+    supplier_name: Option<String>,
+    supplier_sku: Option<String>,
+    gst_basis: String,
+    currency: Option<String>,
+}
+
+fn selected_offer_pricing_basis(
+    connection: &Connection,
+    product_id: &str,
+) -> Result<SelectedOfferPricingBasis, String> {
+    let selected = connection
+        .query_row(
+            "SELECT o.id,o.cost_cents,o.gst_basis,o.supplier_id,s.name,o.supplier_sku,o.currency
+             FROM product_offer_selections sel
+             JOIN product_supplier_offers o ON o.id=sel.offer_id AND o.product_id=sel.product_id
+             JOIN suppliers s ON s.id=o.supplier_id AND s.active=1
+             WHERE sel.product_id=?1 AND o.active=1
+               AND (o.valid_from IS NULL OR datetime(o.valid_from)<=datetime('now'))
+               AND (o.valid_until IS NULL OR datetime(o.valid_until)>=datetime('now'))",
+            params![product_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|_| "The selected supplier offer could not be validated.".to_string())?;
+    match selected {
+        Some((
+            offer_id,
+            cost_cents,
+            gst_basis,
+            supplier_id,
+            supplier_name,
+            supplier_sku,
+            currency,
+        )) => Ok(SelectedOfferPricingBasis {
+            offer_id: Some(offer_id),
+            offer_cost_cents: cost_cents,
+            cost_basis_cents: gst_exclusive_cost_cents(cost_cents, &gst_basis)?,
+            supplier_id: Some(supplier_id),
+            supplier_name: Some(supplier_name),
+            supplier_sku: Some(supplier_sku),
+            gst_basis,
+            currency: Some(currency),
+        }),
+        None => Err("An active selected supplier offer is required for publication.".to_string()),
+    }
 }
 
 fn validate_json(value: &Value, label: &str) -> Result<String, String> {
@@ -1459,6 +2029,39 @@ fn validate_catalogue_item(item: &CatalogueItem) -> Result<(), String> {
     if !matches!(item.gst_basis.as_str(), "inc-gst" | "ex-gst" | "unknown") {
         return Err("GST basis is invalid.".to_string());
     }
+    if !matches!(
+        item.sell_price_gst_basis.as_str(),
+        "inc-gst" | "ex-gst" | "unknown"
+    ) {
+        return Err("Sell-price GST basis is invalid.".to_string());
+    }
+    if !matches!(
+        item.item_kind.as_str(),
+        "physical-product" | "service" | "labour"
+    ) {
+        return Err("Item kind is invalid.".to_string());
+    }
+    if let Some(value) = item.brand_id.as_deref() {
+        validate_identifier(value, "Brand identifier")?;
+    }
+    if let Some(value) = item.markup_override_percent.as_deref() {
+        parse_markup_override_hundredths(value)?;
+    }
+    validate_optional_text(item.xero_reference.as_deref(), "Xero reference", 256)?;
+    validate_optional_text(
+        item.servicem8_reference.as_deref(),
+        "ServiceM8 reference",
+        256,
+    )?;
+    if let Some(value) = item.barcode.as_deref() {
+        if value.len() > 64 || value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err("Barcode must contain 1 to 64 digits.".to_string());
+        }
+    }
+    if let Some(value) = item.selected_offer_id.as_deref() {
+        validate_identifier(value, "Selected offer identifier")?;
+    }
     Ok(())
 }
 
@@ -1525,6 +2128,18 @@ fn money_string(cents: i64) -> String {
     format!("{}.{:02}", cents / 100, cents % 100)
 }
 
+fn markup_string(hundredths: i64) -> String {
+    let whole = hundredths / 100;
+    let fraction = hundredths % 100;
+    if fraction == 0 {
+        whole.to_string()
+    } else if fraction % 10 == 0 {
+        format!("{whole}.{}", fraction / 10)
+    } else {
+        format!("{whole}.{fraction:02}")
+    }
+}
+
 fn sha256_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -1571,8 +2186,8 @@ fn logical_database_digest(connection: &Connection) -> Result<String, String> {
         ),
         (
             "catalogue_items",
-            "SELECT id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at FROM catalogue_items ORDER BY id",
-            7,
+            "SELECT id,item_number,description,cost_cents,sell_price_cents,gst_basis,sell_price_gst_basis,item_kind,brand_id,product_markup_hundredths,description_source,upstream_reference,servicem8_reference,barcode,updated_at FROM catalogue_items ORDER BY id",
+            15,
         ),
         (
             "approvals",
@@ -1581,8 +2196,8 @@ fn logical_database_digest(connection: &Connection) -> Result<String, String> {
         ),
         (
             "price_history",
-            "SELECT id,item_id,cost_cents,sell_price_cents,approval_id,recorded_at FROM price_history ORDER BY id",
-            6,
+            "SELECT id,item_id,cost_cents,sell_price_cents,approval_id,selected_offer_id,cost_basis_cents,markup_source_type,markup_source_id,applied_markup_hundredths,supplier_id_snapshot,supplier_name_snapshot,supplier_sku_snapshot,cost_gst_basis,sell_price_gst_basis,currency,brand_id_snapshot,item_kind_snapshot,pricing_explanation,pricing_rule_version,provenance_state,recorded_at FROM price_history ORDER BY id",
+            22,
         ),
         (
             "competitor_references",
@@ -1619,6 +2234,19 @@ fn logical_database_digest(connection: &Connection) -> Result<String, String> {
             "SELECT provider,paid_calls_enabled,last_validated_at,cost_ceiling_cents,cost_per_call_cents,spent_cents FROM provider_state ORDER BY provider",
             6,
         ),
+        ("brands","SELECT id,name,canonical_key,markup_hundredths,updated_at FROM brands ORDER BY id",5),
+        ("suppliers","SELECT id,name,active,external_reference,updated_at FROM suppliers ORDER BY id",5),
+        ("product_supplier_offers","SELECT id,product_id,supplier_id,supplier_sku,normalized_supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,valid_from,valid_until,provenance_type,provenance_reference,observed_at FROM product_supplier_offers ORDER BY id",15),
+        ("product_offer_selections","SELECT product_id,offer_id,selected_by,reason,selected_at FROM product_offer_selections ORDER BY product_id",5),
+        ("supplier_offer_versions","SELECT offer_id,version,snapshot_json,changed_at FROM supplier_offer_versions ORDER BY offer_id,version",4),
+        ("offer_selection_versions","SELECT product_id,version,snapshot_json,changed_at FROM offer_selection_versions ORDER BY product_id,version",4),
+        ("supplier_versions","SELECT supplier_id,version,snapshot_json,changed_at FROM supplier_versions ORDER BY supplier_id,version",4),
+        ("brand_versions","SELECT brand_id,version,snapshot_json,changed_at FROM brand_versions ORDER BY brand_id,version",4),
+        ("product_metadata_versions","SELECT product_id,version,snapshot_json,changed_at FROM product_metadata_versions ORDER BY product_id,version",4),
+        ("sync_runs","SELECT id,system,direction,status,mode,started_at,completed_at,approved_by,summary_json FROM sync_runs ORDER BY id",9),
+        ("sync_checkpoints","SELECT id,run_id,cursor_value,recorded_at FROM sync_checkpoints ORDER BY id",4),
+        ("sync_item_outcomes","SELECT id,run_id,item_id,external_id,action,status,message,idempotency_key,attempt_count,retryable,error_class,reconciliation,recorded_at FROM sync_item_outcomes ORDER BY id",13),
+        ("settings_audit","SELECT id,previous_json,current_json,changed_by,changed_at FROM settings_audit ORDER BY id",5),
     ];
 
     let mut hasher = Sha256::new();
@@ -1786,6 +2414,19 @@ fn record_counts(connection: &Connection) -> Result<BackupRecordCounts, String> 
         profiles: table_count(connection, "mapping_profiles")?,
         aliases: table_count(connection, "approved_aliases")?,
         settings: table_count(connection, "settings")?,
+        brands: table_count(connection, "brands")?,
+        suppliers: table_count(connection, "suppliers")?,
+        product_supplier_offers: table_count(connection, "product_supplier_offers")?,
+        product_offer_selections: table_count(connection, "product_offer_selections")?,
+        supplier_offer_versions: table_count(connection, "supplier_offer_versions")?,
+        offer_selection_versions: table_count(connection, "offer_selection_versions")?,
+        supplier_versions: table_count(connection, "supplier_versions")?,
+        brand_versions: table_count(connection, "brand_versions")?,
+        product_metadata_versions: table_count(connection, "product_metadata_versions")?,
+        sync_runs: table_count(connection, "sync_runs")?,
+        sync_checkpoints: table_count(connection, "sync_checkpoints")?,
+        sync_item_outcomes: table_count(connection, "sync_item_outcomes")?,
+        settings_audit: table_count(connection, "settings_audit")?,
     })
 }
 
@@ -1793,7 +2434,7 @@ fn record_counts_for_version(
     connection: &Connection,
     version: i64,
 ) -> Result<BackupRecordCounts, String> {
-    if version > 0 {
+    if version >= CURRENT_SCHEMA_VERSION {
         return record_counts(connection);
     }
     let count = |table: &str| -> Result<i64, String> {
@@ -1812,6 +2453,19 @@ fn record_counts_for_version(
         profiles: count("mapping_profiles")?,
         aliases: count("approved_aliases")?,
         settings: count("settings")?,
+        brands: count("brands")?,
+        suppliers: count("suppliers")?,
+        product_supplier_offers: count("product_supplier_offers")?,
+        product_offer_selections: count("product_offer_selections")?,
+        supplier_offer_versions: count("supplier_offer_versions")?,
+        offer_selection_versions: count("offer_selection_versions")?,
+        supplier_versions: count("supplier_versions")?,
+        brand_versions: count("brand_versions")?,
+        product_metadata_versions: count("product_metadata_versions")?,
+        sync_runs: count("sync_runs")?,
+        sync_checkpoints: count("sync_checkpoints")?,
+        sync_item_outcomes: count("sync_item_outcomes")?,
+        settings_audit: count("settings_audit")?,
     })
 }
 
@@ -2121,7 +2775,16 @@ fn rebuild_partial_shell_schema(
         .map_err(|_| {
             "Former SWL records did not satisfy the current validated schema.".to_string()
         })?;
-    for (_, table) in COUNT_TABLES {
+    for table in [
+        "catalogue_items",
+        "approvals",
+        "price_history",
+        "competitor_references",
+        "source_registry",
+        "mapping_profiles",
+        "approved_aliases",
+        "settings",
+    ] {
         let former = format!("former_{table}");
         let former_count: i64 = transaction
             .query_row(&format!("SELECT COUNT(*) FROM {former}"), [], |row| {
@@ -2137,7 +2800,6 @@ fn rebuild_partial_shell_schema(
             return Err("Migrated SWL record counts did not match.".to_string());
         }
     }
-    validate_preserved_operational_rows(transaction)?;
     transaction
         .execute_batch(
             "DROP TABLE former_competitor_references;
@@ -2156,7 +2818,7 @@ fn rebuild_partial_shell_schema(
 
 fn validate_preserved_operational_rows(connection: &Connection) -> Result<(), String> {
     let mut catalogue_statement = connection
-        .prepare("SELECT id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at FROM catalogue_items")
+        .prepare("SELECT c.id,c.item_number,c.description,c.cost_cents,c.sell_price_cents,c.gst_basis,c.sell_price_gst_basis,c.item_kind,c.brand_id,c.product_markup_hundredths,c.upstream_reference,c.servicem8_reference,c.barcode,c.updated_at,s.offer_id FROM catalogue_items c LEFT JOIN product_offer_selections s ON s.product_id=c.id")
         .map_err(|_| "Migrated catalogue rows could not be validated.".to_string())?;
     let catalogue = catalogue_statement
         .query_map([], |row| {
@@ -2167,7 +2829,15 @@ fn validate_preserved_operational_rows(connection: &Connection) -> Result<(), St
                 cost_cents: row.get(3)?,
                 sell_price_cents: row.get(4)?,
                 gst_basis: row.get(5)?,
-                updated_at: row.get(6)?,
+                sell_price_gst_basis: row.get(6)?,
+                item_kind: row.get(7)?,
+                brand_id: row.get(8)?,
+                markup_override_percent: row.get::<_, Option<i64>>(9)?.map(markup_string),
+                xero_reference: row.get(10)?,
+                servicem8_reference: row.get(11)?,
+                barcode: row.get(12)?,
+                updated_at: row.get(13)?,
+                selected_offer_id: row.get(14)?,
             })
         })
         .map_err(|_| "Migrated catalogue rows could not be validated.".to_string())?
@@ -2175,7 +2845,10 @@ fn validate_preserved_operational_rows(connection: &Connection) -> Result<(), St
         .map_err(|_| "Migrated catalogue rows could not be validated.".to_string())?;
     for item in catalogue {
         validate_catalogue_item(&item)?;
-        if item.sell_price_cents < minimum_sell_cents(item.cost_cents)? {
+        let cost_basis = gst_exclusive_cost_cents(item.cost_cents, &item.gst_basis)?;
+        let sell_basis =
+            gst_exclusive_cost_cents(item.sell_price_cents, &item.sell_price_gst_basis)?;
+        if sell_basis < minimum_sell_cents(cost_basis)? {
             return Err("A migrated catalogue row is below the markup floor.".to_string());
         }
     }
@@ -2194,7 +2867,9 @@ fn validate_preserved_operational_rows(connection: &Connection) -> Result<(), St
         validate_identifier(&history.approval_id, "Price history approval identifier")?;
         validate_cents(history.cost_cents, "Historical cost")?;
         validate_cents(history.sell_price_cents, "Historical sell price")?;
-        if history.sell_price_cents < minimum_sell_cents(history.cost_cents)? {
+        let sell_basis =
+            gst_exclusive_cost_cents(history.sell_price_cents, &history.sell_price_gst_basis)?;
+        if sell_basis < minimum_sell_cents(history.cost_basis_cents)? {
             return Err("A migrated price-history row is below the markup floor.".to_string());
         }
         validate_timestamp(&history.recorded_at)?;
@@ -2311,6 +2986,109 @@ fn validate_preserved_operational_rows(connection: &Connection) -> Result<(), St
     Ok(())
 }
 
+fn validate_current_pricing_rule_audit_snapshots(connection: &Connection) -> Result<(), String> {
+    let suppliers = connection
+        .prepare(
+            "SELECT s.id,s.name,s.active,s.external_reference,s.updated_at,
+                    (SELECT snapshot_json FROM supplier_versions v WHERE v.supplier_id=s.id ORDER BY version DESC LIMIT 1)
+             FROM suppliers s ORDER BY s.id",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        SupplierRecord {
+                            id: row.get(0)?,
+                            name: row.get(1)?,
+                            active: row.get(2)?,
+                            external_reference: row.get(3)?,
+                            updated_at: row.get(4)?,
+                        },
+                        row.get::<_, Option<String>>(5)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Current supplier audit snapshots failed verification.".to_string())?;
+    for (current, latest) in suppliers {
+        let recorded = latest
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<SupplierRecord>(value).ok());
+        if recorded.as_ref() != Some(&current) {
+            return Err("Current supplier audit snapshots failed verification.".to_string());
+        }
+    }
+
+    let brands = connection
+        .prepare(
+            "SELECT b.id,b.name,b.markup_hundredths,b.updated_at,
+                    (SELECT snapshot_json FROM brand_versions v WHERE v.brand_id=b.id ORDER BY version DESC LIMIT 1)
+             FROM brands b ORDER BY b.id",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        BrandRecord {
+                            id: row.get(0)?,
+                            name: row.get(1)?,
+                            markup_hundredths: row.get(2)?,
+                            updated_at: row.get(3)?,
+                        },
+                        row.get::<_, Option<String>>(4)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Current brand audit snapshots failed verification.".to_string())?;
+    for (current, latest) in brands {
+        let recorded = latest
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<BrandRecord>(value).ok());
+        if recorded.as_ref() != Some(&current) {
+            return Err("Current brand audit snapshots failed verification.".to_string());
+        }
+    }
+
+    let products = connection
+        .prepare(
+            "SELECT c.id,c.item_kind,c.brand_id,c.product_markup_hundredths,c.upstream_reference,c.servicem8_reference,c.barcode,c.updated_at,
+                    (SELECT snapshot_json FROM product_metadata_versions v WHERE v.product_id=c.id ORDER BY version DESC LIMIT 1)
+             FROM catalogue_items c ORDER BY c.id",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        ProductMetadataVersionSnapshot {
+                            product_id: row.get(0)?,
+                            item_kind: row.get(1)?,
+                            brand_id: row.get(2)?,
+                            markup_override_hundredths: row.get(3)?,
+                            xero_reference: row.get(4)?,
+                            servicem8_reference: row.get(5)?,
+                            barcode_gtin: row.get(6)?,
+                            updated_at: row.get(7)?,
+                        },
+                        row.get::<_, Option<String>>(8)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Current product metadata audit snapshots failed verification.".to_string())?;
+    for (current, latest) in products {
+        let recorded = latest
+            .as_deref()
+            .and_then(|value| serde_json::from_str::<ProductMetadataVersionSnapshot>(value).ok());
+        if recorded.as_ref() != Some(&current) {
+            return Err(
+                "Current product metadata audit snapshots failed verification.".to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
 fn validate_current_database(connection: &Connection) -> Result<(), String> {
     assert_integrity(connection)?;
     if schema_version(connection)? != CURRENT_SCHEMA_VERSION {
@@ -2339,6 +3117,19 @@ fn validate_current_database(connection: &Connection) -> Result<(), String> {
         "schema_metadata",
         "schema_migrations",
         "settings",
+        "brands",
+        "suppliers",
+        "product_supplier_offers",
+        "product_offer_selections",
+        "supplier_offer_versions",
+        "offer_selection_versions",
+        "supplier_versions",
+        "brand_versions",
+        "product_metadata_versions",
+        "sync_runs",
+        "sync_checkpoints",
+        "sync_item_outcomes",
+        "settings_audit",
         "source_registry",
     ]
     .into_iter()
@@ -2360,6 +3151,24 @@ fn validate_current_database(connection: &Connection) -> Result<(), String> {
         "approvals_no_update",
         "price_history_no_delete",
         "price_history_no_update",
+        "settings_audit_no_delete",
+        "settings_audit_no_update",
+        "sync_item_outcomes_no_delete",
+        "sync_item_outcomes_no_update",
+        "supplier_offer_versions_no_delete",
+        "supplier_offer_versions_no_update",
+        "offer_selection_versions_no_delete",
+        "offer_selection_versions_no_update",
+        "brands_canonical_key_required_insert",
+        "brands_canonical_key_required_update",
+        "offers_normalized_sku_required_insert",
+        "offers_normalized_sku_required_update",
+        "supplier_versions_no_delete",
+        "supplier_versions_no_update",
+        "brand_versions_no_delete",
+        "brand_versions_no_update",
+        "product_metadata_versions_no_delete",
+        "product_metadata_versions_no_update",
     ]
     .into_iter()
     .map(str::to_string)
@@ -2401,6 +3210,139 @@ fn validate_current_database(connection: &Connection) -> Result<(), String> {
         return Err("The database migration registry failed verification.".to_string());
     }
     validate_preserved_operational_rows(connection)?;
+    let brands = connection
+        .prepare("SELECT name,canonical_key FROM brands")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Canonical brand identities failed verification.".to_string())?;
+    for (name, stored_key) in brands {
+        let (normalised_name, canonical_key) = normalise_identity(&name, "Brand name", 256)?;
+        if name != normalised_name || stored_key != canonical_key {
+            return Err("Canonical brand identities failed verification.".to_string());
+        }
+    }
+    let offer_skus = connection
+        .prepare("SELECT supplier_sku,normalized_supplier_sku FROM product_supplier_offers")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Normalised supplier SKU identities failed verification.".to_string())?;
+    for (sku, stored_key) in offer_skus {
+        let (normalised_sku, normalized_key) = normalise_identity(&sku, "Supplier SKU", 256)?;
+        if sku != normalised_sku || stored_key != normalized_key {
+            return Err("Normalised supplier SKU identities failed verification.".to_string());
+        }
+    }
+    for (sql, label, require_strictly_increasing_time) in [
+        (
+            "SELECT offer_id,version,snapshot_json,changed_at FROM supplier_offer_versions ORDER BY offer_id,version",
+            "Supplier offer audit",
+            false,
+        ),
+        (
+            "SELECT product_id,version,snapshot_json,changed_at FROM offer_selection_versions ORDER BY product_id,version",
+            "Offer selection audit",
+            false,
+        ),
+        (
+            "SELECT supplier_id,version,snapshot_json,changed_at FROM supplier_versions ORDER BY supplier_id,version",
+            "Supplier audit",
+            true,
+        ),
+        (
+            "SELECT brand_id,version,snapshot_json,changed_at FROM brand_versions ORDER BY brand_id,version",
+            "Brand audit",
+            true,
+        ),
+        (
+            "SELECT product_id,version,snapshot_json,changed_at FROM product_metadata_versions ORDER BY product_id,version",
+            "Product metadata audit",
+            true,
+        ),
+    ] {
+        let versions = connection
+            .prepare(sql)
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .map_err(|_| format!("{label} versions failed verification."))?;
+        let mut last_versions = HashMap::new();
+        let mut last_changed_at = HashMap::new();
+        for (id, version, snapshot, changed_at) in versions {
+            let expected = last_versions.get(&id).copied().unwrap_or(0) + 1;
+            let value = serde_json::from_str::<Value>(&snapshot)
+                .ok()
+                .filter(Value::is_object);
+            let changed_at_key = timestamp_order_key(&changed_at)
+                .map_err(|_| format!("{label} versions failed verification."))?;
+            if version != expected
+                || snapshot.len() > MAX_JSON_BYTES
+                || value.is_none()
+                || (require_strictly_increasing_time
+                    && last_changed_at
+                        .get(&id)
+                        .is_some_and(|previous| changed_at_key <= *previous))
+            {
+                return Err(format!("{label} versions failed verification."));
+            }
+            let value = value.expect("checked audit JSON object");
+            let typed_valid = match label {
+                "Supplier audit" => serde_json::from_value::<SupplierRecord>(value)
+                    .ok()
+                    .filter(|record| {
+                        record.id == id
+                            && record.updated_at == changed_at
+                            && validate_supplier(record).is_ok()
+                    })
+                    .is_some(),
+                "Brand audit" => serde_json::from_value::<BrandRecord>(value)
+                    .ok()
+                    .filter(|record| {
+                        record.id == id
+                            && record.updated_at == changed_at
+                            && validate_brand(record).is_ok()
+                    })
+                    .is_some(),
+                "Product metadata audit" => {
+                    serde_json::from_value::<ProductMetadataVersionSnapshot>(value)
+                        .ok()
+                        .filter(|record| {
+                            record.product_id == id
+                                && record.updated_at == changed_at
+                                && validate_product_metadata_snapshot(record).is_ok()
+                        })
+                        .is_some()
+                }
+                _ => true,
+            };
+            if !typed_valid {
+                return Err(format!("{label} versions failed verification."));
+            }
+            last_versions.insert(id.clone(), version);
+            if require_strictly_increasing_time {
+                last_changed_at.insert(id, changed_at_key);
+            }
+        }
+    }
+    validate_current_pricing_rule_audit_snapshots(connection)?;
 
     let provider: (i64, Option<String>, i64, i64, i64) = connection
         .query_row(
@@ -2474,6 +3416,97 @@ fn validate_current_database(connection: &Connection) -> Result<(), String> {
 
 fn apply_migrations(database_path: &Path, data_dir: &Path) -> Result<(), String> {
     apply_migrations_with(database_path, data_dir, MIGRATIONS)
+}
+
+fn prepare_schema5_canonical_keys(transaction: &Transaction<'_>) -> Result<(), String> {
+    let brands = transaction
+        .prepare("SELECT id,name,markup_hundredths FROM brands ORDER BY id")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Brand identities could not be prepared for migration.".to_string())?;
+    let mut groups: BTreeMap<String, Vec<(String, String, Option<i64>)>> = BTreeMap::new();
+    for (id, name, markup) in brands {
+        let (display, key) = normalise_identity(&name, "Brand name", 256)?;
+        groups.entry(key).or_default().push((id, display, markup));
+    }
+    for (key, mut group) in groups {
+        group.sort_by(|left, right| left.0.cmp(&right.0));
+        let distinct_markups = group
+            .iter()
+            .filter_map(|(_, _, markup)| *markup)
+            .collect::<HashSet<_>>();
+        if distinct_markups.len() > 1 {
+            return Err("Canonical brand collisions contain conflicting markup facts.".into());
+        }
+        let (keeper_id, keeper_name, keeper_markup) = group[0].clone();
+        let resolved_markup = distinct_markups.into_iter().next().or(keeper_markup);
+        for (duplicate_id, _, _) in group.iter().skip(1) {
+            transaction
+                .execute(
+                    "UPDATE catalogue_items SET brand_id=?1 WHERE brand_id=?2",
+                    params![keeper_id, duplicate_id],
+                )
+                .map_err(|_| "Canonical brand references could not be merged.".to_string())?;
+            transaction
+                .execute("DELETE FROM brands WHERE id=?1", params![duplicate_id])
+                .map_err(|_| "Canonical duplicate brands could not be merged.".to_string())?;
+        }
+        transaction
+            .execute(
+                "UPDATE brands SET name=?1,markup_hundredths=?2,canonical_key=?3 WHERE id=?4",
+                params![keeper_name, resolved_markup, key, keeper_id],
+            )
+            .map_err(|_| "Canonical brand identity could not be stored.".to_string())?;
+    }
+
+    let offers = transaction
+        .prepare("SELECT id,product_id,supplier_id,supplier_sku FROM product_supplier_offers ORDER BY id")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "Supplier SKU identities could not be prepared for migration.".to_string())?;
+    let mut identities = HashSet::new();
+    for (id, product_id, supplier_id, supplier_sku) in offers {
+        let (_, normalized) = normalise_identity(&supplier_sku, "Supplier SKU", 256)?;
+        if !identities.insert((product_id, supplier_id, normalized.clone())) {
+            return Err("Normalised supplier SKU migration found conflicting offers.".into());
+        }
+        transaction
+            .execute(
+                "UPDATE product_supplier_offers SET normalized_supplier_sku=?1 WHERE id=?2",
+                params![normalized, id],
+            )
+            .map_err(|_| "Normalised supplier SKU could not be stored.".to_string())?;
+    }
+    transaction
+        .execute_batch(
+            "CREATE UNIQUE INDEX brand_canonical_key_unique ON brands(canonical_key);
+             CREATE UNIQUE INDEX offer_product_supplier_sku_unique ON product_supplier_offers(product_id,supplier_id,normalized_supplier_sku);
+             CREATE TRIGGER brands_canonical_key_required_insert BEFORE INSERT ON brands WHEN NEW.canonical_key IS NULL OR NEW.canonical_key='' BEGIN SELECT RAISE(ABORT,'canonical brand key required'); END;
+             CREATE TRIGGER brands_canonical_key_required_update BEFORE UPDATE OF canonical_key ON brands WHEN NEW.canonical_key IS NULL OR NEW.canonical_key='' BEGIN SELECT RAISE(ABORT,'canonical brand key required'); END;
+             CREATE TRIGGER offers_normalized_sku_required_insert BEFORE INSERT ON product_supplier_offers WHEN NEW.normalized_supplier_sku IS NULL OR NEW.normalized_supplier_sku='' BEGIN SELECT RAISE(ABORT,'normalized supplier SKU required'); END;
+             CREATE TRIGGER offers_normalized_sku_required_update BEFORE UPDATE OF normalized_supplier_sku ON product_supplier_offers WHEN NEW.normalized_supplier_sku IS NULL OR NEW.normalized_supplier_sku='' BEGIN SELECT RAISE(ABORT,'normalized supplier SKU required'); END;",
+        )
+        .map_err(|_| "Canonical identity constraints could not be created.".to_string())?;
+    Ok(())
 }
 
 fn apply_migrations_with(
@@ -2595,6 +3628,9 @@ fn apply_migrations_with(
                     .execute_batch(sql)
                     .map_err(|_| "The database migration failed.".to_string())?;
             }
+            if version == 5 {
+                prepare_schema5_canonical_keys(&transaction)?;
+            }
             transaction
                 .execute(
                     "INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(?1,?2,?3,datetime('now'))",
@@ -2657,10 +3693,11 @@ fn database_matches_state(
     } else {
         assert_integrity(&connection).is_ok()
     };
+    let actual_version = schema_version_or_zero(&connection);
+    let actual_counts = record_counts_for_version(&connection, expected_version);
     structurally_valid
-        && schema_version_or_zero(&connection).is_ok_and(|value| value == expected_version)
-        && record_counts_for_version(&connection, expected_version)
-            .is_ok_and(|value| value == *expected_counts)
+        && actual_version.is_ok_and(|value| value == expected_version)
+        && actual_counts.is_ok_and(|value| value == *expected_counts)
 }
 
 #[cfg(windows)]
@@ -2840,13 +3877,15 @@ fn restore_backup_files(database_path: &Path, data_dir: &Path, id: &str) -> Resu
     let rollback = restore_work_path(data_dir, &rollback_filename, ".swl-rollback-")?;
     let result = (|| -> Result<(), String> {
         sqlite_backup(&source_path, &temporary)?;
-        if sha256_file(&temporary)? != manifest.summary.sha256
-            || !database_matches_state(
-                &temporary,
-                manifest.summary.schema_version,
-                &manifest.summary.record_counts,
-            )
-        {
+        // The verified source remains bound to the manifest SHA-256. SQLite's
+        // backup API may produce a byte-different but logically identical
+        // database image, so the staged copy is accepted only by complete
+        // schema/count/integrity verification rather than physical equality.
+        if !database_matches_state(
+            &temporary,
+            manifest.summary.schema_version,
+            &manifest.summary.record_counts,
+        ) {
             return Err("The restored database did not match its verified manifest.".to_string());
         }
         let live = open_connection(database_path)?;
@@ -2950,7 +3989,7 @@ fn desktop_health(state: State<'_, AppState>) -> Result<DesktopHealth, String> {
 fn list_catalogue_items(state: State<'_, AppState>) -> Result<Vec<CatalogueItem>, String> {
     let connection = open_connection(&state.database_path)?;
     let mut statement = connection
-        .prepare("SELECT id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at FROM catalogue_items ORDER BY item_number,id")
+        .prepare("SELECT c.id,c.item_number,c.description,c.cost_cents,c.sell_price_cents,c.gst_basis,c.sell_price_gst_basis,c.item_kind,c.brand_id,c.product_markup_hundredths,c.upstream_reference,c.servicem8_reference,c.barcode,c.updated_at,s.offer_id FROM catalogue_items c LEFT JOIN product_offer_selections s ON s.product_id=c.id ORDER BY c.item_number,c.id")
         .map_err(|_| "The catalogue could not be read.".to_string())?;
     let items = statement
         .query_map([], |row| {
@@ -2961,7 +4000,15 @@ fn list_catalogue_items(state: State<'_, AppState>) -> Result<Vec<CatalogueItem>
                 cost_cents: row.get(3)?,
                 sell_price_cents: row.get(4)?,
                 gst_basis: row.get(5)?,
-                updated_at: row.get(6)?,
+                sell_price_gst_basis: row.get(6)?,
+                item_kind: row.get(7)?,
+                brand_id: row.get(8)?,
+                markup_override_percent: row.get::<_, Option<i64>>(9)?.map(markup_string),
+                xero_reference: row.get(10)?,
+                servicem8_reference: row.get(11)?,
+                barcode: row.get(12)?,
+                updated_at: row.get(13)?,
+                selected_offer_id: row.get(14)?,
             })
         })
         .map_err(|_| "The catalogue could not be read.".to_string())?
@@ -3031,6 +4078,8 @@ fn update_catalogue_metadata(
                 ],
             )
             .map_err(|_| "The catalogue update was rejected.".to_string())?;
+        let snapshot = query_product_metadata_snapshot(&transaction, &item.id)?;
+        append_product_metadata_version(&transaction, &snapshot)?;
     }
     assert_integrity(&transaction)?;
     transaction
@@ -3052,8 +4101,17 @@ fn publish_approved_changes_inner(
         validate_catalogue_item(&change.item)?;
         validate_identifier(&change.approved_by, "Approver")?;
         validate_text(&change.reason, "Approval reason", 1_000, false)?;
-        if change.item.sell_price_cents < minimum_sell_cents(change.item.cost_cents)? {
-            return Err("The sell price is below the required 30 percent markup floor.".into());
+        let provenance = change.pricing_provenance.as_ref().ok_or_else(|| {
+            "Verified pricing provenance is required for every publication.".to_string()
+        })?;
+        if provenance.selected_offer_id.is_none()
+            || provenance.supplier_id.is_none()
+            || provenance.supplier_name.is_none()
+            || provenance.supplier_sku.is_none()
+        {
+            return Err(
+                "A complete selected supplier-offer provenance snapshot is required.".to_string(),
+            );
         }
         if !item_ids.insert(&change.item.id) || !item_numbers.insert(&change.item.item_number) {
             return Err("The approved publication batch contains duplicate items.".into());
@@ -3064,7 +4122,32 @@ fn publish_approved_changes_inner(
         .map_err(|_| "The approved publication could not start.".to_string())?;
     let mut published = Vec::with_capacity(changes.len());
     for change in changes {
+        let current_updated_at = transaction
+            .query_row(
+                "SELECT updated_at FROM catalogue_items WHERE id=?1",
+                params![change.item.id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|_| "The current catalogue version could not be read.".to_string())?;
+        if let Some(current_updated_at) = current_updated_at {
+            if timestamp_order_key(&change.item.updated_at)?
+                <= timestamp_order_key(&current_updated_at)?
+            {
+                return Err(
+                    "The approved catalogue publication is stale; reload the latest product."
+                        .to_string(),
+                );
+            }
+        }
         let approved_at = now_text();
+        let product_markup_hundredths = change
+            .item
+            .markup_override_percent
+            .as_deref()
+            .map(parse_markup_override_hundredths)
+            .transpose()?
+            .map(i64::from);
         let approval = ApprovalRecord {
             id: Uuid::new_v4().to_string(),
             item_id: change.item.id.clone(),
@@ -3073,6 +4156,196 @@ fn publish_approved_changes_inner(
             reason: change.reason.clone(),
             approved_at: approved_at.clone(),
         };
+        transaction.execute(
+            "INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,sell_price_gst_basis,item_kind,brand_id,product_markup_hundredths,upstream_reference,servicem8_reference,barcode,updated_at)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+             ON CONFLICT(id) DO UPDATE SET item_number=excluded.item_number,description=excluded.description,cost_cents=excluded.cost_cents,
+               sell_price_cents=excluded.sell_price_cents,gst_basis=excluded.gst_basis,sell_price_gst_basis=excluded.sell_price_gst_basis,
+               item_kind=excluded.item_kind,brand_id=excluded.brand_id,product_markup_hundredths=excluded.product_markup_hundredths,
+               upstream_reference=excluded.upstream_reference,servicem8_reference=excluded.servicem8_reference,barcode=excluded.barcode,updated_at=excluded.updated_at",
+            params![change.item.id,change.item.item_number,change.item.description,change.item.cost_cents,change.item.sell_price_cents,
+                change.item.gst_basis,change.item.sell_price_gst_basis,change.item.item_kind,change.item.brand_id,product_markup_hundredths,
+                change.item.xero_reference,change.item.servicem8_reference,change.item.barcode,change.item.updated_at],
+        ).map_err(|_|"The approved catalogue publication was rejected.".to_string())?;
+        let product_snapshot = query_product_metadata_snapshot(&transaction, &change.item.id)?;
+        append_product_metadata_version(&transaction, &product_snapshot)?;
+        if let Some(provenance) = change.pricing_provenance.as_ref() {
+            if let (Some(offer_id), Some(supplier_id), Some(supplier_name), Some(supplier_sku)) = (
+                provenance.selected_offer_id.as_deref(),
+                provenance.supplier_id.as_deref(),
+                provenance.supplier_name.as_deref(),
+                provenance.supplier_sku.as_deref(),
+            ) {
+                validate_identifier(offer_id, "Offer identifier")?;
+                validate_identifier(supplier_id, "Supplier identifier")?;
+                validate_text(supplier_name, "Supplier name", 256, false)?;
+                let (normalised_supplier_sku, normalized_supplier_sku) =
+                    normalise_identity(supplier_sku, "Supplier SKU", 256)?;
+                if provenance.currency != "AUD"
+                    || !matches!(
+                        provenance.cost_gst_basis.as_str(),
+                        "inc-gst" | "ex-gst" | "unknown"
+                    )
+                {
+                    return Err("Initial supplier-offer provenance is invalid.".to_string());
+                }
+                let supplier_inserted = transaction.execute("INSERT OR IGNORE INTO suppliers(id,name,active,updated_at) VALUES(?1,?2,1,?3)",params![supplier_id,supplier_name,change.item.updated_at])
+                    .map_err(|_|"The initial supplier could not be saved.".to_string())?;
+                if supplier_inserted == 1 {
+                    append_supplier_version(
+                        &transaction,
+                        &SupplierRecord {
+                            id: supplier_id.to_string(),
+                            name: supplier_name.to_string(),
+                            active: true,
+                            external_reference: None,
+                            updated_at: change.item.updated_at.clone(),
+                        },
+                    )?;
+                }
+                let stored_name: String = transaction
+                    .query_row(
+                        "SELECT name FROM suppliers WHERE id=?1",
+                        params![supplier_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|_| "The initial supplier could not be verified.".to_string())?;
+                if stored_name != supplier_name {
+                    return Err(
+                        "Supplier provenance does not match the stored supplier.".to_string()
+                    );
+                }
+                let offer_inserted = transaction.execute("INSERT OR IGNORE INTO product_supplier_offers(id,product_id,supplier_id,supplier_sku,normalized_supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,provenance_type,observed_at) VALUES(?1,?2,?3,?4,?5,?6,?7,'AUD',1,1,'supplier-file',?8)",params![offer_id,change.item.id,supplier_id,normalised_supplier_sku,normalized_supplier_sku,change.item.cost_cents,provenance.cost_gst_basis,change.item.updated_at])
+                    .map_err(|_|"The initial supplier offer could not be saved.".to_string())?;
+                let selection_inserted = transaction.execute("INSERT OR IGNORE INTO product_offer_selections(product_id,offer_id,selected_by,reason,selected_at) VALUES(?1,?2,?3,?4,?5)",params![change.item.id,offer_id,change.approved_by,"Initial approved supplier offer",change.item.updated_at])
+                    .map_err(|_|"The initial supplier offer could not be selected.".to_string())?;
+                if offer_inserted == 1 {
+                    let stored_offer = query_supplier_offer(&transaction, offer_id)?;
+                    append_supplier_offer_version(
+                        &transaction,
+                        &stored_offer,
+                        &change.item.updated_at,
+                    )?;
+                }
+                if selection_inserted == 1 {
+                    append_offer_selection_version(
+                        &transaction,
+                        &OfferSelectionRecord {
+                            product_id: change.item.id.clone(),
+                            offer_id: offer_id.to_string(),
+                            selected_by: change.approved_by.clone(),
+                            reason: "Initial approved supplier offer".to_string(),
+                            selected_at: change.item.updated_at.clone(),
+                        },
+                    )?;
+                }
+            }
+        }
+        let pricing_basis = selected_offer_pricing_basis(&transaction, &change.item.id)?;
+        let selected_offer_id = pricing_basis.offer_id;
+        let offer_cost_cents = pricing_basis.offer_cost_cents;
+        let cost_basis_cents = pricing_basis.cost_basis_cents;
+        let supplier_id_snapshot = pricing_basis.supplier_id;
+        let supplier_name_snapshot = pricing_basis.supplier_name;
+        let supplier_sku_snapshot = pricing_basis.supplier_sku;
+        let cost_gst_basis = pricing_basis.gst_basis;
+        let currency = pricing_basis.currency;
+        let sell_basis = gst_exclusive_cost_cents(
+            change.item.sell_price_cents,
+            &change.item.sell_price_gst_basis,
+        )?;
+        if sell_basis < minimum_sell_cents(cost_basis_cents)? {
+            return Err("The sell price is below the required 30 percent markup floor.".into());
+        }
+        let brand_markup = match change.item.brand_id.as_deref() {
+            Some(brand_id) => transaction
+                .query_row(
+                    "SELECT markup_hundredths FROM brands WHERE id=?1",
+                    params![brand_id],
+                    |row| row.get::<_, Option<i64>>(0),
+                )
+                .optional()
+                .map_err(|_| "The brand markup could not be resolved.".to_string())?
+                .ok_or_else(|| "The selected brand does not exist.".to_string())?,
+            None => None,
+        };
+        let (markup_source_type, markup_source_id, applied_markup_hundredths) =
+            if let Some(value) = product_markup_hundredths {
+                ("product".to_string(), Some(change.item.id.clone()), value)
+            } else if let Some(value) = brand_markup {
+                ("brand".to_string(), change.item.brand_id.clone(), value)
+            } else {
+                (
+                    "global".to_string(),
+                    None,
+                    global_markup_hundredths(&transaction)?,
+                )
+            };
+        let exact_sell_cents = expected_sell_cents(
+            offer_cost_cents,
+            &cost_gst_basis,
+            applied_markup_hundredths,
+            &change.item.sell_price_gst_basis,
+        )?;
+        if change.item.sell_price_cents != exact_sell_cents {
+            return Err(
+                "The sell price does not equal the verified selected-offer price calculation."
+                    .to_string(),
+            );
+        }
+        if change.item.cost_cents != offer_cost_cents {
+            return Err("The catalogue cost does not match the selected supplier offer.".into());
+        }
+        let provenance_state = if selected_offer_id.is_some() {
+            "resolved"
+        } else {
+            "legacy-unresolved"
+        }
+        .to_string();
+        let explanation = if selected_offer_id.is_some() {
+            format!(
+                "Selected supplier offer with {} markup applied to GST-exclusive cost",
+                markup_source_type
+            )
+        } else {
+            "No selected supplier offer; legacy cost provenance unresolved".to_string()
+        };
+        if let Some(claimed) = change.pricing_provenance.as_ref() {
+            validate_text(
+                &claimed.explanation,
+                "Pricing provenance explanation",
+                2_000,
+                true,
+            )?;
+            let verified_currency = currency.as_deref().ok_or_else(|| {
+                "Pricing provenance cannot be verified without a selected supplier offer."
+                    .to_string()
+            })?;
+            if claimed.selected_offer_id != selected_offer_id
+                || claimed.supplier_id != supplier_id_snapshot
+                || claimed.supplier_name != supplier_name_snapshot
+                || claimed.supplier_sku != supplier_sku_snapshot
+                || claimed.cost_gst_basis != cost_gst_basis
+                || claimed.currency != verified_currency
+                || claimed.markup_percent != markup_string(applied_markup_hundredths)
+                || claimed.markup_source != markup_source_type
+                || claimed.markup_source_id != markup_source_id
+                || claimed.brand_id != change.item.brand_id
+                || claimed.item_kind != change.item.item_kind
+                || claimed.sell_price_gst_basis != change.item.sell_price_gst_basis
+                || claimed.rule_version != "pricing-rule-v1"
+            {
+                return Err(
+                    "Pricing provenance is stale or does not match persisted pricing facts."
+                        .to_string(),
+                );
+            }
+        }
+        if change.item.selected_offer_id != selected_offer_id {
+            return Err(
+                "The catalogue selection is stale; reload the selected supplier offer.".to_string(),
+            );
+        }
         let history = PriceHistoryRecord {
             id: Uuid::new_v4().to_string(),
             item_id: change.item.id.clone(),
@@ -3081,19 +4354,24 @@ fn publish_approved_changes_inner(
             cost_cents: change.item.cost_cents,
             sell_price_cents: change.item.sell_price_cents,
             approval_id: approval.id.clone(),
+            selected_offer_id,
+            cost_basis_cents,
+            markup_source_type,
+            markup_source_id,
+            applied_markup_hundredths: Some(applied_markup_hundredths),
+            supplier_id_snapshot,
+            supplier_name_snapshot,
+            supplier_sku_snapshot,
+            cost_gst_basis,
+            sell_price_gst_basis: change.item.sell_price_gst_basis.clone(),
+            currency,
+            brand_id_snapshot: change.item.brand_id.clone(),
+            item_kind_snapshot: Some(change.item.item_kind.clone()),
+            pricing_explanation: explanation,
+            pricing_rule_version: "pricing-rule-v1".to_string(),
+            provenance_state,
             recorded_at: approved_at,
         };
-        transaction
-            .execute(
-                "INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7)
-                 ON CONFLICT(id) DO UPDATE SET item_number=excluded.item_number,description=excluded.description,
-                   cost_cents=excluded.cost_cents,sell_price_cents=excluded.sell_price_cents,
-                   gst_basis=excluded.gst_basis,updated_at=excluded.updated_at",
-                params![change.item.id,change.item.item_number,change.item.description,change.item.cost_cents,
-                    change.item.sell_price_cents,change.item.gst_basis,change.item.updated_at],
-            )
-            .map_err(|_| "The approved catalogue publication was rejected.".to_string())?;
         transaction
             .execute(
                 "INSERT INTO approvals(id,item_id,approved_by,proposed_sell_cents,reason,approved_at) VALUES(?1,?2,?3,?4,?5,?6)",
@@ -3102,8 +4380,13 @@ fn publish_approved_changes_inner(
             .map_err(|_| "The publication approval could not be recorded.".to_string())?;
         transaction
             .execute(
-                "INSERT INTO price_history(id,item_id,cost_cents,sell_price_cents,approval_id,recorded_at) VALUES(?1,?2,?3,?4,?5,?6)",
-                params![history.id,history.item_id,history.cost_cents,history.sell_price_cents,history.approval_id,history.recorded_at],
+                "INSERT INTO price_history(id,item_id,cost_cents,sell_price_cents,approval_id,selected_offer_id,cost_basis_cents,markup_source_type,markup_source_id,applied_markup_hundredths,supplier_id_snapshot,supplier_name_snapshot,supplier_sku_snapshot,cost_gst_basis,sell_price_gst_basis,currency,brand_id_snapshot,item_kind_snapshot,pricing_explanation,pricing_rule_version,provenance_state,recorded_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+                params![history.id,history.item_id,history.cost_cents,history.sell_price_cents,history.approval_id,
+                    history.selected_offer_id,history.cost_basis_cents,history.markup_source_type,history.markup_source_id,
+                    history.applied_markup_hundredths,history.supplier_id_snapshot,history.supplier_name_snapshot,history.supplier_sku_snapshot,
+                    history.cost_gst_basis,history.sell_price_gst_basis,history.currency,history.brand_id_snapshot,history.item_kind_snapshot,
+                    history.pricing_explanation,history.pricing_rule_version,history.provenance_state,history.recorded_at],
             )
             .map_err(|_| "The approved price history could not be recorded.".to_string())?;
         published.push(PublishedChange {
@@ -3203,7 +4486,9 @@ fn query_price_history(
     }
     let mut statement = connection
         .prepare(
-            "SELECT id,item_id,cost_cents,sell_price_cents,approval_id,recorded_at FROM price_history
+            "SELECT id,item_id,cost_cents,sell_price_cents,approval_id,selected_offer_id,cost_basis_cents,
+                    markup_source_type,markup_source_id,applied_markup_hundredths,supplier_id_snapshot,supplier_name_snapshot,supplier_sku_snapshot,
+                    cost_gst_basis,sell_price_gst_basis,currency,brand_id_snapshot,item_kind_snapshot,pricing_explanation,pricing_rule_version,provenance_state,recorded_at FROM price_history
              WHERE (?1 IS NULL OR item_id=?1) ORDER BY recorded_at,id",
         )
         .map_err(|_| "The price history could not be read.".to_string())?;
@@ -3219,7 +4504,23 @@ fn query_price_history(
                 cost_cents,
                 sell_price_cents,
                 approval_id: row.get(4)?,
-                recorded_at: row.get(5)?,
+                selected_offer_id: row.get(5)?,
+                cost_basis_cents: row.get(6)?,
+                markup_source_type: row.get(7)?,
+                markup_source_id: row.get(8)?,
+                applied_markup_hundredths: row.get(9)?,
+                supplier_id_snapshot: row.get(10)?,
+                supplier_name_snapshot: row.get(11)?,
+                supplier_sku_snapshot: row.get(12)?,
+                cost_gst_basis: row.get(13)?,
+                sell_price_gst_basis: row.get(14)?,
+                currency: row.get(15)?,
+                brand_id_snapshot: row.get(16)?,
+                item_kind_snapshot: row.get(17)?,
+                pricing_explanation: row.get(18)?,
+                pricing_rule_version: row.get(19)?,
+                provenance_state: row.get(20)?,
+                recorded_at: row.get(21)?,
             })
         })
         .map_err(|_| "The price history could not be read.".to_string())?
@@ -3570,12 +4871,42 @@ fn parse_markup_hundredths(markup: &str) -> Result<u32, String> {
     Ok(value)
 }
 
+fn parse_markup_override_hundredths(markup: &str) -> Result<u32, String> {
+    let mut parts = markup.split('.');
+    let whole = parts.next().unwrap_or_default();
+    let fractional = parts.next();
+    if parts.next().is_some()
+        || whole.is_empty()
+        || whole.len() > 3
+        || !whole.bytes().all(|value| value.is_ascii_digit())
+        || fractional.is_some_and(|value| {
+            value.is_empty() || value.len() > 2 || !value.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    {
+        return Err("Markup override is invalid.".to_string());
+    }
+    let whole = whole
+        .parse::<u32>()
+        .map_err(|_| "Markup override is invalid.".to_string())?;
+    let fractional = match fractional.unwrap_or_default().as_bytes() {
+        [] => 0,
+        [first] => u32::from(*first - b'0') * 10,
+        [first, second] => u32::from(*first - b'0') * 10 + u32::from(*second - b'0'),
+        _ => return Err("Markup override is invalid.".to_string()),
+    };
+    let value = whole * 100 + fractional;
+    if value > 99_999 {
+        return Err("Markup override is invalid.".to_string());
+    }
+    Ok(value)
+}
+
 fn validate_settings(settings: &Value) -> Result<String, String> {
     let object = settings
         .as_object()
         .ok_or_else(|| "Settings must be a JSON object.".to_string())?;
-    if object.len() != 3
-        || !["markupPercent", "taxHandling", "theme"]
+    if object.len() != 4
+        || !["markupPercent", "taxHandling", "theme", "glassTint"]
             .iter()
             .all(|key| object.contains_key(*key))
     {
@@ -3597,10 +4928,41 @@ fn validate_settings(settings: &Value) -> Result<String, String> {
         .get("theme")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    if !matches!(theme, "light" | "dark") {
+    if !matches!(theme, "system" | "light" | "dark") {
         return Err("Theme setting is invalid.".to_string());
     }
+    let glass_tint = object
+        .get("glassTint")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !matches!(glass_tint, "clear" | "tinted") {
+        return Err("Glass tint setting is invalid.".to_string());
+    }
     validate_json(settings, "Settings")
+}
+
+fn global_markup_hundredths(connection: &Connection) -> Result<i64, String> {
+    let stored = connection
+        .query_row(
+            "SELECT settings_json FROM settings WHERE id='settings'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|_| "Global markup setting could not be read.".to_string())?;
+    match stored {
+        Some(serialised) => {
+            let value: Value = serde_json::from_str(&serialised)
+                .map_err(|_| "Global markup setting is invalid.".to_string())?;
+            validate_settings(&value)?;
+            value
+                .get("markupPercent")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "Global markup setting is invalid.".to_string())
+                .and_then(|value| parse_markup_hundredths(value).map(i64::from))
+        }
+        None => Ok(3_000),
+    }
 }
 
 #[tauri::command]
@@ -3621,7 +4983,8 @@ fn load_settings(state: State<'_, AppState>) -> Result<Value, String> {
         None => Ok(json!({
             "markupPercent": "30",
             "taxHandling": "not-configured",
-            "theme": "light"
+            "theme": "system",
+            "glassTint": "clear"
         })),
     }
 }
@@ -3650,18 +5013,983 @@ fn save_settings_inner(state: &AppState, settings: Value) -> Result<Value, Strin
     let transaction = connection
         .transaction()
         .map_err(|_| "Settings update could not start.".to_string())?;
+    let previous = transaction
+        .query_row(
+            "SELECT settings_json FROM settings WHERE id='settings'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|_| "Settings could not be checked.".to_string())?;
+    let changed_at = now_text();
     transaction
         .execute(
             "INSERT INTO settings(id,settings_json,updated_at) VALUES('settings',?1,?2)
              ON CONFLICT(id) DO UPDATE SET settings_json=excluded.settings_json,updated_at=excluded.updated_at",
-            params![serialised, now_text()],
+            params![serialised, changed_at],
         )
         .map_err(|_| "Settings could not be saved.".to_string())?;
+    transaction
+        .execute(
+            "INSERT INTO settings_audit(id,previous_json,current_json,changed_by,changed_at) VALUES(?1,?2,?3,'local-operator',?4)",
+            params![Uuid::new_v4().to_string(), previous, serialised, changed_at],
+        )
+        .map_err(|_| "The settings audit record could not be saved.".to_string())?;
     assert_integrity(&transaction)?;
     transaction
         .commit()
         .map_err(|_| "Settings update could not be committed.".to_string())?;
     Ok(settings)
+}
+
+fn validate_optional_text(value: Option<&str>, label: &str, maximum: usize) -> Result<(), String> {
+    if let Some(value) = value {
+        validate_text(value, label, maximum, false)?;
+    }
+    Ok(())
+}
+
+fn normalise_identity(
+    value: &str,
+    label: &str,
+    maximum: usize,
+) -> Result<(String, String), String> {
+    let display = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if display.is_empty() || display.len() > maximum || display.chars().any(char::is_control) {
+        return Err(format!("{label} is outside the supported range."));
+    }
+    Ok((display.clone(), display.to_lowercase()))
+}
+
+fn validate_brand(brand: &BrandRecord) -> Result<(), String> {
+    validate_identifier(&brand.id, "Brand identifier")?;
+    normalise_identity(&brand.name, "Brand name", 256)?;
+    if brand
+        .markup_hundredths
+        .is_some_and(|value| !(0..=99_999).contains(&value))
+    {
+        return Err("Brand markup is outside the supported range.".to_string());
+    }
+    validate_timestamp(&brand.updated_at)
+}
+
+fn validate_supplier(supplier: &SupplierRecord) -> Result<(), String> {
+    validate_identifier(&supplier.id, "Supplier identifier")?;
+    validate_text(&supplier.name, "Supplier name", 256, false)?;
+    validate_optional_text(
+        supplier.external_reference.as_deref(),
+        "Supplier external reference",
+        256,
+    )?;
+    validate_timestamp(&supplier.updated_at)
+}
+
+fn validate_offer(offer: &SupplierOfferRecord) -> Result<(), String> {
+    validate_identifier(&offer.id, "Offer identifier")?;
+    validate_identifier(&offer.product_id, "Offer product identifier")?;
+    validate_identifier(&offer.supplier_id, "Offer supplier identifier")?;
+    normalise_identity(&offer.supplier_sku, "Supplier SKU", 256)?;
+    validate_cents(offer.cost_cents, "Offer cost")?;
+    if !matches!(offer.gst_basis.as_str(), "inc-gst" | "ex-gst" | "unknown") {
+        return Err("Offer GST basis is invalid.".to_string());
+    }
+    if offer.currency != "AUD" {
+        return Err("Offer currency must be AUD.".to_string());
+    }
+    if !matches!(
+        offer.provenance_type.as_str(),
+        "legacy-local" | "manual" | "supplier-file" | "xero"
+    ) {
+        return Err("Offer provenance type is invalid.".to_string());
+    }
+    validate_optional_text(
+        offer.provenance_reference.as_deref(),
+        "Offer provenance reference",
+        1_000,
+    )?;
+    if let Some(value) = offer.valid_from.as_deref() {
+        validate_timestamp(value)?;
+    }
+    if let Some(value) = offer.valid_until.as_deref() {
+        validate_timestamp(value)?;
+    }
+    if let Some((from, until)) = offer.valid_from.as_ref().zip(offer.valid_until.as_ref()) {
+        if timestamp_order_key(from)? > timestamp_order_key(until)? {
+            return Err("Offer validity dates are inconsistent.".to_string());
+        }
+    }
+    validate_timestamp(&offer.observed_at)
+}
+
+fn validate_sync_run(run: &SyncRunRecord) -> Result<String, String> {
+    validate_identifier(&run.id, "Sync run identifier")?;
+    if !matches!(run.system.as_str(), "xero" | "servicem8")
+        || !matches!(run.direction.as_str(), "upstream-read" | "downstream-write")
+        || (run.system == "xero" && run.direction != "upstream-read")
+        || (run.system == "servicem8" && run.direction != "downstream-write")
+    {
+        return Err("Sync system and direction are invalid.".to_string());
+    }
+    if !matches!(
+        run.status.as_str(),
+        "preview" | "running" | "completed" | "partial" | "failed"
+    ) || !matches!(run.mode.as_str(), "preview" | "approved")
+    {
+        return Err("Sync run state is invalid.".to_string());
+    }
+    if run.system == "servicem8" && run.mode == "approved" && run.approved_by.is_none() {
+        return Err("An approved ServiceM8 write requires an approver.".to_string());
+    }
+    validate_timestamp(&run.started_at)?;
+    if let Some(value) = run.completed_at.as_deref() {
+        validate_timestamp(value)?;
+    }
+    if let Some(value) = run.approved_by.as_deref() {
+        validate_identifier(value, "Sync approver")?;
+    }
+    validate_json(&run.summary, "Sync summary")
+}
+
+#[tauri::command]
+fn list_brands(state: State<'_, AppState>) -> Result<Vec<BrandRecord>, String> {
+    let connection = open_connection(&state.database_path)?;
+    let mut statement = connection
+        .prepare("SELECT id,name,markup_hundredths,updated_at FROM brands ORDER BY name,id")
+        .map_err(|_| "Brands could not be read.".to_string())?;
+    let records = statement
+        .query_map([], |row| {
+            Ok(BrandRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                markup_hundredths: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        })
+        .map_err(|_| "Brands could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Brands could not be read.".to_string())?;
+    Ok(records)
+}
+
+fn append_brand_version(transaction: &Transaction<'_>, brand: &BrandRecord) -> Result<(), String> {
+    let version = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(version),0)+1 FROM brand_versions WHERE brand_id=?1",
+            params![brand.id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|_| "The brand audit version could not be resolved.".to_string())?;
+    let snapshot = serde_json::to_value(brand)
+        .map_err(|_| "The brand audit snapshot could not be created.".to_string())?;
+    let serialised = validate_json(&snapshot, "Brand audit snapshot")?;
+    transaction
+        .execute(
+            "INSERT INTO brand_versions(brand_id,version,snapshot_json,changed_at) VALUES(?1,?2,?3,?4)",
+            params![brand.id, version, serialised, brand.updated_at],
+        )
+        .map_err(|_| "The brand audit version could not be appended.".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn save_brand(state: State<'_, AppState>, brand: BrandRecord) -> Result<BrandRecord, String> {
+    let _gate = lock_mutation_gate(&state)?;
+    let mut connection = open_connection(&state.database_path)?;
+    save_brand_inner(&mut connection, brand)
+}
+
+fn save_brand_inner(
+    connection: &mut Connection,
+    brand: BrandRecord,
+) -> Result<BrandRecord, String> {
+    validate_brand(&brand)?;
+    let (normalised_name, canonical_key) = normalise_identity(&brand.name, "Brand name", 256)?;
+    let mut stored = brand;
+    stored.name = normalised_name;
+    let transaction = connection
+        .transaction()
+        .map_err(|_| "The brand update could not start.".to_string())?;
+    let current = transaction
+        .query_row(
+            "SELECT updated_at FROM brands WHERE id=?1",
+            params![stored.id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|_| "The current brand version could not be read.".to_string())?;
+    if let Some(updated_at) = current {
+        if timestamp_order_key(&stored.updated_at)? <= timestamp_order_key(&updated_at)? {
+            return Err("The brand update is stale; reload the latest brand.".to_string());
+        }
+    }
+    transaction.execute(
+        "INSERT INTO brands(id,name,markup_hundredths,updated_at,canonical_key) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name,markup_hundredths=excluded.markup_hundredths,updated_at=excluded.updated_at,canonical_key=excluded.canonical_key",
+        params![stored.id,stored.name,stored.markup_hundredths,stored.updated_at,canonical_key],
+    ).map_err(|_| "The brand could not be saved.".to_string())?;
+    append_brand_version(&transaction, &stored)?;
+    assert_integrity(&transaction)?;
+    transaction
+        .commit()
+        .map_err(|_| "The brand could not be committed.".to_string())?;
+    Ok(stored)
+}
+
+#[tauri::command]
+fn list_suppliers(state: State<'_, AppState>) -> Result<Vec<SupplierRecord>, String> {
+    let connection = open_connection(&state.database_path)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id,name,active,external_reference,updated_at FROM suppliers ORDER BY name,id",
+        )
+        .map_err(|_| "Suppliers could not be read.".to_string())?;
+    let records = statement
+        .query_map([], |row| {
+            Ok(SupplierRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                active: row.get(2)?,
+                external_reference: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })
+        .map_err(|_| "Suppliers could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Suppliers could not be read.".to_string())?;
+    Ok(records)
+}
+
+#[tauri::command]
+fn save_supplier(
+    state: State<'_, AppState>,
+    supplier: SupplierRecord,
+) -> Result<SupplierRecord, String> {
+    let _gate = lock_mutation_gate(&state)?;
+    let mut connection = open_connection(&state.database_path)?;
+    save_supplier_inner(&mut connection, supplier)
+}
+
+fn append_supplier_version(
+    transaction: &Transaction<'_>,
+    supplier: &SupplierRecord,
+) -> Result<(), String> {
+    let version = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(version),0)+1 FROM supplier_versions WHERE supplier_id=?1",
+            params![supplier.id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|_| "The supplier audit version could not be resolved.".to_string())?;
+    let snapshot = serde_json::to_value(supplier)
+        .map_err(|_| "The supplier audit snapshot could not be created.".to_string())?;
+    let serialised = validate_json(&snapshot, "Supplier audit snapshot")?;
+    transaction.execute(
+        "INSERT INTO supplier_versions(supplier_id,version,snapshot_json,changed_at) VALUES(?1,?2,?3,?4)",
+        params![supplier.id,version,serialised,supplier.updated_at],
+    ).map_err(|_| "The supplier audit version could not be appended.".to_string())?;
+    Ok(())
+}
+
+fn save_supplier_inner(
+    connection: &mut Connection,
+    supplier: SupplierRecord,
+) -> Result<SupplierRecord, String> {
+    validate_supplier(&supplier)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|_| "The supplier update could not start.".to_string())?;
+    let current = transaction
+        .query_row(
+            "SELECT updated_at FROM suppliers WHERE id=?1",
+            params![supplier.id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|_| "The current supplier version could not be read.".to_string())?;
+    if let Some(updated_at) = current {
+        if timestamp_order_key(&supplier.updated_at)? <= timestamp_order_key(&updated_at)? {
+            return Err("The supplier update is stale; reload the latest supplier.".to_string());
+        }
+    }
+    transaction.execute(
+        "INSERT INTO suppliers(id,name,active,external_reference,updated_at) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name,active=excluded.active,external_reference=excluded.external_reference,updated_at=excluded.updated_at",
+        params![supplier.id,supplier.name,supplier.active,supplier.external_reference,supplier.updated_at],
+    ).map_err(|_| "The supplier could not be saved.".to_string())?;
+    append_supplier_version(&transaction, &supplier)?;
+    assert_integrity(&transaction)?;
+    transaction
+        .commit()
+        .map_err(|_| "The supplier could not be committed.".to_string())?;
+    Ok(supplier)
+}
+
+#[tauri::command]
+fn list_supplier_offers(
+    state: State<'_, AppState>,
+    product_id: Option<String>,
+) -> Result<Vec<SupplierOfferRecord>, String> {
+    if let Some(value) = product_id.as_deref() {
+        validate_identifier(value, "Product identifier")?;
+    }
+    let connection = open_connection(&state.database_path)?;
+    let mut statement = connection.prepare(
+        "SELECT id,product_id,supplier_id,supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,valid_from,valid_until,provenance_type,provenance_reference,observed_at
+         FROM product_supplier_offers WHERE (?1 IS NULL OR product_id=?1) ORDER BY product_id,supplier_id,id"
+    ).map_err(|_| "Supplier offers could not be read.".to_string())?;
+    let records = statement
+        .query_map(params![product_id], |row| {
+            Ok(SupplierOfferRecord {
+                id: row.get(0)?,
+                product_id: row.get(1)?,
+                supplier_id: row.get(2)?,
+                supplier_sku: row.get(3)?,
+                cost_cents: row.get(4)?,
+                gst_basis: row.get(5)?,
+                currency: row.get(6)?,
+                active: row.get(7)?,
+                is_preferred: row.get(8)?,
+                valid_from: row.get(9)?,
+                valid_until: row.get(10)?,
+                provenance_type: row.get(11)?,
+                provenance_reference: row.get(12)?,
+                observed_at: row.get(13)?,
+            })
+        })
+        .map_err(|_| "Supplier offers could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Supplier offers could not be read.".to_string())?;
+    Ok(records)
+}
+
+fn query_supplier_offer(
+    connection: &Connection,
+    offer_id: &str,
+) -> Result<SupplierOfferRecord, String> {
+    connection
+        .query_row(
+            "SELECT id,product_id,supplier_id,supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,valid_from,valid_until,provenance_type,provenance_reference,observed_at
+             FROM product_supplier_offers WHERE id=?1",
+            params![offer_id],
+            |row| {
+                Ok(SupplierOfferRecord {
+                    id: row.get(0)?,
+                    product_id: row.get(1)?,
+                    supplier_id: row.get(2)?,
+                    supplier_sku: row.get(3)?,
+                    cost_cents: row.get(4)?,
+                    gst_basis: row.get(5)?,
+                    currency: row.get(6)?,
+                    active: row.get(7)?,
+                    is_preferred: row.get(8)?,
+                    valid_from: row.get(9)?,
+                    valid_until: row.get(10)?,
+                    provenance_type: row.get(11)?,
+                    provenance_reference: row.get(12)?,
+                    observed_at: row.get(13)?,
+                })
+            },
+        )
+        .map_err(|_| "The supplier offer could not be read for audit.".to_string())
+}
+
+fn append_supplier_offer_version(
+    transaction: &Transaction<'_>,
+    offer: &SupplierOfferRecord,
+    changed_at: &str,
+) -> Result<(), String> {
+    let version = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(version),0)+1 FROM supplier_offer_versions WHERE offer_id=?1",
+            params![offer.id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|_| "The supplier offer audit version could not be resolved.".to_string())?;
+    let snapshot = serde_json::to_string(offer)
+        .map_err(|_| "The supplier offer audit snapshot could not be created.".to_string())?;
+    transaction
+        .execute(
+            "INSERT INTO supplier_offer_versions(offer_id,version,snapshot_json,changed_at) VALUES(?1,?2,?3,?4)",
+            params![offer.id, version, snapshot, changed_at],
+        )
+        .map_err(|_| "The supplier offer audit version could not be appended.".to_string())?;
+    Ok(())
+}
+
+fn append_offer_selection_version(
+    transaction: &Transaction<'_>,
+    selection: &OfferSelectionRecord,
+) -> Result<(), String> {
+    let version = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(version),0)+1 FROM offer_selection_versions WHERE product_id=?1",
+            params![selection.product_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|_| "The offer selection audit version could not be resolved.".to_string())?;
+    let snapshot = serde_json::to_string(selection)
+        .map_err(|_| "The offer selection audit snapshot could not be created.".to_string())?;
+    transaction
+        .execute(
+            "INSERT INTO offer_selection_versions(product_id,version,snapshot_json,changed_at) VALUES(?1,?2,?3,?4)",
+            params![selection.product_id, version, snapshot, selection.selected_at],
+        )
+        .map_err(|_| "The offer selection audit version could not be appended.".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn save_supplier_offer(
+    state: State<'_, AppState>,
+    offer: SupplierOfferRecord,
+) -> Result<SupplierOfferRecord, String> {
+    let _gate = lock_mutation_gate(&state)?;
+    let mut connection = open_connection(&state.database_path)?;
+    save_supplier_offer_inner(&mut connection, offer)
+}
+
+fn save_supplier_offer_inner(
+    connection: &mut Connection,
+    offer: SupplierOfferRecord,
+) -> Result<SupplierOfferRecord, String> {
+    validate_offer(&offer)?;
+    let (normalised_sku, normalized_supplier_sku) =
+        normalise_identity(&offer.supplier_sku, "Supplier SKU", 256)?;
+    let mut offer = offer;
+    offer.supplier_sku = normalised_sku;
+    let transaction = connection
+        .transaction()
+        .map_err(|_| "The supplier offer update could not start.".to_string())?;
+    let existing = transaction
+        .query_row(
+            "SELECT product_id,observed_at FROM product_supplier_offers WHERE id=?1",
+            params![offer.id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|_| "The current supplier offer version could not be read.".to_string())?;
+    if let Some((product_id, observed_at)) = existing {
+        if product_id != offer.product_id {
+            return Err("A supplier offer cannot be moved to another product.".to_string());
+        }
+        if timestamp_order_key(&offer.observed_at)? <= timestamp_order_key(&observed_at)? {
+            return Err("The supplier offer update is stale; reload the latest offer.".to_string());
+        }
+    }
+    transaction.execute(
+        "INSERT INTO product_supplier_offers(id,product_id,supplier_id,supplier_sku,normalized_supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,valid_from,valid_until,provenance_type,provenance_reference,observed_at)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)
+         ON CONFLICT(id) DO UPDATE SET product_id=excluded.product_id,supplier_id=excluded.supplier_id,supplier_sku=excluded.supplier_sku,
+           normalized_supplier_sku=excluded.normalized_supplier_sku,cost_cents=excluded.cost_cents,gst_basis=excluded.gst_basis,currency=excluded.currency,active=excluded.active,is_preferred=excluded.is_preferred,
+           valid_from=excluded.valid_from,valid_until=excluded.valid_until,provenance_type=excluded.provenance_type,
+           provenance_reference=excluded.provenance_reference,observed_at=excluded.observed_at",
+        params![offer.id,offer.product_id,offer.supplier_id,offer.supplier_sku,normalized_supplier_sku,offer.cost_cents,offer.gst_basis,offer.currency,offer.active,
+          offer.is_preferred,offer.valid_from,offer.valid_until,offer.provenance_type,offer.provenance_reference,offer.observed_at]
+    ).map_err(|_| "The supplier offer could not be saved.".to_string())?;
+    let stored = query_supplier_offer(&transaction, &offer.id)?;
+    append_supplier_offer_version(&transaction, &stored, &offer.observed_at)?;
+    assert_integrity(&transaction)?;
+    transaction
+        .commit()
+        .map_err(|_| "The supplier offer could not be committed.".to_string())?;
+    Ok(offer)
+}
+
+#[tauri::command]
+fn list_offer_selections(state: State<'_, AppState>) -> Result<Vec<OfferSelectionRecord>, String> {
+    let connection = open_connection(&state.database_path)?;
+    let mut statement = connection.prepare("SELECT product_id,offer_id,selected_by,reason,selected_at FROM product_offer_selections ORDER BY product_id")
+        .map_err(|_| "Offer selections could not be read.".to_string())?;
+    let records = statement
+        .query_map([], |row| {
+            Ok(OfferSelectionRecord {
+                product_id: row.get(0)?,
+                offer_id: row.get(1)?,
+                selected_by: row.get(2)?,
+                reason: row.get(3)?,
+                selected_at: row.get(4)?,
+            })
+        })
+        .map_err(|_| "Offer selections could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Offer selections could not be read.".to_string())?;
+    Ok(records)
+}
+
+#[tauri::command]
+fn select_product_offer(
+    state: State<'_, AppState>,
+    selection: OfferSelectionRecord,
+) -> Result<OfferSelectionRecord, String> {
+    let _gate = lock_mutation_gate(&state)?;
+    let mut connection = open_connection(&state.database_path)?;
+    select_product_offer_inner(&mut connection, selection)
+}
+
+fn select_product_offer_inner(
+    connection: &mut Connection,
+    selection: OfferSelectionRecord,
+) -> Result<OfferSelectionRecord, String> {
+    validate_identifier(&selection.product_id, "Selection product identifier")?;
+    validate_identifier(&selection.offer_id, "Selection offer identifier")?;
+    validate_identifier(&selection.selected_by, "Selection operator")?;
+    validate_text(&selection.reason, "Selection reason", 1_000, false)?;
+    validate_timestamp(&selection.selected_at)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|_| "The offer selection could not start.".to_string())?;
+    let prior_selected_at = transaction
+        .query_row(
+            "SELECT selected_at FROM product_offer_selections WHERE product_id=?1",
+            params![selection.product_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|_| "The current offer selection version could not be read.".to_string())?;
+    if let Some(prior) = prior_selected_at {
+        if timestamp_order_key(&selection.selected_at)? <= timestamp_order_key(&prior)? {
+            return Err("The offer selection update is stale; reload the latest selection.".into());
+        }
+    }
+    let eligible: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM product_supplier_offers o JOIN suppliers s ON s.id=o.supplier_id
+          WHERE o.id=?1 AND o.product_id=?2 AND o.active=1 AND s.active=1
+          AND (o.valid_from IS NULL OR datetime(o.valid_from)<=datetime(?3))
+          AND (o.valid_until IS NULL OR datetime(o.valid_until)>=datetime(?3)))",
+        params![selection.offer_id,selection.product_id,selection.selected_at], |row| row.get(0)
+    ).map_err(|_| "The supplier offer could not be validated.".to_string())?;
+    if !eligible {
+        return Err(
+            "The selected offer is not active, valid and owned by this product.".to_string(),
+        );
+    }
+    let prior_preferred = transaction
+        .prepare("SELECT id FROM product_supplier_offers WHERE product_id=?1 AND is_preferred=1")
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![selection.product_id], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|_| "The prior preferred offers could not be read.".to_string())?;
+    let target_was_preferred = prior_preferred.iter().any(|id| id == &selection.offer_id);
+    transaction
+        .execute(
+            "UPDATE product_supplier_offers SET is_preferred=0 WHERE product_id=?1",
+            params![selection.product_id],
+        )
+        .map_err(|_| "The prior preferred offer could not be cleared.".to_string())?;
+    transaction
+        .execute(
+            "UPDATE product_supplier_offers SET is_preferred=1 WHERE id=?1 AND product_id=?2",
+            params![selection.offer_id, selection.product_id],
+        )
+        .map_err(|_| "The preferred offer could not be set.".to_string())?;
+    transaction.execute(
+        "INSERT INTO product_offer_selections(product_id,offer_id,selected_by,reason,selected_at) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(product_id) DO UPDATE SET offer_id=excluded.offer_id,selected_by=excluded.selected_by,reason=excluded.reason,selected_at=excluded.selected_at",
+        params![selection.product_id,selection.offer_id,selection.selected_by,selection.reason,selection.selected_at]
+    ).map_err(|_| "The offer selection could not be saved.".to_string())?;
+    let mut changed_offer_ids = prior_preferred
+        .into_iter()
+        .filter(|id| id != &selection.offer_id)
+        .collect::<HashSet<_>>();
+    if !target_was_preferred {
+        changed_offer_ids.insert(selection.offer_id.clone());
+    }
+    for offer_id in changed_offer_ids {
+        let offer = query_supplier_offer(&transaction, &offer_id)?;
+        append_supplier_offer_version(&transaction, &offer, &selection.selected_at)?;
+    }
+    append_offer_selection_version(&transaction, &selection)?;
+    assert_integrity(&transaction)?;
+    transaction
+        .commit()
+        .map_err(|_| "The offer selection could not be committed.".to_string())?;
+    Ok(selection)
+}
+
+#[tauri::command]
+fn update_product_metadata(
+    state: State<'_, AppState>,
+    update: ProductMetadataUpdate,
+) -> Result<ProductMetadataUpdate, String> {
+    let _gate = lock_mutation_gate(&state)?;
+    let mut connection = open_connection(&state.database_path)?;
+    update_product_metadata_inner(&mut connection, update)
+}
+
+fn validate_product_metadata_snapshot(
+    snapshot: &ProductMetadataVersionSnapshot,
+) -> Result<(), String> {
+    validate_identifier(&snapshot.product_id, "Product identifier")?;
+    if !matches!(
+        snapshot.item_kind.as_str(),
+        "physical-product" | "service" | "labour"
+    ) {
+        return Err("Product item kind is invalid.".to_string());
+    }
+    if let Some(value) = snapshot.brand_id.as_deref() {
+        validate_identifier(value, "Brand identifier")?;
+    }
+    if snapshot
+        .markup_override_hundredths
+        .is_some_and(|value| !(0..=99_999).contains(&value))
+    {
+        return Err("Product markup is outside the supported range.".to_string());
+    }
+    validate_optional_text(snapshot.xero_reference.as_deref(), "Xero reference", 256)?;
+    validate_optional_text(
+        snapshot.servicem8_reference.as_deref(),
+        "ServiceM8 reference",
+        256,
+    )?;
+    if let Some(value) = snapshot.barcode_gtin.as_deref() {
+        if value.is_empty() || value.len() > 64 || !value.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err("Barcode must contain 1 to 64 digits.".to_string());
+        }
+    }
+    validate_timestamp(&snapshot.updated_at)
+}
+
+fn query_product_metadata_snapshot(
+    connection: &Connection,
+    product_id: &str,
+) -> Result<ProductMetadataVersionSnapshot, String> {
+    let snapshot = connection
+        .query_row(
+            "SELECT id,item_kind,brand_id,product_markup_hundredths,upstream_reference,servicem8_reference,barcode,updated_at
+             FROM catalogue_items WHERE id=?1",
+            params![product_id],
+            |row| {
+                Ok(ProductMetadataVersionSnapshot {
+                    product_id: row.get(0)?,
+                    item_kind: row.get(1)?,
+                    brand_id: row.get(2)?,
+                    markup_override_hundredths: row.get(3)?,
+                    xero_reference: row.get(4)?,
+                    servicem8_reference: row.get(5)?,
+                    barcode_gtin: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            },
+        )
+        .map_err(|_| "The product metadata snapshot could not be read.".to_string())?;
+    validate_product_metadata_snapshot(&snapshot)?;
+    Ok(snapshot)
+}
+
+fn append_product_metadata_version(
+    transaction: &Transaction<'_>,
+    snapshot: &ProductMetadataVersionSnapshot,
+) -> Result<(), String> {
+    validate_product_metadata_snapshot(snapshot)?;
+    let version = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(version),0)+1 FROM product_metadata_versions WHERE product_id=?1",
+            params![snapshot.product_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|_| "The product metadata audit version could not be resolved.".to_string())?;
+    let value = serde_json::to_value(snapshot)
+        .map_err(|_| "The product metadata audit snapshot could not be created.".to_string())?;
+    let serialised = validate_json(&value, "Product metadata audit snapshot")?;
+    transaction
+        .execute(
+            "INSERT INTO product_metadata_versions(product_id,version,snapshot_json,changed_at) VALUES(?1,?2,?3,?4)",
+            params![snapshot.product_id, version, serialised, snapshot.updated_at],
+        )
+        .map_err(|_| "The product metadata audit version could not be appended.".to_string())?;
+    Ok(())
+}
+
+fn update_product_metadata_inner(
+    connection: &mut Connection,
+    update: ProductMetadataUpdate,
+) -> Result<ProductMetadataUpdate, String> {
+    validate_identifier(&update.product_id, "Product identifier")?;
+    if !matches!(
+        update.item_kind.as_str(),
+        "physical-product" | "service" | "labour"
+    ) {
+        return Err("Product item kind is invalid.".to_string());
+    }
+    if let Some(value) = update.brand_id.as_deref() {
+        validate_identifier(value, "Brand identifier")?;
+    }
+    let markup_hundredths = update
+        .markup_override_percent
+        .as_deref()
+        .map(parse_markup_override_hundredths)
+        .transpose()?
+        .map(i64::from);
+    validate_optional_text(update.xero_reference.as_deref(), "Xero reference", 256)?;
+    validate_optional_text(
+        update.servicem8_reference.as_deref(),
+        "ServiceM8 reference",
+        256,
+    )?;
+    if let Some(value) = update.barcode.as_deref() {
+        if value.is_empty() || value.len() > 64 || !value.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err("Barcode must contain 1 to 64 digits.".to_string());
+        }
+    }
+    validate_timestamp(&update.updated_at)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|_| "The product metadata update could not start.".to_string())?;
+    let current_updated_at = transaction
+        .query_row(
+            "SELECT updated_at FROM catalogue_items WHERE id=?1",
+            params![update.product_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|_| "The current product metadata version could not be read.".to_string())?
+        .ok_or_else(|| "The product was not found.".to_string())?;
+    if timestamp_order_key(&update.updated_at)? <= timestamp_order_key(&current_updated_at)? {
+        return Err("The product metadata update is stale; reload the latest product.".to_string());
+    }
+    let changed = transaction.execute(
+        "UPDATE catalogue_items SET item_kind=?1,brand_id=?2,product_markup_hundredths=?3,upstream_reference=?4,servicem8_reference=?5,barcode=?6,updated_at=?7 WHERE id=?8",
+        params![update.item_kind,update.brand_id,markup_hundredths,update.xero_reference,update.servicem8_reference,update.barcode,update.updated_at,update.product_id]
+    ).map_err(|_| "Product metadata could not be updated.".to_string())?;
+    if changed != 1 {
+        return Err("The product was not found.".to_string());
+    }
+    let snapshot = query_product_metadata_snapshot(&transaction, &update.product_id)?;
+    append_product_metadata_version(&transaction, &snapshot)?;
+    assert_integrity(&transaction)?;
+    transaction
+        .commit()
+        .map_err(|_| "The product metadata update could not be committed.".to_string())?;
+    Ok(update)
+}
+
+#[tauri::command]
+fn list_settings_audit(state: State<'_, AppState>) -> Result<Vec<SettingsAuditRecord>, String> {
+    let connection = open_connection(&state.database_path)?;
+    let mut statement = connection.prepare("SELECT id,previous_json,current_json,changed_by,changed_at FROM settings_audit ORDER BY changed_at,id")
+        .map_err(|_| "Settings audit could not be read.".to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })
+        .map_err(|_| "Settings audit could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Settings audit could not be read.".to_string())?;
+    rows.into_iter()
+        .map(|(id, previous, current, changed_by, changed_at)| {
+            Ok(SettingsAuditRecord {
+                id,
+                previous: previous
+                    .map(|value| {
+                        serde_json::from_str(&value)
+                            .map_err(|_| "Settings audit is invalid.".to_string())
+                    })
+                    .transpose()?,
+                current: serde_json::from_str(&current)
+                    .map_err(|_| "Settings audit is invalid.".to_string())?,
+                changed_by,
+                changed_at,
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn list_sync_runs(state: State<'_, AppState>) -> Result<Vec<SyncRunRecord>, String> {
+    let connection = open_connection(&state.database_path)?;
+    let mut statement = connection.prepare("SELECT id,system,direction,status,mode,started_at,completed_at,approved_by,summary_json FROM sync_runs ORDER BY started_at,id")
+        .map_err(|_| "Sync runs could not be read.".to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })
+        .map_err(|_| "Sync runs could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Sync runs could not be read.".to_string())?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(SyncRunRecord {
+                id: row.0,
+                system: row.1,
+                direction: row.2,
+                status: row.3,
+                mode: row.4,
+                started_at: row.5,
+                completed_at: row.6,
+                approved_by: row.7,
+                summary: serde_json::from_str(&row.8)
+                    .map_err(|_| "A sync summary is invalid.".to_string())?,
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn save_sync_run(state: State<'_, AppState>, run: SyncRunRecord) -> Result<SyncRunRecord, String> {
+    let summary = validate_sync_run(&run)?;
+    let _gate = lock_mutation_gate(&state)?;
+    let connection = open_connection(&state.database_path)?;
+    let changed = connection.execute(
+        "INSERT INTO sync_runs(id,system,direction,status,mode,started_at,completed_at,approved_by,summary_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
+         ON CONFLICT(id) DO UPDATE SET status=excluded.status,completed_at=excluded.completed_at,summary_json=excluded.summary_json
+         WHERE sync_runs.system=excluded.system AND sync_runs.direction=excluded.direction AND sync_runs.mode=excluded.mode
+           AND sync_runs.started_at=excluded.started_at AND sync_runs.approved_by IS excluded.approved_by",
+        params![run.id,run.system,run.direction,run.status,run.mode,run.started_at,run.completed_at,run.approved_by,summary]
+    ).map_err(|_| "The sync run could not be saved.".to_string())?;
+    if changed != 1 {
+        return Err(
+            "The sync run identity or approval facts do not match the existing record.".to_string(),
+        );
+    }
+    Ok(run)
+}
+
+#[tauri::command]
+fn list_sync_checkpoints(
+    state: State<'_, AppState>,
+    run_id: Option<String>,
+) -> Result<Vec<SyncCheckpointRecord>, String> {
+    if let Some(value) = run_id.as_deref() {
+        validate_identifier(value, "Sync run identifier")?;
+    }
+    let connection = open_connection(&state.database_path)?;
+    let mut statement=connection.prepare("SELECT id,run_id,cursor_value,recorded_at FROM sync_checkpoints WHERE (?1 IS NULL OR run_id=?1) ORDER BY recorded_at,id")
+        .map_err(|_|"Sync checkpoints could not be read.".to_string())?;
+    let records = statement
+        .query_map(params![run_id], |row| {
+            Ok(SyncCheckpointRecord {
+                id: row.get(0)?,
+                run_id: row.get(1)?,
+                cursor_value: row.get(2)?,
+                recorded_at: row.get(3)?,
+            })
+        })
+        .map_err(|_| "Sync checkpoints could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Sync checkpoints could not be read.".to_string())?;
+    Ok(records)
+}
+
+#[tauri::command]
+fn append_sync_checkpoint(
+    state: State<'_, AppState>,
+    checkpoint: SyncCheckpointRecord,
+) -> Result<SyncCheckpointRecord, String> {
+    validate_identifier(&checkpoint.id, "Checkpoint identifier")?;
+    validate_identifier(&checkpoint.run_id, "Sync run identifier")?;
+    validate_text(&checkpoint.cursor_value, "Sync cursor", 1_000, false)?;
+    validate_timestamp(&checkpoint.recorded_at)?;
+    let _gate = lock_mutation_gate(&state)?;
+    let connection = open_connection(&state.database_path)?;
+    connection
+        .execute(
+            "INSERT INTO sync_checkpoints(id,run_id,cursor_value,recorded_at) VALUES(?1,?2,?3,?4)",
+            params![
+                checkpoint.id,
+                checkpoint.run_id,
+                checkpoint.cursor_value,
+                checkpoint.recorded_at
+            ],
+        )
+        .map_err(|_| "The sync checkpoint could not be appended.".to_string())?;
+    Ok(checkpoint)
+}
+
+#[tauri::command]
+fn list_sync_item_outcomes(
+    state: State<'_, AppState>,
+    run_id: Option<String>,
+) -> Result<Vec<SyncItemOutcomeRecord>, String> {
+    if let Some(value) = run_id.as_deref() {
+        validate_identifier(value, "Sync run identifier")?;
+    }
+    let connection = open_connection(&state.database_path)?;
+    let mut statement=connection.prepare("SELECT id,run_id,item_id,external_id,action,status,message,idempotency_key,attempt_count,retryable,error_class,reconciliation,recorded_at FROM sync_item_outcomes WHERE (?1 IS NULL OR run_id=?1) ORDER BY recorded_at,id")
+        .map_err(|_|"Sync item outcomes could not be read.".to_string())?;
+    let records = statement
+        .query_map(params![run_id], |row| {
+            Ok(SyncItemOutcomeRecord {
+                id: row.get(0)?,
+                run_id: row.get(1)?,
+                item_id: row.get(2)?,
+                external_id: row.get(3)?,
+                action: row.get(4)?,
+                status: row.get(5)?,
+                message: row.get(6)?,
+                idempotency_key: row.get(7)?,
+                attempt_count: row.get(8)?,
+                retryable: row.get(9)?,
+                error_class: row.get(10)?,
+                reconciliation: row.get(11)?,
+                recorded_at: row.get(12)?,
+            })
+        })
+        .map_err(|_| "Sync item outcomes could not be read.".to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| "Sync item outcomes could not be read.".to_string())?;
+    Ok(records)
+}
+
+#[tauri::command]
+fn append_sync_item_outcome(
+    state: State<'_, AppState>,
+    outcome: SyncItemOutcomeRecord,
+) -> Result<SyncItemOutcomeRecord, String> {
+    validate_identifier(&outcome.id, "Sync outcome identifier")?;
+    validate_identifier(&outcome.run_id, "Sync run identifier")?;
+    if let Some(value) = outcome.item_id.as_deref() {
+        validate_identifier(value, "Product identifier")?;
+    }
+    validate_optional_text(
+        outcome.external_id.as_deref(),
+        "External item identifier",
+        256,
+    )?;
+    validate_text(&outcome.action, "Sync action", 128, false)?;
+    if !matches!(
+        outcome.status.as_str(),
+        "planned" | "succeeded" | "skipped" | "failed"
+    ) {
+        return Err("Sync outcome status is invalid.".to_string());
+    }
+    validate_text(&outcome.message, "Sync outcome message", 2_000, true)?;
+    validate_identifier(&outcome.idempotency_key, "Idempotency key")?;
+    if !(0..=100).contains(&outcome.attempt_count) {
+        return Err("Sync attempt count is invalid.".to_string());
+    }
+    validate_optional_text(outcome.error_class.as_deref(), "Sync error class", 128)?;
+    if !matches!(
+        outcome.reconciliation.as_str(),
+        "not-run" | "matched" | "mismatch" | "not-applicable"
+    ) {
+        return Err("Reconciliation result is invalid.".to_string());
+    }
+    validate_timestamp(&outcome.recorded_at)?;
+    let _gate = lock_mutation_gate(&state)?;
+    let connection = open_connection(&state.database_path)?;
+    connection.execute("INSERT INTO sync_item_outcomes(id,run_id,item_id,external_id,action,status,message,idempotency_key,attempt_count,retryable,error_class,reconciliation,recorded_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",params![outcome.id,outcome.run_id,outcome.item_id,outcome.external_id,outcome.action,outcome.status,outcome.message,outcome.idempotency_key,outcome.attempt_count,outcome.retryable,outcome.error_class,outcome.reconciliation,outcome.recorded_at])
+        .map_err(|_|"The sync item outcome could not be appended.".to_string())?;
+    Ok(outcome)
 }
 
 fn configuration_payload_value(envelope: &ConfigurationEnvelope) -> Result<Value, String> {
@@ -3792,7 +6120,7 @@ fn configuration_from_database(connection: &Connection) -> Result<ConfigurationE
         })
         .transpose()?
         .unwrap_or_else(
-            || json!({"markupPercent":"30","taxHandling":"not-configured","theme":"light"}),
+            || json!({"markupPercent":"30","taxHandling":"not-configured","theme":"system","glassTint":"clear"}),
         );
     let counts = ConfigurationCounts {
         profiles: profiles.len(),
@@ -4379,6 +6707,11 @@ fn preview_reset_inner(state: &AppState) -> Result<ResetPreview, String> {
             "approvals and price history".to_string(),
             "competitor references and sources".to_string(),
             "mapping profiles, aliases and settings".to_string(),
+            "brands, suppliers, offers and explicit offer selections".to_string(),
+            "append-only supplier-offer and selection version history".to_string(),
+            "append-only supplier version history".to_string(),
+            "append-only brand and product metadata version history".to_string(),
+            "sync runs, checkpoints, outcomes and settings audit".to_string(),
             "provider state and the Windows-protected provider credential".to_string(),
         ],
         record_counts: counts,
@@ -4390,20 +6723,47 @@ fn delete_operational_data(transaction: &Transaction<'_>) -> Result<(), String> 
         .execute_batch(
             "DROP TRIGGER IF EXISTS approvals_no_delete;
              DROP TRIGGER IF EXISTS price_history_no_delete;
+             DROP TRIGGER IF EXISTS settings_audit_no_delete;
+             DROP TRIGGER IF EXISTS sync_item_outcomes_no_delete;
+             DROP TRIGGER IF EXISTS supplier_offer_versions_no_delete;
+             DROP TRIGGER IF EXISTS offer_selection_versions_no_delete;
+             DROP TRIGGER IF EXISTS supplier_versions_no_delete;
+             DROP TRIGGER IF EXISTS brand_versions_no_delete;
+             DROP TRIGGER IF EXISTS product_metadata_versions_no_delete;
              DELETE FROM competitor_references;
              DELETE FROM price_history;
              DELETE FROM approvals;
+             DELETE FROM sync_item_outcomes;
+             DELETE FROM sync_checkpoints;
+             DELETE FROM sync_runs;
+             DELETE FROM supplier_offer_versions;
+             DELETE FROM offer_selection_versions;
+             DELETE FROM supplier_versions;
+             DELETE FROM brand_versions;
+             DELETE FROM product_metadata_versions;
+             DELETE FROM product_offer_selections;
+             DELETE FROM product_supplier_offers;
              DELETE FROM catalogue_items;
+             DELETE FROM brands;
+             DELETE FROM suppliers;
              DELETE FROM source_registry;
              DELETE FROM mapping_profiles;
              DELETE FROM approved_aliases;
              DELETE FROM settings;
+             DELETE FROM settings_audit;
              DELETE FROM configuration_imports;
              DELETE FROM provider_state;
              INSERT INTO provider_state(provider,paid_calls_enabled,last_validated_at)
                VALUES('serpapi',0,NULL);
              CREATE TRIGGER approvals_no_delete BEFORE DELETE ON approvals BEGIN SELECT RAISE(ABORT, 'append-only'); END;
-             CREATE TRIGGER price_history_no_delete BEFORE DELETE ON price_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
+             CREATE TRIGGER price_history_no_delete BEFORE DELETE ON price_history BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER settings_audit_no_delete BEFORE DELETE ON settings_audit BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER sync_item_outcomes_no_delete BEFORE DELETE ON sync_item_outcomes BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER supplier_offer_versions_no_delete BEFORE DELETE ON supplier_offer_versions BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER offer_selection_versions_no_delete BEFORE DELETE ON offer_selection_versions BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER supplier_versions_no_delete BEFORE DELETE ON supplier_versions BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER brand_versions_no_delete BEFORE DELETE ON brand_versions BEGIN SELECT RAISE(ABORT, 'append-only'); END;
+             CREATE TRIGGER product_metadata_versions_no_delete BEFORE DELETE ON product_metadata_versions BEGIN SELECT RAISE(ABORT, 'append-only'); END;",
         )
         .map_err(|_| "Application data could not be erased safely.".to_string())
 }
@@ -8160,6 +10520,22 @@ pub fn run() {
             delete_alias,
             load_settings,
             save_settings,
+            list_brands,
+            save_brand,
+            list_suppliers,
+            save_supplier,
+            list_supplier_offers,
+            save_supplier_offer,
+            list_offer_selections,
+            select_product_offer,
+            update_product_metadata,
+            list_settings_audit,
+            list_sync_runs,
+            save_sync_run,
+            list_sync_checkpoints,
+            append_sync_checkpoint,
+            list_sync_item_outcomes,
+            append_sync_item_outcome,
             export_configuration,
             preview_configuration_import,
             apply_configuration_import,
@@ -8313,7 +10689,56 @@ mod tests {
             cost_cents: 10_000,
             sell_price_cents: 13_000,
             gst_basis: "unknown".to_string(),
+            sell_price_gst_basis: "unknown".to_string(),
+            item_kind: "physical-product".to_string(),
+            brand_id: None,
+            markup_override_percent: None,
+            xero_reference: None,
+            servicem8_reference: None,
+            barcode: None,
+            selected_offer_id: None,
             updated_at: "2026-08-09T00:00:00Z".to_string(),
+        }
+    }
+
+    fn verified_supplier_publication(
+        item_id: &str,
+        item_number: &str,
+        cost_cents: i64,
+        cost_gst_basis: &str,
+        sell_price_cents: i64,
+        sell_price_gst_basis: &str,
+    ) -> PublishApprovedChange {
+        let supplier_id = format!("supplier-{item_id}");
+        let offer_id = format!("offer-{item_id}");
+        let mut item = sample_catalogue_item();
+        item.id = item_id.to_string();
+        item.item_number = item_number.to_string();
+        item.cost_cents = cost_cents;
+        item.gst_basis = cost_gst_basis.to_string();
+        item.sell_price_cents = sell_price_cents;
+        item.sell_price_gst_basis = sell_price_gst_basis.to_string();
+        item.selected_offer_id = Some(offer_id.clone());
+        PublishApprovedChange {
+            item,
+            approved_by: "operator".to_string(),
+            reason: "Verified supplier publication".to_string(),
+            pricing_provenance: Some(PricingProvenance {
+                selected_offer_id: Some(offer_id),
+                supplier_id: Some(supplier_id),
+                supplier_name: Some(format!("Supplier {item_id}")),
+                supplier_sku: Some(item_number.to_string()),
+                cost_gst_basis: cost_gst_basis.to_string(),
+                currency: "AUD".to_string(),
+                markup_percent: "30".to_string(),
+                markup_source: "global".to_string(),
+                markup_source_id: None,
+                brand_id: None,
+                item_kind: "physical-product".to_string(),
+                sell_price_gst_basis: sell_price_gst_basis.to_string(),
+                explanation: "Client-facing verified pricing detail".to_string(),
+                rule_version: "pricing-rule-v1".to_string(),
+            }),
         }
     }
 
@@ -8519,7 +10944,8 @@ mod tests {
                 settings: json!({
                     "markupPercent": "30",
                     "taxHandling": "not-configured",
-                    "theme": "light"
+                    "theme": "light",
+                    "glassTint": "clear"
                 }),
             },
             sha256: String::new(),
@@ -8534,12 +10960,33 @@ mod tests {
 
     fn insert_sample_catalogue(connection: &Connection) {
         let item = sample_catalogue_item();
+        let snapshot = ProductMetadataVersionSnapshot {
+            product_id: item.id.clone(),
+            item_kind: item.item_kind.clone(),
+            brand_id: item.brand_id.clone(),
+            markup_override_hundredths: None,
+            xero_reference: item.xero_reference.clone(),
+            servicem8_reference: item.servicem8_reference.clone(),
+            barcode_gtin: item.barcode.clone(),
+            updated_at: item.updated_at.clone(),
+        };
+        let snapshot_json = validate_json(
+            &serde_json::to_value(&snapshot).unwrap(),
+            "Synthetic product metadata audit snapshot",
+        )
+        .unwrap();
         connection
             .execute(
                 "INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7)",
                 params![item.id,item.item_number,item.description,item.cost_cents,item.sell_price_cents,item.gst_basis,item.updated_at],
             )
             .expect("insert synthetic catalogue item");
+        connection
+            .execute(
+                "INSERT INTO product_metadata_versions(product_id,version,snapshot_json,changed_at) VALUES(?1,1,?2,?3)",
+                params![snapshot.product_id, snapshot_json, snapshot.updated_at],
+            )
+            .expect("insert synthetic product metadata audit version");
     }
 
     fn mark_provider_validated(connection: &Connection) {
@@ -8831,7 +11278,9 @@ mod tests {
                 "2026-08-09T00:00:00Z".to_string(),
             )
         );
-        let counts = record_counts(connection).unwrap();
+        let counts =
+            record_counts_for_version(connection, schema_version_or_zero(connection).unwrap())
+                .unwrap();
         assert_eq!(counts.catalogue_items, 1);
         assert_eq!(counts.approvals, 1);
         assert_eq!(counts.price_history, 1);
@@ -8854,9 +11303,213 @@ mod tests {
             .expect("query migrations")
             .collect::<Result<Vec<_>, _>>()
             .expect("read migrations");
-        assert_eq!(versions, vec![1, 2, 3]);
+        assert_eq!(versions, vec![1, 2, 3, 4, 5, 6]);
         assert_eq!(schema_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
         assert_integrity(&connection).unwrap();
+    }
+
+    #[test]
+    fn exact_schema3_migrates_once_with_legacy_offer_and_settings_preserved() {
+        let directory = TestDirectory::new();
+        let mut connection = open_connection_create(&directory.database()).unwrap();
+        for (version, name, sql) in &MIGRATIONS[..3] {
+            let transaction = connection.transaction().unwrap();
+            transaction.execute_batch(sql).unwrap();
+            transaction.execute("INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(?1,?2,?3,'2026-08-09T00:00:00Z')",params![version,name,sha256_bytes(sql.as_bytes())]).unwrap();
+            transaction.commit().unwrap();
+        }
+        connection.execute("INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,updated_at) VALUES('schema3-item','S3-001','Schema 3 item',11000,13000,'inc-gst','2026-08-09T00:00:00Z')",[]).unwrap();
+        connection.execute("INSERT INTO approvals(id,item_id,approved_by,proposed_sell_cents,reason,approved_at) VALUES('schema3-approval','schema3-item','operator',13000,'Schema 3 approval','2026-08-09T00:00:00Z')",[]).unwrap();
+        connection.execute("INSERT INTO price_history(id,item_id,cost_cents,sell_price_cents,approval_id,recorded_at) VALUES('schema3-history','schema3-item',10000,13000,'schema3-approval','2026-08-09T00:00:00Z')",[]).unwrap();
+        connection.execute("INSERT INTO settings(id,settings_json,updated_at) VALUES('settings','{\"markupPercent\":\"30\",\"taxHandling\":\"prices-inc-gst\",\"theme\":\"system\"}','2026-08-09T00:00:00Z')",[]).unwrap();
+        drop(connection);
+        apply_migrations(&directory.database(), &directory.0).unwrap();
+        let connection = open_connection(&directory.database()).unwrap();
+        assert_eq!(schema_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
+        assert_eq!(connection.query_row("SELECT COUNT(*) FROM product_supplier_offers WHERE id='legacy-offer-schema3-item' AND supplier_sku='S3-001' AND normalized_supplier_sku='s3-001' AND currency='AUD'",[],|row|row.get::<_,i64>(0)).unwrap(),1);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT offer_id FROM product_offer_selections WHERE product_id='schema3-item'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "legacy-offer-schema3-item"
+        );
+        let settings: String = connection
+            .query_row("SELECT settings_json FROM settings", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&settings).unwrap()["glassTint"],
+            "clear"
+        );
+        let history = query_price_history(&connection, Some("schema3-item")).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].applied_markup_hundredths, None);
+        assert_eq!(history[0].currency, None);
+        assert_eq!(history[0].item_kind_snapshot, None);
+        assert_eq!(history[0].pricing_rule_version, "legacy-unresolved");
+        let history_json = serde_json::to_value(&history[0]).unwrap();
+        assert!(history_json["appliedMarkupHundredths"].is_null());
+        assert!(history_json["currency"].is_null());
+        assert!(history_json["itemKind"].is_null());
+        assert_eq!(
+            record_counts(&connection).unwrap().supplier_offer_versions,
+            1
+        );
+        assert_eq!(
+            record_counts(&connection).unwrap().offer_selection_versions,
+            1
+        );
+        let counts = record_counts(&connection).unwrap();
+        assert_eq!(counts.supplier_versions, 1);
+        assert_eq!(counts.brand_versions, 0);
+        assert_eq!(counts.product_metadata_versions, 1);
+        let supplier_snapshot: String = connection
+            .query_row(
+                "SELECT snapshot_json FROM supplier_versions WHERE supplier_id='legacy-supplier' AND version=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let supplier_snapshot: SupplierRecord = serde_json::from_str(&supplier_snapshot).unwrap();
+        assert_eq!(supplier_snapshot.name, "Legacy catalogue supplier");
+        assert!(supplier_snapshot.active);
+        let product_snapshot: String = connection
+            .query_row(
+                "SELECT snapshot_json FROM product_metadata_versions WHERE product_id='schema3-item' AND version=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let product_snapshot: ProductMetadataVersionSnapshot =
+            serde_json::from_str(&product_snapshot).unwrap();
+        assert_eq!(product_snapshot.item_kind, "physical-product");
+        assert_eq!(product_snapshot.markup_override_hundredths, None);
+        apply_migrations(&directory.database(), &directory.0).unwrap();
+        assert_eq!(
+            record_counts(&connection).unwrap().product_supplier_offers,
+            1
+        );
+        assert_integrity(&connection).unwrap();
+    }
+
+    #[test]
+    fn schema5_merges_safe_brand_collisions_and_rolls_back_conflicting_facts() {
+        fn schema4_database(directory: &TestDirectory, conflicting: bool) {
+            let mut connection = open_connection_create(&directory.database()).unwrap();
+            for (version, name, sql) in &MIGRATIONS[..4] {
+                let transaction = connection.transaction().unwrap();
+                transaction.execute_batch(sql).unwrap();
+                transaction.execute("INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(?1,?2,?3,'2026-08-09T00:00:00Z')",params![version,name,sha256_bytes(sql.as_bytes())]).unwrap();
+                transaction.commit().unwrap();
+            }
+            connection.execute("INSERT INTO brands(id,name,markup_hundredths,updated_at) VALUES('brand-a',' Acme  Lock ',3500,'2026-08-09T00:00:00Z')",[]).unwrap();
+            connection.execute("INSERT INTO brands(id,name,markup_hundredths,updated_at) VALUES('brand-b','acme lock',?1,'2026-08-09T00:00:00Z')",params![if conflicting { 4000 } else { 3500 }]).unwrap();
+            connection.execute("INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,sell_price_gst_basis,item_kind,brand_id,updated_at) VALUES('brand-item','BRAND-ITEM','Brand collision item',10000,13000,'ex-gst','ex-gst','physical-product','brand-b','2026-08-09T00:00:00Z')",[]).unwrap();
+        }
+
+        let safe = TestDirectory::new();
+        schema4_database(&safe, false);
+        apply_migrations(&safe.database(), &safe.0).unwrap();
+        let connection = open_connection(&safe.database()).unwrap();
+        assert_eq!(schema_version(&connection).unwrap(), CURRENT_SCHEMA_VERSION);
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM brands", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT brand_id FROM catalogue_items WHERE id='brand-item'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "brand-a"
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT name || '|' || canonical_key FROM brands WHERE id='brand-a'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "Acme Lock|acme lock"
+        );
+        let seeded_counts = record_counts(&connection).unwrap();
+        assert_eq!(seeded_counts.supplier_versions, 0);
+        assert_eq!(seeded_counts.brand_versions, 1);
+        assert_eq!(seeded_counts.product_metadata_versions, 1);
+        validate_current_database(&connection).unwrap();
+        apply_migrations(&safe.database(), &safe.0).unwrap();
+        assert_eq!(record_counts(&connection).unwrap(), seeded_counts);
+
+        let conflicting = TestDirectory::new();
+        schema4_database(&conflicting, true);
+        assert!(apply_migrations(&conflicting.database(), &conflicting.0).is_err());
+        let restored = open_connection(&conflicting.database()).unwrap();
+        assert_eq!(schema_version(&restored).unwrap(), 4);
+        assert_eq!(
+            restored
+                .query_row("SELECT COUNT(*) FROM brands", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert!(!table_exists(&restored, "supplier_offer_versions").unwrap());
+    }
+
+    #[test]
+    fn schema6_validation_failure_restores_the_exact_schema5_database() {
+        let directory = TestDirectory::new();
+        let mut connection = open_connection_create(&directory.database()).unwrap();
+        for (version, name, sql) in &MIGRATIONS[..5] {
+            let transaction = connection.transaction().unwrap();
+            transaction.execute_batch(sql).unwrap();
+            if *version == 5 {
+                prepare_schema5_canonical_keys(&transaction).unwrap();
+            }
+            transaction
+                .execute(
+                    "INSERT INTO schema_migrations(version,name,sha256,applied_at) VALUES(?1,?2,?3,'2026-08-09T00:00:00Z')",
+                    params![version, name, sha256_bytes(sql.as_bytes())],
+                )
+                .unwrap();
+            transaction.commit().unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO suppliers(id,name,active,external_reference,updated_at)
+                 VALUES('supplier-invalid-seed','Supplier Invalid Seed',1,'SUP-INVALID','not-a-timestamp')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        assert!(apply_migrations(&directory.database(), &directory.0).is_err());
+        let restored = open_readonly_connection(&directory.database()).unwrap();
+        assert_eq!(schema_version(&restored).unwrap(), 5);
+        assert!(!table_exists(&restored, "supplier_versions").unwrap());
+        assert!(!table_exists(&restored, "brand_versions").unwrap());
+        assert!(!table_exists(&restored, "product_metadata_versions").unwrap());
+        assert_eq!(
+            restored
+                .query_row(
+                    "SELECT name || '|' || active || '|' || external_reference || '|' || updated_at
+                     FROM suppliers WHERE id='supplier-invalid-seed'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "Supplier Invalid Seed|1|SUP-INVALID|not-a-timestamp"
+        );
+        assert_integrity(&restored).unwrap();
     }
 
     #[test]
@@ -9043,9 +11696,9 @@ mod tests {
             let connection = Connection::open(directory.database()).unwrap();
             connection.execute_batch(corruption).unwrap();
             drop(connection);
-            assert!(apply_migrations(&directory.database(), &directory.0).is_err());
+            let migration_error=apply_migrations(&directory.database(), &directory.0).unwrap_err();
             let restored = open_readonly_connection(&directory.database()).unwrap();
-            assert!(!table_exists(&restored, "schema_migrations").unwrap());
+            assert!(!table_exists(&restored, "schema_migrations").unwrap(), "rollback failed for {corruption}: {migration_error}");
             assert_integrity(&restored).unwrap();
         }
     }
@@ -9183,6 +11836,7 @@ mod tests {
             "markupPercent": "30",
             "taxHandling": "not-configured",
             "theme": "light",
+            "glassTint": "clear",
             "providerSecret": "must-never-be-stored"
         }))
         .is_err());
@@ -9190,6 +11844,958 @@ mod tests {
         assert!(validate_timestamp("2026-08-09T12:34:56.789Z").is_ok());
         assert!(validate_timestamp("2026-02-30T12:34:56Z").is_err());
         assert!(validate_timestamp("2026-08-09T25:00:00Z").is_err());
+        assert!(validate_settings(&json!({
+            "markupPercent":"30","taxHandling":"prices-inc-gst","theme":"system","glassTint":"tinted"
+        })).is_ok());
+        assert!(validate_settings(&json!({
+            "markupPercent":"30","taxHandling":"prices-inc-gst","theme":"system"
+        }))
+        .is_err());
+        assert_eq!(parse_markup_override_hundredths("0").unwrap(), 0);
+        assert_eq!(parse_markup_override_hundredths("12.34").unwrap(), 1_234);
+        assert_eq!(parse_markup_override_hundredths("999.99").unwrap(), 99_999);
+    }
+
+    #[test]
+    fn schema4_offer_constraints_reject_cross_product_and_multiple_preferred_sources() {
+        let directory = migrated_database();
+        let connection = open_connection(&directory.database()).unwrap();
+        let first = sample_catalogue_item();
+        insert_sample_catalogue(&connection);
+        let mut second = first.clone();
+        second.id = "item-002".to_string();
+        second.item_number = "001235".to_string();
+        connection.execute("INSERT INTO catalogue_items(id,item_number,description,cost_cents,sell_price_cents,gst_basis,sell_price_gst_basis,item_kind,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",params![second.id,second.item_number,second.description,second.cost_cents,second.sell_price_cents,second.gst_basis,second.sell_price_gst_basis,second.item_kind,second.updated_at]).unwrap();
+        connection.execute("INSERT INTO suppliers(id,name,active,updated_at) VALUES('supplier-1','Supplier One',1,'2026-08-09T00:00:00Z')",[]).unwrap();
+        connection.execute("INSERT INTO product_supplier_offers(id,product_id,supplier_id,supplier_sku,normalized_supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,provenance_type,observed_at) VALUES('offer-1','item-001','supplier-1','SKU-1','sku-1',10000,'ex-gst','AUD',1,1,'manual','2026-08-09T00:00:00Z')",[]).unwrap();
+        assert!(connection.execute("INSERT INTO product_supplier_offers(id,product_id,supplier_id,supplier_sku,normalized_supplier_sku,cost_cents,gst_basis,currency,active,is_preferred,provenance_type,observed_at) VALUES('offer-2','item-001','supplier-1','SKU-2','sku-2',9900,'ex-gst','AUD',1,1,'manual','2026-08-09T00:00:00Z')",[]).is_err());
+        assert!(connection.execute("INSERT INTO product_offer_selections(product_id,offer_id,selected_by,reason,selected_at) VALUES('item-002','offer-1','operator','wrong owner','2026-08-09T00:00:00Z')",[]).is_err());
+        connection.execute("INSERT INTO product_offer_selections(product_id,offer_id,selected_by,reason,selected_at) VALUES('item-001','offer-1','operator','approved source','2026-08-09T00:00:00Z')",[]).unwrap();
+        assert_integrity(&connection).unwrap();
+    }
+
+    #[test]
+    fn gst_inclusive_cost_and_sell_are_compared_on_ex_gst_basis() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let valid = verified_supplier_publication(
+            "gst-valid",
+            "GST-VALID",
+            11_000,
+            "inc-gst",
+            13_000,
+            "ex-gst",
+        );
+        assert!(publish_approved_changes_inner(&mut connection, &[valid]).is_ok());
+        let invalid = verified_supplier_publication(
+            "gst-invalid",
+            "GST-INVALID",
+            10_000,
+            "ex-gst",
+            14_299,
+            "inc-gst",
+        );
+        assert!(publish_approved_changes_inner(&mut connection, &[invalid]).is_err());
+    }
+
+    #[test]
+    fn publication_requires_complete_pricing_provenance_for_every_item() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let mut missing = verified_supplier_publication(
+            "missing-provenance",
+            "MISSING-PROV",
+            10_000,
+            "ex-gst",
+            13_000,
+            "ex-gst",
+        );
+        missing.pricing_provenance = None;
+        let before = record_counts(&connection).unwrap();
+        assert_eq!(
+            publish_approved_changes_inner(&mut connection, &[missing]).unwrap_err(),
+            "Verified pricing provenance is required for every publication."
+        );
+        assert_eq!(record_counts(&connection).unwrap(), before);
+
+        let accepted = verified_supplier_publication(
+            "existing-provenance",
+            "EXISTING-PROV",
+            10_000,
+            "ex-gst",
+            13_000,
+            "ex-gst",
+        );
+        publish_approved_changes_inner(&mut connection, std::slice::from_ref(&accepted)).unwrap();
+        let after_accepted = record_counts(&connection).unwrap();
+        let mut missing_existing = accepted;
+        missing_existing.pricing_provenance = None;
+        assert!(publish_approved_changes_inner(&mut connection, &[missing_existing]).is_err());
+        assert_eq!(record_counts(&connection).unwrap(), after_accepted);
+    }
+
+    #[test]
+    fn publication_requires_the_exact_server_recomputed_sell_price() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+
+        let global = verified_supplier_publication(
+            "exact-global",
+            "EXACT-GLOBAL",
+            10_000,
+            "ex-gst",
+            13_000,
+            "ex-gst",
+        );
+        publish_approved_changes_inner(&mut connection, &[global]).unwrap();
+
+        connection.execute("INSERT INTO brands(id,name,markup_hundredths,updated_at,canonical_key) VALUES('brand-exact','Brand Exact',3500,'2026-08-09T00:00:00Z','brand exact')",[]).unwrap();
+        let mut brand = verified_supplier_publication(
+            "exact-brand",
+            "EXACT-BRAND",
+            10_000,
+            "ex-gst",
+            13_500,
+            "ex-gst",
+        );
+        brand.item.brand_id = Some("brand-exact".to_string());
+        let brand_provenance = brand.pricing_provenance.as_mut().unwrap();
+        brand_provenance.brand_id = Some("brand-exact".to_string());
+        brand_provenance.markup_percent = "35".to_string();
+        brand_provenance.markup_source = "brand".to_string();
+        brand_provenance.markup_source_id = Some("brand-exact".to_string());
+        publish_approved_changes_inner(&mut connection, &[brand]).unwrap();
+
+        let mut product = verified_supplier_publication(
+            "exact-product",
+            "EXACT-PRODUCT",
+            10_000,
+            "ex-gst",
+            14_000,
+            "ex-gst",
+        );
+        product.item.brand_id = Some("brand-exact".to_string());
+        product.item.markup_override_percent = Some("40".to_string());
+        let product_provenance = product.pricing_provenance.as_mut().unwrap();
+        product_provenance.brand_id = Some("brand-exact".to_string());
+        product_provenance.markup_percent = "40".to_string();
+        product_provenance.markup_source = "product".to_string();
+        product_provenance.markup_source_id = Some("exact-product".to_string());
+        publish_approved_changes_inner(&mut connection, &[product]).unwrap();
+
+        assert_eq!(
+            expected_sell_cents(10_005, "inc-gst", 3_000, "ex-gst").unwrap(),
+            11_824
+        );
+        let rounded = verified_supplier_publication(
+            "exact-rounding",
+            "EXACT-ROUNDING",
+            10_005,
+            "inc-gst",
+            11_824,
+            "ex-gst",
+        );
+        publish_approved_changes_inner(&mut connection, &[rounded]).unwrap();
+
+        let above_floor_but_wrong = verified_supplier_publication(
+            "exact-wrong",
+            "EXACT-WRONG",
+            10_000,
+            "ex-gst",
+            14_000,
+            "ex-gst",
+        );
+        let before = record_counts(&connection).unwrap();
+        assert_eq!(
+            publish_approved_changes_inner(&mut connection, &[above_floor_but_wrong]).unwrap_err(),
+            "The sell price does not equal the verified selected-offer price calculation."
+        );
+        assert_eq!(record_counts(&connection).unwrap(), before);
+    }
+
+    #[test]
+    fn publication_rejects_a_selected_offer_owned_by_an_inactive_supplier() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let accepted = verified_supplier_publication(
+            "inactive-supplier",
+            "INACTIVE-SUPPLIER",
+            10_000,
+            "ex-gst",
+            13_000,
+            "ex-gst",
+        );
+        publish_approved_changes_inner(&mut connection, std::slice::from_ref(&accepted)).unwrap();
+        connection
+            .execute(
+                "UPDATE suppliers SET active=0 WHERE id='supplier-inactive-supplier'",
+                [],
+            )
+            .unwrap();
+        let mut retry = accepted;
+        retry.item.updated_at = "2026-08-09T00:00:00.001Z".to_string();
+        let before = record_counts(&connection).unwrap();
+        assert_eq!(
+            publish_approved_changes_inner(&mut connection, &[retry]).unwrap_err(),
+            "An active selected supplier offer is required for publication."
+        );
+        assert_eq!(record_counts(&connection).unwrap(), before);
+    }
+
+    #[test]
+    fn approved_publication_requires_a_strictly_newer_timestamp_and_rolls_back() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let mut initial = verified_supplier_publication(
+            "publication-time",
+            "PUBLICATION-TIME",
+            10_000,
+            "ex-gst",
+            13_000,
+            "ex-gst",
+        );
+        initial.item.updated_at = "2026-08-09T00:00:00.001Z".to_string();
+        publish_approved_changes_inner(&mut connection, std::slice::from_ref(&initial)).unwrap();
+
+        let before = record_counts(&connection).unwrap();
+        let before_digest = logical_database_digest(&connection).unwrap();
+        let mut equal = initial.clone();
+        equal.item.description = "Equal timestamp must not overwrite".to_string();
+        equal.reason = "Equal timestamp retry".to_string();
+        assert_eq!(
+            publish_approved_changes_inner(&mut connection, std::slice::from_ref(&equal))
+                .unwrap_err(),
+            "The approved catalogue publication is stale; reload the latest product."
+        );
+        assert_eq!(record_counts(&connection).unwrap(), before);
+        assert_eq!(logical_database_digest(&connection).unwrap(), before_digest);
+
+        let mut older = initial.clone();
+        older.item.updated_at = "2026-08-09T00:00:00Z".to_string();
+        older.item.description = "Older timestamp must not overwrite".to_string();
+        assert_eq!(
+            publish_approved_changes_inner(&mut connection, &[older]).unwrap_err(),
+            "The approved catalogue publication is stale; reload the latest product."
+        );
+        assert_eq!(record_counts(&connection).unwrap(), before);
+        assert_eq!(logical_database_digest(&connection).unwrap(), before_digest);
+
+        let batch_new = verified_supplier_publication(
+            "publication-batch-new",
+            "PUBLICATION-BATCH-NEW",
+            10_000,
+            "ex-gst",
+            13_000,
+            "ex-gst",
+        );
+        assert_eq!(
+            publish_approved_changes_inner(&mut connection, &[batch_new, equal]).unwrap_err(),
+            "The approved catalogue publication is stale; reload the latest product."
+        );
+        assert_eq!(record_counts(&connection).unwrap(), before);
+        assert_eq!(logical_database_digest(&connection).unwrap(), before_digest);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM catalogue_items WHERE id='publication-batch-new'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+
+        let mut newer = initial;
+        newer.item.updated_at = "2026-08-09T00:00:00.002Z".to_string();
+        newer.item.description = "Strictly newer publication".to_string();
+        newer.reason = "Strictly newer timestamp".to_string();
+        publish_approved_changes_inner(&mut connection, &[newer]).unwrap();
+        let mut expected = before;
+        expected.approvals += 1;
+        expected.price_history += 1;
+        expected.product_metadata_versions += 1;
+        assert_eq!(record_counts(&connection).unwrap(), expected);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT description || '|' || updated_at FROM catalogue_items WHERE id='publication-time'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "Strictly newer publication|2026-08-09T00:00:00.002Z"
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT changed_at FROM product_metadata_versions WHERE product_id='publication-time' AND version=2",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap(),
+            "2026-08-09T00:00:00.002Z"
+        );
+        validate_current_database(&connection).unwrap();
+    }
+
+    #[test]
+    fn supplier_offer_mutations_are_stale_safe_audited_and_collision_rejecting() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        insert_sample_catalogue(&connection);
+        connection.execute("INSERT INTO suppliers(id,name,active,updated_at) VALUES('supplier-audit','Supplier Audit',1,'2026-08-09T00:00:00Z')",[]).unwrap();
+        let offer = SupplierOfferRecord {
+            id: "offer-audit".to_string(),
+            product_id: "item-001".to_string(),
+            supplier_id: "supplier-audit".to_string(),
+            supplier_sku: " SKU  Audit ".to_string(),
+            cost_cents: 10_000,
+            gst_basis: "ex-gst".to_string(),
+            currency: "AUD".to_string(),
+            active: true,
+            is_preferred: true,
+            valid_from: None,
+            valid_until: None,
+            provenance_type: "manual".to_string(),
+            provenance_reference: None,
+            observed_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        let stored = save_supplier_offer_inner(&mut connection, offer.clone()).unwrap();
+        assert_eq!(stored.supplier_sku, "SKU Audit");
+        assert_eq!(
+            record_counts(&connection).unwrap().supplier_offer_versions,
+            1
+        );
+
+        let mut stale = stored.clone();
+        stale.cost_cents = 10_001;
+        assert_eq!(
+            save_supplier_offer_inner(&mut connection, stale).unwrap_err(),
+            "The supplier offer update is stale; reload the latest offer."
+        );
+        assert_eq!(
+            query_supplier_offer(&connection, "offer-audit")
+                .unwrap()
+                .cost_cents,
+            10_000
+        );
+        assert_eq!(
+            record_counts(&connection).unwrap().supplier_offer_versions,
+            1
+        );
+
+        let mut newer = stored;
+        newer.cost_cents = 10_001;
+        newer.observed_at = "2026-08-09T00:00:00.001Z".to_string();
+        save_supplier_offer_inner(&mut connection, newer).unwrap();
+        assert_eq!(
+            record_counts(&connection).unwrap().supplier_offer_versions,
+            2
+        );
+        assert!(connection.execute("UPDATE supplier_offer_versions SET snapshot_json='{}' WHERE offer_id='offer-audit' AND version=1",[]).is_err());
+
+        let mut duplicate_sku = offer.clone();
+        duplicate_sku.id = "offer-duplicate-sku".to_string();
+        duplicate_sku.supplier_sku = "sku audit".to_string();
+        duplicate_sku.is_preferred = false;
+        duplicate_sku.observed_at = "2026-08-09T00:00:01Z".to_string();
+        assert!(save_supplier_offer_inner(&mut connection, duplicate_sku).is_err());
+
+        let mut preferred_collision = offer;
+        preferred_collision.id = "offer-preferred-collision".to_string();
+        preferred_collision.supplier_sku = "OTHER-SKU".to_string();
+        preferred_collision.observed_at = "2026-08-09T00:00:01Z".to_string();
+        assert!(save_supplier_offer_inner(&mut connection, preferred_collision).is_err());
+        assert_eq!(
+            connection.query_row("SELECT COUNT(*) FROM product_supplier_offers WHERE product_id='item-001' AND is_preferred=1",[],|row|row.get::<_,i64>(0)).unwrap(),
+            1
+        );
+        assert_eq!(
+            record_counts(&connection).unwrap().supplier_offer_versions,
+            2
+        );
+    }
+
+    #[test]
+    fn offer_selection_overwrites_are_stale_safe_atomic_and_audited() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        insert_sample_catalogue(&connection);
+        connection.execute("INSERT INTO suppliers(id,name,active,updated_at) VALUES('supplier-selection','Supplier Selection',1,'2026-08-09T00:00:00Z')",[]).unwrap();
+        for (id, sku) in [
+            ("offer-select-a", "SELECT-A"),
+            ("offer-select-b", "SELECT-B"),
+        ] {
+            save_supplier_offer_inner(
+                &mut connection,
+                SupplierOfferRecord {
+                    id: id.to_string(),
+                    product_id: "item-001".to_string(),
+                    supplier_id: "supplier-selection".to_string(),
+                    supplier_sku: sku.to_string(),
+                    cost_cents: 10_000,
+                    gst_basis: "ex-gst".to_string(),
+                    currency: "AUD".to_string(),
+                    active: true,
+                    is_preferred: false,
+                    valid_from: None,
+                    valid_until: None,
+                    provenance_type: "manual".to_string(),
+                    provenance_reference: None,
+                    observed_at: "2026-08-09T00:00:00Z".to_string(),
+                },
+            )
+            .unwrap();
+        }
+        let first = OfferSelectionRecord {
+            product_id: "item-001".to_string(),
+            offer_id: "offer-select-a".to_string(),
+            selected_by: "operator".to_string(),
+            reason: "First selection".to_string(),
+            selected_at: "2026-08-09T00:00:01Z".to_string(),
+        };
+        select_product_offer_inner(&mut connection, first.clone()).unwrap();
+        assert_eq!(
+            record_counts(&connection).unwrap().offer_selection_versions,
+            1
+        );
+        let before = record_counts(&connection).unwrap();
+        let mut stale = first;
+        stale.offer_id = "offer-select-b".to_string();
+        assert!(select_product_offer_inner(&mut connection, stale).is_err());
+        assert_eq!(record_counts(&connection).unwrap(), before);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT offer_id FROM product_offer_selections WHERE product_id='item-001'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "offer-select-a"
+        );
+
+        let second = OfferSelectionRecord {
+            product_id: "item-001".to_string(),
+            offer_id: "offer-select-b".to_string(),
+            selected_by: "operator".to_string(),
+            reason: "Newer selection".to_string(),
+            selected_at: "2026-08-09T00:00:02Z".to_string(),
+        };
+        select_product_offer_inner(&mut connection, second).unwrap();
+        assert_eq!(
+            record_counts(&connection).unwrap().offer_selection_versions,
+            2
+        );
+        assert!(connection
+            .execute(
+                "DELETE FROM offer_selection_versions WHERE product_id='item-001' AND version=1",
+                []
+            )
+            .is_err());
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT offer_id FROM product_offer_selections WHERE product_id='item-001'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "offer-select-b"
+        );
+    }
+
+    #[test]
+    fn brand_identity_is_canonical_and_case_whitespace_unique() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let first = save_brand_inner(
+            &mut connection,
+            BrandRecord {
+                id: "brand-a".to_string(),
+                name: "  Acme   Lock  ".to_string(),
+                markup_hundredths: Some(3_500),
+                updated_at: "2026-08-09T00:00:00Z".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(first.name, "Acme Lock");
+        assert!(save_brand_inner(
+            &mut connection,
+            BrandRecord {
+                id: "brand-b".to_string(),
+                name: "acme lock".to_string(),
+                markup_hundredths: Some(3_500),
+                updated_at: "2026-08-09T00:00:01Z".to_string(),
+            },
+        )
+        .is_err());
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT canonical_key FROM brands WHERE id='brand-a'",
+                    [],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "acme lock"
+        );
+    }
+
+    #[test]
+    fn supplier_mutations_are_stale_safe_complete_and_append_only() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let initial = SupplierRecord {
+            id: "supplier-versioned".to_string(),
+            name: "Supplier Versioned".to_string(),
+            active: true,
+            external_reference: Some("SUP-001".to_string()),
+            updated_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        save_supplier_inner(&mut connection, initial.clone()).unwrap();
+        assert_eq!(record_counts(&connection).unwrap().supplier_versions, 1);
+        let first_json: String = connection
+            .query_row(
+                "SELECT snapshot_json FROM supplier_versions WHERE supplier_id=?1 AND version=1",
+                params![initial.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let first_value: Value = serde_json::from_str(&first_json).unwrap();
+        assert_eq!(
+            first_value
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<HashSet<_>>(),
+            ["id", "name", "active", "externalReference", "updatedAt"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<HashSet<_>>()
+        );
+        assert_eq!(
+            serde_json::from_value::<SupplierRecord>(first_value).unwrap(),
+            initial
+        );
+
+        let deactivated = SupplierRecord {
+            id: "supplier-versioned".to_string(),
+            name: "Supplier Versioned Updated".to_string(),
+            active: false,
+            external_reference: Some("SUP-002".to_string()),
+            updated_at: "2026-08-09T00:00:00.001Z".to_string(),
+        };
+        save_supplier_inner(&mut connection, deactivated.clone()).unwrap();
+        assert_eq!(record_counts(&connection).unwrap().supplier_versions, 2);
+
+        let mut stale_reactivation = initial.clone();
+        stale_reactivation.updated_at = deactivated.updated_at.clone();
+        assert_eq!(
+            save_supplier_inner(&mut connection, stale_reactivation).unwrap_err(),
+            "The supplier update is stale; reload the latest supplier."
+        );
+        assert_eq!(record_counts(&connection).unwrap().supplier_versions, 2);
+
+        let reactivated = SupplierRecord {
+            active: true,
+            updated_at: "2026-08-09T00:00:00.002Z".to_string(),
+            ..deactivated.clone()
+        };
+        save_supplier_inner(&mut connection, reactivated.clone()).unwrap();
+        let stale_deactivation = SupplierRecord {
+            active: false,
+            updated_at: deactivated.updated_at.clone(),
+            ..reactivated.clone()
+        };
+        assert_eq!(
+            save_supplier_inner(&mut connection, stale_deactivation).unwrap_err(),
+            "The supplier update is stale; reload the latest supplier."
+        );
+        assert_eq!(record_counts(&connection).unwrap().supplier_versions, 3);
+        let current: SupplierRecord = connection
+            .query_row(
+                "SELECT id,name,active,external_reference,updated_at FROM suppliers WHERE id=?1",
+                params![reactivated.id],
+                |row| {
+                    Ok(SupplierRecord {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        active: row.get(2)?,
+                        external_reference: row.get(3)?,
+                        updated_at: row.get(4)?,
+                    })
+                },
+            )
+            .unwrap();
+        assert_eq!(current, reactivated);
+        assert!(connection
+            .execute(
+                "UPDATE supplier_versions SET snapshot_json='{}' WHERE supplier_id='supplier-versioned' AND version=1",
+                [],
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "DELETE FROM supplier_versions WHERE supplier_id='supplier-versioned' AND version=1",
+                [],
+            )
+            .is_err());
+        validate_current_database(&connection).unwrap();
+    }
+
+    #[test]
+    fn brand_and_product_pricing_inputs_are_stale_safe_and_audited() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let brand = save_brand_inner(
+            &mut connection,
+            BrandRecord {
+                id: "brand-versioned".to_string(),
+                name: "  Versioned   Brand ".to_string(),
+                markup_hundredths: Some(0),
+                updated_at: "2026-08-09T00:00:00Z".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(brand.name, "Versioned Brand");
+        let updated_brand = BrandRecord {
+            markup_hundredths: Some(99_999),
+            updated_at: "2026-08-09T00:00:00.001Z".to_string(),
+            ..brand.clone()
+        };
+        save_brand_inner(&mut connection, updated_brand.clone()).unwrap();
+        let stale_brand = BrandRecord {
+            markup_hundredths: Some(3_000),
+            ..updated_brand.clone()
+        };
+        assert_eq!(
+            save_brand_inner(&mut connection, stale_brand).unwrap_err(),
+            "The brand update is stale; reload the latest brand."
+        );
+        assert_eq!(record_counts(&connection).unwrap().brand_versions, 2);
+        let latest_brand_json: String = connection
+            .query_row(
+                "SELECT snapshot_json FROM brand_versions WHERE brand_id=?1 ORDER BY version DESC LIMIT 1",
+                params![updated_brand.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<BrandRecord>(&latest_brand_json).unwrap(),
+            updated_brand
+        );
+
+        insert_sample_catalogue(&connection);
+        let update = ProductMetadataUpdate {
+            product_id: "item-001".to_string(),
+            item_kind: "service".to_string(),
+            brand_id: Some("brand-versioned".to_string()),
+            markup_override_percent: Some("0".to_string()),
+            xero_reference: Some("XERO-001".to_string()),
+            servicem8_reference: Some("SM8-001".to_string()),
+            barcode: Some("09312345678907".to_string()),
+            updated_at: "2026-08-09T00:00:00.001Z".to_string(),
+        };
+        update_product_metadata_inner(&mut connection, update.clone()).unwrap();
+        assert_eq!(
+            record_counts(&connection)
+                .unwrap()
+                .product_metadata_versions,
+            2
+        );
+        let latest = query_product_metadata_snapshot(&connection, "item-001").unwrap();
+        assert_eq!(latest.item_kind, "service");
+        assert_eq!(latest.brand_id.as_deref(), Some("brand-versioned"));
+        assert_eq!(latest.markup_override_hundredths, Some(0));
+        assert_eq!(latest.xero_reference.as_deref(), Some("XERO-001"));
+        assert_eq!(latest.servicem8_reference.as_deref(), Some("SM8-001"));
+        assert_eq!(latest.barcode_gtin.as_deref(), Some("09312345678907"));
+
+        let stale_product = ProductMetadataUpdate {
+            item_kind: "labour".to_string(),
+            markup_override_percent: Some("30".to_string()),
+            ..update.clone()
+        };
+        assert_eq!(
+            update_product_metadata_inner(&mut connection, stale_product).unwrap_err(),
+            "The product metadata update is stale; reload the latest product."
+        );
+        assert_eq!(
+            query_product_metadata_snapshot(&connection, "item-001").unwrap(),
+            latest
+        );
+        assert_eq!(
+            record_counts(&connection)
+                .unwrap()
+                .product_metadata_versions,
+            2
+        );
+
+        let invalid_brand = ProductMetadataUpdate {
+            brand_id: Some("missing-brand".to_string()),
+            updated_at: "2026-08-09T00:00:00.002Z".to_string(),
+            ..update
+        };
+        assert!(update_product_metadata_inner(&mut connection, invalid_brand).is_err());
+        assert_eq!(
+            query_product_metadata_snapshot(&connection, "item-001").unwrap(),
+            latest
+        );
+        assert_eq!(
+            record_counts(&connection)
+                .unwrap()
+                .product_metadata_versions,
+            2
+        );
+        assert!(connection
+            .execute(
+                "UPDATE brand_versions SET snapshot_json='{}' WHERE brand_id='brand-versioned' AND version=1",
+                [],
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "DELETE FROM brand_versions WHERE brand_id='brand-versioned' AND version=1",
+                [],
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE product_metadata_versions SET snapshot_json='{}' WHERE product_id='item-001' AND version=1",
+                [],
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "DELETE FROM product_metadata_versions WHERE product_id='item-001' AND version=1",
+                [],
+            )
+            .is_err());
+        validate_current_database(&connection).unwrap();
+    }
+
+    #[test]
+    fn new_supplier_offer_publication_is_atomic_and_provenance_verified() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let provenance = PricingProvenance {
+            selected_offer_id: Some("offer-new".to_string()),
+            supplier_id: Some("supplier-new".to_string()),
+            supplier_name: Some("Supplier New".to_string()),
+            supplier_sku: Some("SUP-NEW-001".to_string()),
+            cost_gst_basis: "ex-gst".to_string(),
+            currency: "AUD".to_string(),
+            markup_percent: "30".to_string(),
+            markup_source: "global".to_string(),
+            markup_source_id: None,
+            brand_id: None,
+            item_kind: "physical-product".to_string(),
+            sell_price_gst_basis: "ex-gst".to_string(),
+            explanation: "Client explanation with operator-facing detail that is not trusted as a structural fact."
+                .to_string(),
+            rule_version: "pricing-rule-v1".to_string(),
+        };
+        let payload = json!({
+            "item": {
+                "id": "item-new",
+                "itemNumber": "NEW-001",
+                "description": "Synthetic test lock",
+                "costCents": 10000,
+                "sellPriceCents": 13000,
+                "gstBasis": "ex-gst",
+                "sellPriceGstBasis": "ex-gst",
+                "itemKind": "physical-product",
+                "brandId": null,
+                "markupOverridePercent": null,
+                "xeroReference": null,
+                "servicem8Reference": null,
+                "barcodeGtin": "09312345678907",
+                "selectedOfferId": "offer-new",
+                "updatedAt": "2026-08-09T00:00:00Z"
+            },
+            "approvedBy": "operator",
+            "reason": "Initial supplier-file publication",
+            "pricingProvenance": serde_json::to_value(&provenance).unwrap()
+        });
+        let change: PublishApprovedChange = serde_json::from_value(payload).unwrap();
+        let published = publish_approved_changes_inner(&mut connection, &[change]).unwrap();
+        assert_eq!(
+            published[0].price_history.supplier_name_snapshot.as_deref(),
+            Some("Supplier New")
+        );
+        assert_eq!(
+            record_counts(&connection).unwrap().product_supplier_offers,
+            1
+        );
+        assert_eq!(
+            record_counts(&connection).unwrap().product_offer_selections,
+            1
+        );
+        assert_eq!(record_counts(&connection).unwrap().supplier_versions, 1);
+        assert_eq!(
+            record_counts(&connection)
+                .unwrap()
+                .product_metadata_versions,
+            1
+        );
+        assert_eq!(
+            published[0].price_history.pricing_explanation,
+            "Selected supplier offer with global markup applied to GST-exclusive cost"
+        );
+        assert_eq!(
+            published[0].price_history.pricing_rule_version,
+            "pricing-rule-v1"
+        );
+
+        let mut item = published[0].item.clone();
+        item.updated_at = "2026-08-09T00:00:01Z".to_string();
+        let mut stale_claims = Vec::new();
+        let mut changed_offer = provenance.clone();
+        changed_offer.selected_offer_id = Some("offer-stale".to_string());
+        stale_claims.push(changed_offer);
+        let mut changed_markup = provenance.clone();
+        changed_markup.markup_percent = "31".to_string();
+        stale_claims.push(changed_markup);
+        let mut changed_gst = provenance.clone();
+        changed_gst.cost_gst_basis = "inc-gst".to_string();
+        stale_claims.push(changed_gst);
+        let mut changed_kind = provenance;
+        changed_kind.item_kind = "service".to_string();
+        stale_claims.push(changed_kind);
+        for stale in stale_claims {
+            assert!(publish_approved_changes_inner(
+                &mut connection,
+                &[PublishApprovedChange {
+                    item: item.clone(),
+                    approved_by: "operator".to_string(),
+                    reason: "Stale provenance".to_string(),
+                    pricing_provenance: Some(stale)
+                }]
+            )
+            .is_err());
+        }
+        assert_eq!(record_counts(&connection).unwrap().approvals, 1);
+    }
+
+    #[test]
+    fn ipc_json_shapes_match_the_typescript_contract() {
+        let mut item = sample_catalogue_item();
+        item.barcode = Some("09312345678907".to_string());
+        let item_json = serde_json::to_value(&item).unwrap();
+        assert_eq!(item_json["barcodeGtin"], "09312345678907");
+        assert!(item_json.get("barcode").is_none());
+
+        let metadata = ProductMetadataUpdate {
+            product_id: item.id.clone(),
+            item_kind: item.item_kind.clone(),
+            brand_id: None,
+            markup_override_percent: Some("0".to_string()),
+            xero_reference: None,
+            servicem8_reference: None,
+            barcode: item.barcode.clone(),
+            updated_at: item.updated_at.clone(),
+        };
+        let metadata_json = serde_json::to_value(&metadata).unwrap();
+        assert_eq!(metadata_json["barcodeGtin"], "09312345678907");
+        assert!(metadata_json.get("barcode").is_none());
+
+        let history = PriceHistoryRecord {
+            id: "history-contract".to_string(),
+            item_id: item.id.clone(),
+            cost: "100.00".to_string(),
+            sell_price: "130.00".to_string(),
+            cost_cents: 10_000,
+            sell_price_cents: 13_000,
+            approval_id: "approval-contract".to_string(),
+            selected_offer_id: Some("offer-contract".to_string()),
+            cost_basis_cents: 10_000,
+            markup_source_type: "global".to_string(),
+            markup_source_id: None,
+            applied_markup_hundredths: None,
+            supplier_id_snapshot: Some("supplier-contract".to_string()),
+            supplier_name_snapshot: Some("Supplier Contract".to_string()),
+            supplier_sku_snapshot: Some("SUP-001".to_string()),
+            cost_gst_basis: "unknown".to_string(),
+            sell_price_gst_basis: "unknown".to_string(),
+            currency: Some("AUD".to_string()),
+            brand_id_snapshot: None,
+            item_kind_snapshot: Some("physical-product".to_string()),
+            pricing_explanation: "Server-derived explanation".to_string(),
+            pricing_rule_version: "pricing-rule-v1".to_string(),
+            provenance_state: "resolved".to_string(),
+            recorded_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        let history_json = serde_json::to_value(&history).unwrap();
+        for key in [
+            "supplierId",
+            "supplierName",
+            "supplierSku",
+            "brandId",
+            "itemKind",
+            "ruleVersion",
+            "sellPriceGstBasis",
+        ] {
+            assert!(history_json.get(key).is_some(), "missing {key}");
+        }
+        for key in [
+            "supplierIdSnapshot",
+            "supplierNameSnapshot",
+            "supplierSkuSnapshot",
+            "brandIdSnapshot",
+            "itemKindSnapshot",
+            "pricingRuleVersion",
+        ] {
+            assert!(history_json.get(key).is_none(), "unexpected {key}");
+        }
+        assert!(history_json["appliedMarkupHundredths"].is_null());
+
+        let outcome = SyncItemOutcomeRecord {
+            id: "outcome-contract".to_string(),
+            run_id: "run-contract".to_string(),
+            item_id: Some(item.id),
+            external_id: None,
+            action: "compare".to_string(),
+            status: "succeeded".to_string(),
+            message: "Matched".to_string(),
+            idempotency_key: "run-contract:item-001".to_string(),
+            attempt_count: 1,
+            retryable: false,
+            error_class: None,
+            reconciliation: "matched".to_string(),
+            recorded_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        let outcome_json = serde_json::to_value(&outcome).unwrap();
+        assert_eq!(outcome_json["reconciliation"], "matched");
+        assert!(outcome_json.get("reconciliationResult").is_none());
+    }
+
+    #[test]
+    fn offer_validity_order_uses_parsed_utc_timestamps() {
+        let mut offer = SupplierOfferRecord {
+            id: "offer-time".to_string(),
+            product_id: "item-001".to_string(),
+            supplier_id: "supplier-time".to_string(),
+            supplier_sku: "TIME-001".to_string(),
+            cost_cents: 10_000,
+            gst_basis: "unknown".to_string(),
+            currency: "AUD".to_string(),
+            active: true,
+            is_preferred: false,
+            valid_from: Some("2026-08-09T00:00:00Z".to_string()),
+            valid_until: Some("2026-08-09T00:00:00.001Z".to_string()),
+            provenance_type: "manual".to_string(),
+            provenance_reference: None,
+            observed_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        assert!(validate_offer(&offer).is_ok());
+        offer.valid_from = Some("2026-08-09T00:00:00.001Z".to_string());
+        offer.valid_until = Some("2026-08-09T00:00:00Z".to_string());
+        assert_eq!(
+            validate_offer(&offer).unwrap_err(),
+            "Offer validity dates are inconsistent."
+        );
     }
 
     #[test]
@@ -9218,34 +12824,24 @@ mod tests {
         new_item.item_number = "000002".to_string();
         assert!(update_catalogue_metadata(&mut connection, &[new_item.clone()]).is_err());
 
-        let published = publish_approved_changes_inner(
-            &mut connection,
-            &[PublishApprovedChange {
-                item: new_item,
-                approved_by: "operator-1".to_string(),
-                reason: "Synthetic approval".to_string(),
-            }],
-        )
-        .unwrap();
+        let approved = verified_supplier_publication(
+            &new_item.id,
+            &new_item.item_number,
+            new_item.cost_cents,
+            "ex-gst",
+            new_item.sell_price_cents,
+            "ex-gst",
+        );
+        let published = publish_approved_changes_inner(&mut connection, &[approved]).unwrap();
         assert_eq!(published.len(), 1);
         assert_eq!(record_counts(&connection).unwrap().catalogue_items, 2);
         assert_eq!(record_counts(&connection).unwrap().approvals, 1);
         assert_eq!(record_counts(&connection).unwrap().price_history, 1);
 
-        let mut below_floor = sample_catalogue_item();
-        below_floor.id = "item-003".to_string();
-        below_floor.item_number = "000003".to_string();
-        below_floor.sell_price_cents = 12_999;
+        let below_floor =
+            verified_supplier_publication("item-003", "000003", 10_000, "ex-gst", 12_999, "ex-gst");
         let before = record_counts(&connection).unwrap();
-        assert!(publish_approved_changes_inner(
-            &mut connection,
-            &[PublishApprovedChange {
-                item: below_floor,
-                approved_by: "operator-1".to_string(),
-                reason: "Must fail".to_string(),
-            }],
-        )
-        .is_err());
+        assert!(publish_approved_changes_inner(&mut connection, &[below_floor],).is_err());
         assert_eq!(record_counts(&connection).unwrap(), before);
     }
 
@@ -9278,6 +12874,7 @@ mod tests {
             item: sample_catalogue_item(),
             approved_by: "synthetic-operator".to_string(),
             reason: "Synthetic approval".to_string(),
+            pricing_provenance: None,
         };
         let mut outer_unknown = serde_json::to_value(&valid_change).unwrap();
         outer_unknown
@@ -9313,16 +12910,19 @@ mod tests {
             directory.0.clone(),
             Arc::new(MemoryCredentialStore::default()),
         );
-        let first = PublishApprovedChange {
-            item: sample_catalogue_item(),
-            approved_by: "synthetic-operator".to_string(),
-            reason: "Synthetic initial publication".to_string(),
-        };
+        let first =
+            verified_supplier_publication("item-001", "001234", 10_000, "ex-gst", 13_000, "ex-gst");
         publish_approved_changes_at(&state, std::slice::from_ref(&first)).unwrap();
         assert!(list_backups_inner(&state).unwrap().is_empty());
         let mut second = first;
+        second.item.updated_at = "2026-08-09T00:00:00.001Z".to_string();
         second.item.sell_price_cents = 14_000;
+        second.item.markup_override_percent = Some("40".to_string());
         second.reason = "Synthetic approved price change".to_string();
+        let provenance = second.pricing_provenance.as_mut().unwrap();
+        provenance.markup_percent = "40".to_string();
+        provenance.markup_source = "product".to_string();
+        provenance.markup_source_id = Some(second.item.id.clone());
         publish_approved_changes_at(&state, &[second]).unwrap();
         let backups = list_backups_inner(&state).unwrap();
         assert_eq!(backups.len(), 1);
@@ -9373,7 +12973,8 @@ mod tests {
             json!({
                 "markupPercent": "30",
                 "taxHandling": "not-configured",
-                "theme": "light"
+                "theme": "light",
+                "glassTint": "clear"
             }),
         )
         .unwrap();
@@ -9382,7 +12983,8 @@ mod tests {
             json!({
                 "markupPercent": "35",
                 "taxHandling": "not-configured",
-                "theme": "dark"
+                "theme": "dark",
+                "glassTint": "clear"
             }),
         )
         .unwrap();
@@ -9412,7 +13014,7 @@ mod tests {
         let connection = open_connection(&directory.database()).unwrap();
         connection
             .execute(
-                "INSERT INTO settings(id,settings_json,updated_at) VALUES('settings','{\"markupPercent\":\"30\",\"taxHandling\":\"not-configured\",\"theme\":\"light\"}','now')",
+                "INSERT INTO settings(id,settings_json,updated_at) VALUES('settings','{\"markupPercent\":\"30\",\"taxHandling\":\"not-configured\",\"theme\":\"light\",\"glassTint\":\"clear\"}','now')",
                 [],
             )
             .unwrap();
@@ -9421,6 +13023,263 @@ mod tests {
         let restored = open_connection(&directory.database()).unwrap();
         assert_eq!(record_counts(&restored).unwrap(), backup.record_counts);
         assert_integrity(&restored).unwrap();
+    }
+
+    #[test]
+    fn pricing_rule_audit_ledgers_survive_backup_restore_and_reset_cleanly() {
+        let directory = migrated_database();
+        let mut connection = open_connection(&directory.database()).unwrap();
+        save_supplier_inner(
+            &mut connection,
+            SupplierRecord {
+                id: "supplier-recovery".to_string(),
+                name: "Supplier Recovery".to_string(),
+                active: true,
+                external_reference: Some("SUP-RECOVERY".to_string()),
+                updated_at: "2026-08-09T00:00:00Z".to_string(),
+            },
+        )
+        .unwrap();
+        save_brand_inner(
+            &mut connection,
+            BrandRecord {
+                id: "brand-recovery".to_string(),
+                name: "Brand Recovery".to_string(),
+                markup_hundredths: Some(3_500),
+                updated_at: "2026-08-09T00:00:00Z".to_string(),
+            },
+        )
+        .unwrap();
+        insert_sample_catalogue(&connection);
+        update_product_metadata_inner(
+            &mut connection,
+            ProductMetadataUpdate {
+                product_id: "item-001".to_string(),
+                item_kind: "physical-product".to_string(),
+                brand_id: Some("brand-recovery".to_string()),
+                markup_override_percent: Some("40".to_string()),
+                xero_reference: Some("XERO-RECOVERY".to_string()),
+                servicem8_reference: Some("SM8-RECOVERY".to_string()),
+                barcode: Some("09312345678907".to_string()),
+                updated_at: "2026-08-09T00:00:00.001Z".to_string(),
+            },
+        )
+        .unwrap();
+        validate_current_database(&connection).unwrap();
+        drop(connection);
+
+        let backup =
+            create_verified_backup_at(&directory.database(), &directory.0, "manual").unwrap();
+        assert_eq!(backup.record_counts.supplier_versions, 1);
+        assert_eq!(backup.record_counts.brand_versions, 1);
+        assert_eq!(backup.record_counts.product_metadata_versions, 2);
+
+        let mut connection = open_connection(&directory.database()).unwrap();
+        let transaction = connection.transaction().unwrap();
+        delete_operational_data(&transaction).unwrap();
+        transaction.commit().unwrap();
+        assert_eq!(
+            record_counts(&connection).unwrap(),
+            BackupRecordCounts::default()
+        );
+        validate_current_database(&connection).unwrap();
+        drop(connection);
+
+        restore_backup_files(&directory.database(), &directory.0, &backup.id).unwrap();
+        let restored = open_connection(&directory.database()).unwrap();
+        assert_eq!(record_counts(&restored).unwrap(), backup.record_counts);
+        validate_current_database(&restored).unwrap();
+        let latest_product = query_product_metadata_snapshot(&restored, "item-001").unwrap();
+        assert_eq!(latest_product.brand_id.as_deref(), Some("brand-recovery"));
+        assert_eq!(latest_product.markup_override_hundredths, Some(4_000));
+    }
+
+    #[test]
+    fn non_monotonic_pricing_rule_audits_block_current_validation_and_backups() {
+        let supplier_directory = migrated_database();
+        let mut supplier_connection = open_connection(&supplier_directory.database()).unwrap();
+        let mut supplier = SupplierRecord {
+            id: "supplier-time-tamper".to_string(),
+            name: "Supplier Time Tamper".to_string(),
+            active: true,
+            external_reference: Some("SUP-TIME".to_string()),
+            updated_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        save_supplier_inner(&mut supplier_connection, supplier.clone()).unwrap();
+        supplier.name = "Supplier Time Tamper Revised".to_string();
+        supplier.active = false;
+        supplier.updated_at = "2026-08-09T00:00:00.001Z".to_string();
+        save_supplier_inner(&mut supplier_connection, supplier.clone()).unwrap();
+        validate_current_database(&supplier_connection).unwrap();
+        let mut tampered_supplier = supplier;
+        tampered_supplier.updated_at = "2026-08-09T00:00:00Z".to_string();
+        let tampered_supplier_json = validate_json(
+            &serde_json::to_value(&tampered_supplier).unwrap(),
+            "Synthetic supplier audit tamper",
+        )
+        .unwrap();
+        supplier_connection
+            .execute_batch("DROP TRIGGER supplier_versions_no_update;")
+            .unwrap();
+        supplier_connection
+            .execute(
+                "UPDATE supplier_versions SET snapshot_json=?1,changed_at=?2 WHERE supplier_id=?3 AND version=2",
+                params![tampered_supplier_json,tampered_supplier.updated_at,tampered_supplier.id],
+            )
+            .unwrap();
+        supplier_connection
+            .execute(
+                "UPDATE suppliers SET updated_at=?1 WHERE id=?2",
+                params![tampered_supplier.updated_at, tampered_supplier.id],
+            )
+            .unwrap();
+        supplier_connection
+            .execute_batch("CREATE TRIGGER supplier_versions_no_update BEFORE UPDATE ON supplier_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;")
+            .unwrap();
+        assert_eq!(
+            validate_current_database(&supplier_connection).unwrap_err(),
+            "Supplier audit versions failed verification."
+        );
+        drop(supplier_connection);
+        assert_eq!(
+            create_verified_backup_at(
+                &supplier_directory.database(),
+                &supplier_directory.0,
+                "manual"
+            )
+            .unwrap_err(),
+            "Supplier audit versions failed verification."
+        );
+        assert_eq!(
+            fs::read_dir(supplier_directory.0.join(BACKUP_DIRECTORY))
+                .unwrap()
+                .filter_map(Result::ok)
+                .count(),
+            0
+        );
+
+        let brand_directory = migrated_database();
+        let mut brand_connection = open_connection(&brand_directory.database()).unwrap();
+        let mut brand = BrandRecord {
+            id: "brand-time-tamper".to_string(),
+            name: "Brand Time Tamper".to_string(),
+            markup_hundredths: Some(3_000),
+            updated_at: "2026-08-09T00:00:00Z".to_string(),
+        };
+        save_brand_inner(&mut brand_connection, brand.clone()).unwrap();
+        brand.name = "Brand Time Tamper Revised".to_string();
+        brand.markup_hundredths = Some(4_000);
+        brand.updated_at = "2026-08-09T00:00:00.001Z".to_string();
+        let brand = save_brand_inner(&mut brand_connection, brand).unwrap();
+        validate_current_database(&brand_connection).unwrap();
+        let mut tampered_brand = brand;
+        tampered_brand.updated_at = "2026-08-09T00:00:00Z".to_string();
+        let tampered_brand_json = validate_json(
+            &serde_json::to_value(&tampered_brand).unwrap(),
+            "Synthetic brand audit tamper",
+        )
+        .unwrap();
+        brand_connection
+            .execute_batch("DROP TRIGGER brand_versions_no_update;")
+            .unwrap();
+        brand_connection
+            .execute(
+                "UPDATE brand_versions SET snapshot_json=?1,changed_at=?2 WHERE brand_id=?3 AND version=2",
+                params![tampered_brand_json,tampered_brand.updated_at,tampered_brand.id],
+            )
+            .unwrap();
+        brand_connection
+            .execute(
+                "UPDATE brands SET updated_at=?1 WHERE id=?2",
+                params![tampered_brand.updated_at, tampered_brand.id],
+            )
+            .unwrap();
+        brand_connection
+            .execute_batch("CREATE TRIGGER brand_versions_no_update BEFORE UPDATE ON brand_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;")
+            .unwrap();
+        assert_eq!(
+            validate_current_database(&brand_connection).unwrap_err(),
+            "Brand audit versions failed verification."
+        );
+        drop(brand_connection);
+        assert_eq!(
+            create_verified_backup_at(&brand_directory.database(), &brand_directory.0, "manual")
+                .unwrap_err(),
+            "Brand audit versions failed verification."
+        );
+        assert_eq!(
+            fs::read_dir(brand_directory.0.join(BACKUP_DIRECTORY))
+                .unwrap()
+                .filter_map(Result::ok)
+                .count(),
+            0
+        );
+
+        let product_directory = migrated_database();
+        let mut product_connection = open_connection(&product_directory.database()).unwrap();
+        insert_sample_catalogue(&product_connection);
+        update_product_metadata_inner(
+            &mut product_connection,
+            ProductMetadataUpdate {
+                product_id: "item-001".to_string(),
+                item_kind: "service".to_string(),
+                brand_id: None,
+                markup_override_percent: Some("40".to_string()),
+                xero_reference: Some("XERO-TIME".to_string()),
+                servicem8_reference: Some("SM8-TIME".to_string()),
+                barcode: Some("09312345678907".to_string()),
+                updated_at: "2026-08-09T00:00:00.001Z".to_string(),
+            },
+        )
+        .unwrap();
+        validate_current_database(&product_connection).unwrap();
+        let mut tampered_product =
+            query_product_metadata_snapshot(&product_connection, "item-001").unwrap();
+        tampered_product.updated_at = "2026-08-09T00:00:00Z".to_string();
+        let tampered_product_json = validate_json(
+            &serde_json::to_value(&tampered_product).unwrap(),
+            "Synthetic product metadata audit tamper",
+        )
+        .unwrap();
+        product_connection
+            .execute_batch("DROP TRIGGER product_metadata_versions_no_update;")
+            .unwrap();
+        product_connection
+            .execute(
+                "UPDATE product_metadata_versions SET snapshot_json=?1,changed_at=?2 WHERE product_id=?3 AND version=2",
+                params![tampered_product_json,tampered_product.updated_at,tampered_product.product_id],
+            )
+            .unwrap();
+        product_connection
+            .execute(
+                "UPDATE catalogue_items SET updated_at=?1 WHERE id=?2",
+                params![tampered_product.updated_at, tampered_product.product_id],
+            )
+            .unwrap();
+        product_connection
+            .execute_batch("CREATE TRIGGER product_metadata_versions_no_update BEFORE UPDATE ON product_metadata_versions BEGIN SELECT RAISE(ABORT,'append-only'); END;")
+            .unwrap();
+        assert_eq!(
+            validate_current_database(&product_connection).unwrap_err(),
+            "Product metadata audit versions failed verification."
+        );
+        drop(product_connection);
+        assert_eq!(
+            create_verified_backup_at(
+                &product_directory.database(),
+                &product_directory.0,
+                "manual"
+            )
+            .unwrap_err(),
+            "Product metadata audit versions failed verification."
+        );
+        assert_eq!(
+            fs::read_dir(product_directory.0.join(BACKUP_DIRECTORY))
+                .unwrap()
+                .filter_map(Result::ok)
+                .count(),
+            0
+        );
     }
 
     #[test]
@@ -9606,12 +13465,16 @@ mod tests {
         );
         let trigger_count: i64 = connection
             .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN ('approvals_no_delete','price_history_no_delete')",
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name IN (
+                   'approvals_no_delete','price_history_no_delete','settings_audit_no_delete',
+                   'sync_item_outcomes_no_delete','supplier_offer_versions_no_delete',
+                   'offer_selection_versions_no_delete','supplier_versions_no_delete',
+                   'brand_versions_no_delete','product_metadata_versions_no_delete')",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(trigger_count, 2);
+        assert_eq!(trigger_count, 9);
         let provider_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM provider_state", [], |row| row.get(0))
             .unwrap();
@@ -9669,7 +13532,8 @@ mod tests {
             settings: json!({
                 "markupPercent": "30",
                 "taxHandling": "not-configured",
-                "theme": "light"
+                "theme": "light",
+                "glassTint": "clear"
             }),
         };
         let mut envelope = ConfigurationEnvelope {
@@ -9747,7 +13611,7 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO settings(id,settings_json,updated_at) VALUES('settings',?1,'now')",
-                params![r#"{"markupPercent":"35","taxHandling":"not-configured","theme":"dark"}"#],
+                params![r#"{"markupPercent":"35","taxHandling":"not-configured","theme":"dark","glassTint":"clear"}"#],
             )
             .unwrap();
         let envelope = sample_configuration_envelope();

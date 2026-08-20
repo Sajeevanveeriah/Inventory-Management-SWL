@@ -12,7 +12,12 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { centsToAmount, minimumSellPriceCents } from '../lib/moneyCents.mjs';
+import {
+  amountExGstCents,
+  centsToAmount,
+  deriveSellPriceCents,
+  minimumSellPriceCents,
+} from '../lib/moneyCents.mjs';
 
 /**
  * File-backed persistence for the small Node service. Chosen deliberately:
@@ -58,6 +63,10 @@ const MAX_HISTORY_RECORDS = 1_000_000;
 const MAX_REFERENCE_RECORDS = 1_000_000;
 const MAX_CENTS = 1_000_000_000;
 const SOURCE_ACCESS_METHODS = new Set(['live-api', 'manual-entry', 'file-import']);
+const GST_BASES = new Set(['inc-gst', 'ex-gst', 'unknown']);
+const RESOLVED_GST_BASES = new Set(['inc-gst', 'ex-gst']);
+const ITEM_KINDS = new Set(['physical-product', 'service', 'labour']);
+const MARKUP_SOURCES = new Set(['product', 'brand', 'global']);
 
 function containsControlCharacter(value) {
   return [...value].some((character) => {
@@ -90,6 +99,25 @@ function assertCents(value, name) {
   }
 }
 
+function nullableText(value, name, max, identifier = false) {
+  if (value === null || value === undefined) return null;
+  if (identifier) assertIdentifier(value, name, max);
+  else assertText(value, name, max, true);
+  return value;
+}
+
+function parseMarkupHundredths(value, name = 'Markup') {
+  if (typeof value !== 'string' || !/^\d{1,3}(?:\.\d{1,2})?$/u.test(value)) {
+    throw new PublicationValidationError(`${name} is invalid.`);
+  }
+  const [whole, fraction = ''] = value.split('.');
+  const hundredths = Number(BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0')));
+  if (hundredths > 99_999) {
+    throw new PublicationValidationError(`${name} is outside the supported range.`);
+  }
+  return hundredths;
+}
+
 function validateCatalogueItem(item) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) {
     throw new PublicationValidationError('Catalogue item is invalid.');
@@ -97,7 +125,20 @@ function validateCatalogueItem(item) {
   assertAllowedKeys(
     item,
     ['costCents', 'description', 'id', 'sellPriceCents'],
-    ['gstBasis', 'itemNumber', 'sku', 'updatedAt'],
+    [
+      'barcodeGtin',
+      'brandId',
+      'gstBasis',
+      'itemKind',
+      'itemNumber',
+      'markupOverridePercent',
+      'selectedOfferId',
+      'sellPriceGstBasis',
+      'servicem8Reference',
+      'sku',
+      'updatedAt',
+      'xeroReference',
+    ],
     'Catalogue item',
   );
   assertIdentifier(item.id, 'Catalogue identifier');
@@ -114,9 +155,31 @@ function validateCatalogueItem(item) {
   assertCents(item.costCents, 'Cost');
   assertCents(item.sellPriceCents, 'Sell price');
   const gstBasis = item.gstBasis ?? 'unknown';
-  if (!['inc-gst', 'ex-gst', 'unknown'].includes(gstBasis)) {
+  if (!GST_BASES.has(gstBasis)) {
     throw new PublicationValidationError('GST basis is invalid.');
   }
+  const sellPriceGstBasis = item.sellPriceGstBasis ?? gstBasis;
+  if (!GST_BASES.has(sellPriceGstBasis)) {
+    throw new PublicationValidationError('Sell-price GST basis is invalid.');
+  }
+  const itemKind = item.itemKind ?? 'physical-product';
+  if (!ITEM_KINDS.has(itemKind)) {
+    throw new PublicationValidationError('Catalogue item kind is invalid.');
+  }
+  const brandId = nullableText(item.brandId, 'Brand identifier', 128, true);
+  const selectedOfferId = nullableText(
+    item.selectedOfferId,
+    'Selected supplier-offer identifier',
+    128,
+    true,
+  );
+  const markupOverridePercent = item.markupOverridePercent ?? null;
+  if (markupOverridePercent !== null) {
+    parseMarkupHundredths(markupOverridePercent, 'Product markup');
+  }
+  const xeroReference = nullableText(item.xeroReference, 'Xero reference', 256);
+  const servicem8Reference = nullableText(item.servicem8Reference, 'ServiceM8 reference', 256);
+  const barcodeGtin = nullableText(item.barcodeGtin, 'Barcode or GTIN', 128);
   if (Object.hasOwn(item, 'updatedAt')) {
     assertTimestamp(item.updatedAt, 'Catalogue update time');
   }
@@ -124,10 +187,179 @@ function validateCatalogueItem(item) {
     id: item.id,
     itemNumber,
     description: item.description,
+    itemKind,
+    brandId,
+    markupOverridePercent,
+    xeroReference,
+    servicem8Reference,
+    barcodeGtin,
+    selectedOfferId,
     costCents: item.costCents,
     sellPriceCents: item.sellPriceCents,
     gstBasis,
+    sellPriceGstBasis,
     ...(Object.hasOwn(item, 'updatedAt') ? { updatedAt: item.updatedAt } : {}),
+  };
+}
+
+function validatePublishedCatalogueItem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    throw new PublicationValidationError('Catalogue item is invalid.');
+  }
+  assertExactKeys(
+    item,
+    [
+      'barcodeGtin',
+      'brandId',
+      'costCents',
+      'description',
+      'gstBasis',
+      'id',
+      'itemKind',
+      'itemNumber',
+      'markupOverridePercent',
+      'selectedOfferId',
+      'sellPriceCents',
+      'sellPriceGstBasis',
+      'servicem8Reference',
+      'updatedAt',
+      'xeroReference',
+    ],
+    'Approved catalogue item',
+  );
+  const canonical = validateCatalogueItem(item);
+  if (
+    canonical.selectedOfferId === null ||
+    !RESOLVED_GST_BASES.has(canonical.gstBasis) ||
+    !RESOLVED_GST_BASES.has(canonical.sellPriceGstBasis)
+  ) {
+    throw new PublicationValidationError(
+      'Approved publication requires a selected supplier offer and confirmed GST bases.',
+    );
+  }
+  return canonical;
+}
+
+function validatePricingProvenance(provenance, item) {
+  if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    throw new PublicationValidationError('Resolved pricing provenance is required.');
+  }
+  assertExactKeys(
+    provenance,
+    [
+      'brandId',
+      'costGstBasis',
+      'currency',
+      'explanation',
+      'itemKind',
+      'markupPercent',
+      'markupSource',
+      'markupSourceId',
+      'ruleVersion',
+      'selectedOfferId',
+      'sellPriceGstBasis',
+      'supplierId',
+      'supplierName',
+      'supplierSku',
+    ],
+    'Resolved pricing provenance',
+  );
+  assertIdentifier(provenance.selectedOfferId, 'Selected supplier-offer identifier');
+  assertIdentifier(provenance.supplierId, 'Supplier identifier');
+  assertText(provenance.supplierName, 'Supplier name', 256);
+  assertText(provenance.supplierSku, 'Supplier SKU', 256);
+  assertText(provenance.explanation, 'Pricing explanation', 2_000);
+  if (!RESOLVED_GST_BASES.has(provenance.costGstBasis)) {
+    throw new PublicationValidationError('Cost GST basis is invalid.');
+  }
+  if (!RESOLVED_GST_BASES.has(provenance.sellPriceGstBasis)) {
+    throw new PublicationValidationError('Sell-price GST basis is invalid.');
+  }
+  if (provenance.currency !== 'AUD') {
+    throw new PublicationValidationError('Pricing currency must be AUD.');
+  }
+  if (!MARKUP_SOURCES.has(provenance.markupSource)) {
+    throw new PublicationValidationError('Markup source is invalid.');
+  }
+  if (!ITEM_KINDS.has(provenance.itemKind)) {
+    throw new PublicationValidationError('Pricing item kind is invalid.');
+  }
+  const brandId = nullableText(provenance.brandId, 'Pricing brand identifier', 128, true);
+  const markupSourceId = nullableText(
+    provenance.markupSourceId,
+    'Markup-source identifier',
+    128,
+    true,
+  );
+  const markupHundredths = parseMarkupHundredths(provenance.markupPercent);
+  if (provenance.ruleVersion !== 'pricing-rule-v1') {
+    throw new PublicationValidationError('Pricing rule version is invalid.');
+  }
+  if (
+    provenance.selectedOfferId !== item.selectedOfferId ||
+    provenance.costGstBasis !== item.gstBasis ||
+    provenance.sellPriceGstBasis !== item.sellPriceGstBasis ||
+    provenance.itemKind !== item.itemKind ||
+    brandId !== item.brandId
+  ) {
+    throw new PublicationValidationError(
+      'The approved item and resolved pricing provenance disagree.',
+    );
+  }
+  if (item.markupOverridePercent !== null) {
+    if (
+      provenance.markupSource !== 'product' ||
+      markupSourceId !== item.id ||
+      markupHundredths !== parseMarkupHundredths(item.markupOverridePercent, 'Product markup')
+    ) {
+      throw new PublicationValidationError('The resolved product markup identity is invalid.');
+    }
+  } else if (provenance.markupSource === 'product') {
+    throw new PublicationValidationError('A product markup source requires a product override.');
+  }
+  if (
+    provenance.markupSource === 'brand' &&
+    (item.brandId === null || markupSourceId !== item.brandId)
+  ) {
+    throw new PublicationValidationError('The resolved brand markup identity is invalid.');
+  }
+  if (provenance.markupSource === 'global' && markupSourceId !== null) {
+    throw new PublicationValidationError('The global markup source must not name another record.');
+  }
+  const expectedSellPriceCents = deriveSellPriceCents(
+    item.costCents,
+    provenance.costGstBasis,
+    markupHundredths,
+    provenance.sellPriceGstBasis,
+  );
+  if (item.sellPriceCents !== expectedSellPriceCents) {
+    throw new PublicationValidationError(
+      'The proposed sell price does not match the resolved markup rule.',
+    );
+  }
+  const costExGstCents = amountExGstCents(item.costCents, provenance.costGstBasis);
+  const sellExGstCents = amountExGstCents(item.sellPriceCents, provenance.sellPriceGstBasis);
+  const floor = minimumSellPriceCents(costExGstCents);
+  if (sellExGstCents < floor) {
+    throw new FloorViolationError(item.sellPriceCents, floor);
+  }
+  return {
+    selectedOfferId: provenance.selectedOfferId,
+    supplierId: provenance.supplierId,
+    supplierName: provenance.supplierName,
+    supplierSku: provenance.supplierSku,
+    costGstBasis: provenance.costGstBasis,
+    sellPriceGstBasis: provenance.sellPriceGstBasis,
+    currency: 'AUD',
+    markupPercent: provenance.markupPercent,
+    markupHundredths,
+    markupSource: provenance.markupSource,
+    markupSourceId,
+    brandId,
+    itemKind: provenance.itemKind,
+    ruleVersion: 'pricing-rule-v1',
+    costExGstCents,
+    explanation: `Selected supplier offer ${provenance.selectedOfferId} from ${provenance.supplierName}; applied the resolved ${provenance.markupSource} markup of ${provenance.markupPercent}% to AUD ${centsToAmount(costExGstCents)} ex GST; verified exact sell price AUD ${centsToAmount(item.sellPriceCents)} and the 30% minimum floor.`,
   };
 }
 
@@ -623,20 +855,54 @@ function validatePriceHistoryCollection(records, itemIds, approvals) {
     if (!record || typeof record !== 'object' || Array.isArray(record)) {
       throw new PublicationValidationError('Stored price history is invalid.');
     }
-    assertExactKeys(
-      record,
-      [
-        'approvalId',
-        'cost',
-        'costCents',
-        'id',
-        'itemId',
-        'recordedAt',
-        'sellPrice',
-        'sellPriceCents',
-      ],
-      'Stored price history',
-    );
+    const isLegacyShape = !Object.hasOwn(record, 'provenanceState');
+    if (isLegacyShape) {
+      assertExactKeys(
+        record,
+        [
+          'approvalId',
+          'cost',
+          'costCents',
+          'id',
+          'itemId',
+          'recordedAt',
+          'sellPrice',
+          'sellPriceCents',
+        ],
+        'Stored price history',
+      );
+    } else {
+      assertExactKeys(
+        record,
+        [
+          'appliedMarkupHundredths',
+          'approvalId',
+          'brandId',
+          'cost',
+          'costBasisCents',
+          'costCents',
+          'costGstBasis',
+          'currency',
+          'id',
+          'itemId',
+          'itemKind',
+          'markupSourceId',
+          'markupSourceType',
+          'pricingExplanation',
+          'provenanceState',
+          'recordedAt',
+          'ruleVersion',
+          'selectedOfferId',
+          'sellPrice',
+          'sellPriceCents',
+          'sellPriceGstBasis',
+          'supplierId',
+          'supplierName',
+          'supplierSku',
+        ],
+        'Stored price history',
+      );
+    }
     assertIdentifier(record.id, 'Price-history identifier');
     assertIdentifier(record.itemId, 'Catalogue identifier');
     assertIdentifier(record.approvalId, 'Approval identifier');
@@ -648,11 +914,6 @@ function validatePriceHistoryCollection(records, itemIds, approvals) {
       record.sellPrice !== centsToAmount(record.sellPriceCents)
     ) {
       throw new PublicationValidationError('Stored price representations disagree.');
-    }
-    if (record.sellPriceCents < minimumSellPriceCents(record.costCents)) {
-      throw new PublicationValidationError(
-        'Stored price history violates the required markup floor.',
-      );
     }
     if (identifiers.has(record.id)) {
       throw new PublicationValidationError('Stored price-history identifiers must be unique.');
@@ -673,7 +934,7 @@ function validatePriceHistoryCollection(records, itemIds, approvals) {
       );
     }
     identifiers.add(record.id);
-    return {
+    const common = {
       id: record.id,
       itemId: record.itemId,
       costCents: record.costCents,
@@ -683,6 +944,103 @@ function validatePriceHistoryCollection(records, itemIds, approvals) {
       approvalId: record.approvalId,
       recordedAt: record.recordedAt,
     };
+    if (isLegacyShape) {
+      if (record.sellPriceCents < minimumSellPriceCents(record.costCents)) {
+        throw new PublicationValidationError(
+          'Stored price history violates the required markup floor.',
+        );
+      }
+      return {
+        ...common,
+        selectedOfferId: null,
+        supplierId: null,
+        supplierName: null,
+        supplierSku: null,
+        costGstBasis: null,
+        sellPriceGstBasis: 'unknown',
+        currency: null,
+        costBasisCents: record.costCents,
+        markupSourceType: 'legacy-global',
+        markupSourceId: null,
+        appliedMarkupHundredths: null,
+        brandId: null,
+        itemKind: null,
+        pricingExplanation: null,
+        ruleVersion: 'legacy-unresolved',
+        provenanceState: 'legacy-unresolved',
+      };
+    }
+    if (record.provenanceState === 'legacy-unresolved') {
+      if (
+        record.selectedOfferId !== null ||
+        record.supplierId !== null ||
+        record.supplierName !== null ||
+        record.supplierSku !== null ||
+        record.costGstBasis !== null ||
+        record.sellPriceGstBasis !== 'unknown' ||
+        record.currency !== null ||
+        record.costBasisCents !== record.costCents ||
+        record.markupSourceType !== 'legacy-global' ||
+        record.markupSourceId !== null ||
+        record.appliedMarkupHundredths !== null ||
+        record.brandId !== null ||
+        record.itemKind !== null ||
+        record.pricingExplanation !== null ||
+        record.ruleVersion !== 'legacy-unresolved' ||
+        record.sellPriceCents < minimumSellPriceCents(record.costCents)
+      ) {
+        throw new PublicationValidationError('Legacy price-history provenance is invalid.');
+      }
+      return { ...common, ...record };
+    }
+    assertIdentifier(record.selectedOfferId, 'Selected supplier-offer identifier');
+    assertIdentifier(record.supplierId, 'Supplier identifier');
+    assertText(record.supplierName, 'Supplier name', 256);
+    assertText(record.supplierSku, 'Supplier SKU', 256);
+    if (!RESOLVED_GST_BASES.has(record.costGstBasis)) {
+      throw new PublicationValidationError('Stored cost GST basis is invalid.');
+    }
+    if (!RESOLVED_GST_BASES.has(record.sellPriceGstBasis)) {
+      throw new PublicationValidationError('Stored sell-price GST basis is invalid.');
+    }
+    if (
+      record.currency !== 'AUD' ||
+      !MARKUP_SOURCES.has(record.markupSourceType) ||
+      !Number.isSafeInteger(record.appliedMarkupHundredths) ||
+      record.appliedMarkupHundredths < 0 ||
+      record.appliedMarkupHundredths > 99_999 ||
+      !ITEM_KINDS.has(record.itemKind) ||
+      record.ruleVersion !== 'pricing-rule-v1' ||
+      record.provenanceState !== 'resolved'
+    ) {
+      throw new PublicationValidationError('Resolved price-history provenance is invalid.');
+    }
+    const markupSourceId = nullableText(
+      record.markupSourceId,
+      'Markup-source identifier',
+      128,
+      true,
+    );
+    const brandId = nullableText(record.brandId, 'Brand identifier', 128, true);
+    assertText(record.pricingExplanation, 'Pricing explanation', 2_000);
+    const costBasisCents = amountExGstCents(record.costCents, record.costGstBasis);
+    const expectedSellPriceCents = deriveSellPriceCents(
+      record.costCents,
+      record.costGstBasis,
+      record.appliedMarkupHundredths,
+      record.sellPriceGstBasis,
+    );
+    const sellExGstCents = amountExGstCents(record.sellPriceCents, record.sellPriceGstBasis);
+    if (
+      record.costBasisCents !== costBasisCents ||
+      record.sellPriceCents !== expectedSellPriceCents ||
+      sellExGstCents < minimumSellPriceCents(costBasisCents) ||
+      (record.markupSourceType === 'brand' && (brandId === null || markupSourceId !== brandId)) ||
+      (record.markupSourceType === 'global' && markupSourceId !== null)
+    ) {
+      throw new PublicationValidationError('Resolved price-history calculation is invalid.');
+    }
+    return { ...common, ...record, markupSourceId, brandId };
   });
 }
 
@@ -928,8 +1286,14 @@ export function createStore(dataDir) {
         if (!change || typeof change !== 'object' || Array.isArray(change)) {
           throw new PublicationValidationError('Approved publication entry is invalid.');
         }
-        assertAllowedKeys(change, ['approvedBy', 'item'], ['reason'], 'Approved publication entry');
-        const item = validateCatalogueItem(change.item);
+        assertAllowedKeys(
+          change,
+          ['approvedBy', 'item', 'pricingProvenance'],
+          ['reason'],
+          'Approved publication entry',
+        );
+        const item = validatePublishedCatalogueItem(change.item);
+        const pricingProvenance = validatePricingProvenance(change.pricingProvenance, item);
         assertText(change.approvedBy, 'Approver', 128);
         assertText(change.reason ?? '', 'Approval reason', 1_000, true);
         if (itemIds.has(item.id) || itemNumbers.has(item.itemNumber)) {
@@ -943,11 +1307,6 @@ export function createStore(dataDir) {
         if (existingOwner && existingOwner !== item.id) {
           throw new PublicationValidationError('The item number is already assigned.');
         }
-        const floor = minimumSellPriceCents(item.costCents);
-        if (item.sellPriceCents < floor) {
-          throw new FloorViolationError(item.sellPriceCents, floor);
-        }
-
         const approval = {
           id: randomUUID(),
           itemId: item.id,
@@ -964,6 +1323,22 @@ export function createStore(dataDir) {
           cost: centsToAmount(item.costCents),
           sellPrice: centsToAmount(item.sellPriceCents),
           approvalId: approval.id,
+          selectedOfferId: pricingProvenance.selectedOfferId,
+          supplierId: pricingProvenance.supplierId,
+          supplierName: pricingProvenance.supplierName,
+          supplierSku: pricingProvenance.supplierSku,
+          costGstBasis: pricingProvenance.costGstBasis,
+          sellPriceGstBasis: pricingProvenance.sellPriceGstBasis,
+          currency: pricingProvenance.currency,
+          costBasisCents: pricingProvenance.costExGstCents,
+          markupSourceType: pricingProvenance.markupSource,
+          markupSourceId: pricingProvenance.markupSourceId,
+          appliedMarkupHundredths: pricingProvenance.markupHundredths,
+          brandId: pricingProvenance.brandId,
+          itemKind: pricingProvenance.itemKind,
+          pricingExplanation: pricingProvenance.explanation,
+          ruleVersion: pricingProvenance.ruleVersion,
+          provenanceState: 'resolved',
           recordedAt: now,
         };
         published.push({

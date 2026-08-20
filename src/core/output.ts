@@ -19,7 +19,13 @@ export function rowsForImport(rows: ComparisonRow[], decisions: DecisionMap): Co
     if (row.supplier === null || row.supplier.cost === null || row.proposedSell === null)
       return false;
     // A proposal without a full derivation cannot be written safely.
-    if (row.pricing === null || row.targetBasis === null) return false;
+    if (
+      row.pricing === null ||
+      row.targetBasis === null ||
+      row.pricingProvenance === null ||
+      row.pricing.floor?.blocked === true
+    )
+      return false;
     return true;
   });
 }
@@ -59,6 +65,11 @@ export function buildReleaseChecklist(input: ChecklistInput): GateResult[] {
 
   const invalidPrices = importRows.filter(
     (r) => r.proposedSell === null || !/^\d+\.\d{2}$/.test(r.proposedSell),
+  );
+  const missingPriceProvenance = approvedRows.filter(
+    (row) =>
+      (row.status === 'price-changed' || row.status === 'new-item') &&
+      (row.pricingProvenance === null || row.pricing?.floor?.blocked === true),
   );
 
   const gates: GateResult[] = [
@@ -117,6 +128,18 @@ export function buildReleaseChecklist(input: ChecklistInput): GateResult[] {
       repair: 'Clear the approval on the affected rows; their source data is not usable.',
     },
     {
+      id: 'price-provenance',
+      label: 'Every approved price has a selected offer and markup source',
+      ok: missingPriceProvenance.length === 0,
+      blocking: true,
+      detail:
+        missingPriceProvenance.length === 0
+          ? 'Every approved price identifies its supplier offer and product, brand or global markup rule.'
+          : `${missingPriceProvenance.length} approved row(s) have unresolved or below-floor pricing provenance.`,
+      repair:
+        'Choose a valid supplier offer and repair any below-floor product or brand markup before approval.',
+    },
+    {
       id: 'gst-basis',
       label: 'Supplier GST basis confirmed',
       ok: comparison.costBasisConfirmed,
@@ -124,7 +147,7 @@ export function buildReleaseChecklist(input: ChecklistInput): GateResult[] {
       detail: comparison.costBasisConfirmed
         ? `Supplier costs are treated as ${comparison.costBasis === 'including-gst' ? 'GST-inclusive' : 'GST-exclusive'}, and each ServiceM8 price uses that row's own tax basis.`
         : 'The supplier’s GST basis has not been confirmed. Reading it wrongly moves every generated price by the full GST rate.',
-      repair: 'Open Configuration and state whether the supplier’s costs include or exclude GST.',
+      repair: 'Open Settings and state whether the supplier costs include or exclude GST.',
     },
     {
       id: 'servicem8-contract',

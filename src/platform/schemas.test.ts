@@ -1,5 +1,60 @@
 import { describe, expect, it } from 'vitest';
-import { LiveSearchOutcomeSchema, LiveSearchResultSchema } from './schemas';
+import {
+  LiveSearchOutcomeSchema,
+  LiveSearchResultSchema,
+  OfferSelectionRecordSchema,
+  SupplierOfferRecordSchema,
+} from './schemas';
+
+function supplierOffer(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'offer-synthetic',
+    productId: 'product-synthetic',
+    supplierId: 'supplier-synthetic',
+    supplierSku: 'SKU-SYNTHETIC',
+    costCents: 10_000,
+    gstBasis: 'ex-gst',
+    currency: 'AUD',
+    active: true,
+    isPreferred: false,
+    validFrom: '2026-08-20T10:00:00+10:00',
+    validUntil: '2026-08-20T00:30:00Z',
+    provenanceType: 'manual',
+    provenanceReference: null,
+    observedAt: '2026-08-20T00:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('supplier offer time boundaries', () => {
+  it('orders offset timestamps by the represented instant rather than their text', () => {
+    expect(SupplierOfferRecordSchema.safeParse(supplierOffer()).success).toBe(true);
+  });
+
+  it('rejects reversed validity and timestamps without an explicit timezone', () => {
+    expect(
+      SupplierOfferRecordSchema.safeParse(
+        supplierOffer({
+          validFrom: '2026-08-20T00:31:00Z',
+          validUntil: '2026-08-20T00:30:00Z',
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      SupplierOfferRecordSchema.safeParse(supplierOffer({ observedAt: '2026-08-20T00:00:00' }))
+        .success,
+    ).toBe(false);
+    expect(
+      OfferSelectionRecordSchema.safeParse({
+        productId: 'product-synthetic',
+        offerId: 'offer-synthetic',
+        selectedBy: 'Operator',
+        reason: 'Explicit synthetic selection',
+        selectedAt: '2026-08-20T00:00:00',
+      }).success,
+    ).toBe(false);
+  });
+});
 
 function eligibleResult(overrides: Record<string, unknown> = {}) {
   return {

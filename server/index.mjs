@@ -17,9 +17,11 @@ import {
 } from './store/store.mjs';
 
 /**
- * The small server component. The browser calls this origin only; this server
- * performs the outbound provider searches and owns persistence. It also serves
- * the built SPA from dist/ so production runs as a single origin.
+ * Secondary supervised local-browser demonstration only. The browser calls
+ * this origin for outbound search and fictional demonstration persistence. It
+ * is not the authoritative supplier, offer or approval store for operational
+ * data; the packaged Tauri/SQLite application owns that boundary. The server
+ * also serves the built SPA from dist/ so the demonstration uses one origin.
  *
  * Environment:
  *   PORT                 listen port (default 8787)

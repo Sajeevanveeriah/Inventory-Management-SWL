@@ -24,6 +24,7 @@ function row(id: string, status: ComparisonRow['status'], category?: string): Co
     proposedSell: '13.00',
     targetBasis: 'excluding-gst',
     pricing: null,
+    pricingProvenance: null,
     costDelta: null,
     priceDelta: null,
     duplicateSourceRows: [],

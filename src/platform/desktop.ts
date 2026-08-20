@@ -26,6 +26,8 @@ import {
   ApprovalRecordSchema,
   BackupSummarySchema,
   BeginExportSchema,
+  BrandRecordSchema,
+  CatalogueSupplierSchema,
   CatalogueItemSchema,
   CompetitorObservationSchema,
   CompetitorReferenceRecordSchema,
@@ -37,13 +39,20 @@ import {
   LiveSearchResultSchema,
   LiveSearchOutcomeSchema,
   MappingProfileSchema,
+  OfferSelectionRecordSchema,
   InputFileGrantSchema,
   OutputDestinationGrantSchema,
   PriceHistoryVersionSchema,
+  ProductMetadataUpdateSchema,
   PublishedChangeSchema,
   ProviderStatusSchema,
   ResetPreviewSchema,
   RestorePreviewSchema,
+  SettingsAuditRecordSchema,
+  SupplierOfferRecordSchema,
+  SyncCheckpointRecordSchema,
+  SyncItemOutcomeRecordSchema,
+  SyncRunRecordSchema,
 } from './schemas';
 
 const EXPORT_CHUNK_BYTES = 256 * 1024;
@@ -99,15 +108,18 @@ function errorResult<T>(error: unknown): PlatformResult<T> {
   }
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
-  const code: PlatformErrorCode = lower.includes('exist')
-    ? 'conflict'
-    : lower.includes('cancel')
-      ? 'cancelled'
-      : lower.includes('offline')
-        ? 'offline'
-        : lower.includes('timeout')
-          ? 'timeout'
-          : 'unavailable';
+  const code: PlatformErrorCode =
+    lower.includes('stale') || lower.includes('reload the latest')
+      ? 'conflict'
+      : lower.includes('exist')
+        ? 'conflict'
+        : lower.includes('cancel')
+          ? 'cancelled'
+          : lower.includes('offline')
+            ? 'offline'
+            : lower.includes('timeout')
+              ? 'timeout'
+              : 'unavailable';
   return platformFail(code, 'The desktop operation could not be completed.', code !== 'conflict');
 }
 
@@ -368,6 +380,31 @@ export function createDesktopPlatformService(
           : platformFail('integrity_failed', 'The approval publication response was incomplete.');
       },
     },
+    brands: {
+      list: () => invokeParsed(invoke, 'list_brands', z.array(BrandRecordSchema)),
+      save: (brand) => invokeParsed(invoke, 'save_brand', BrandRecordSchema, { brand }),
+    },
+    suppliers: {
+      list: () => invokeParsed(invoke, 'list_suppliers', z.array(CatalogueSupplierSchema)),
+      save: (supplier) =>
+        invokeParsed(invoke, 'save_supplier', CatalogueSupplierSchema, { supplier }),
+    },
+    offers: {
+      list: (productId) =>
+        invokeParsed(invoke, 'list_supplier_offers', z.array(SupplierOfferRecordSchema), {
+          productId: productId ?? null,
+        }),
+      save: (offer) =>
+        invokeParsed(invoke, 'save_supplier_offer', SupplierOfferRecordSchema, { offer }),
+      listSelections: () =>
+        invokeParsed(invoke, 'list_offer_selections', z.array(OfferSelectionRecordSchema)),
+      select: (selection) =>
+        invokeParsed(invoke, 'select_product_offer', OfferSelectionRecordSchema, { selection }),
+    },
+    productMetadata: {
+      update: (update) =>
+        invokeParsed(invoke, 'update_product_metadata', ProductMetadataUpdateSchema, { update }),
+    },
     approvals: {
       list: (itemId) =>
         invokeParsed(invoke, 'list_approvals', z.array(ApprovalRecordSchema), {
@@ -444,6 +481,23 @@ export function createDesktopPlatformService(
         const result = await invokeVoid(invoke, 'save_settings', { settings });
         return result.ok ? platformOk(settings) : result;
       },
+      audit: () => invokeParsed(invoke, 'list_settings_audit', z.array(SettingsAuditRecordSchema)),
+    },
+    sync: {
+      listRuns: () => invokeParsed(invoke, 'list_sync_runs', z.array(SyncRunRecordSchema)),
+      saveRun: (run) => invokeParsed(invoke, 'save_sync_run', SyncRunRecordSchema, { run }),
+      listCheckpoints: (runId) =>
+        invokeParsed(invoke, 'list_sync_checkpoints', z.array(SyncCheckpointRecordSchema), {
+          runId: runId ?? null,
+        }),
+      appendCheckpoint: (checkpoint) =>
+        invokeParsed(invoke, 'append_sync_checkpoint', SyncCheckpointRecordSchema, { checkpoint }),
+      listItemOutcomes: (runId) =>
+        invokeParsed(invoke, 'list_sync_item_outcomes', z.array(SyncItemOutcomeRecordSchema), {
+          runId: runId ?? null,
+        }),
+      appendItemOutcome: (outcome) =>
+        invokeParsed(invoke, 'append_sync_item_outcome', SyncItemOutcomeRecordSchema, { outcome }),
     },
     configuration: {
       export: () => invokeParsed(invoke, 'export_configuration', ConfigurationEnvelopeSchema),

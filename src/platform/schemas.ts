@@ -4,8 +4,19 @@ import { SettingsSchema } from '../core/settings';
 
 const boundedText = (max: number) => z.string().min(1).max(max);
 const timestamp = z.string().min(1).max(64);
+const instant = timestamp.refine(
+  (value) =>
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/u.test(value) &&
+    Number.isFinite(Date.parse(value)),
+  'A valid ISO 8601 timestamp with a timezone is required.',
+);
 const cents = z.number().int().min(0).max(1_000_000_000);
 const gstBasis = z.enum(['inc-gst', 'ex-gst', 'unknown']);
+const itemKind = z.enum(['physical-product', 'service', 'labour']);
+const markupOverridePercent = z
+  .string()
+  .regex(/^\d{1,3}(?:\.\d{1,2})?$/)
+  .refine((value) => Number(value) <= 999.99, 'Markup must not exceed 999.99');
 const httpsUrl = z
   .string()
   .url()
@@ -70,9 +81,91 @@ export const CatalogueItemSchema = z
     id: boundedText(128),
     itemNumber: boundedText(128),
     description: z.string().max(2000),
+    itemKind,
+    brandId: boundedText(128).nullable(),
+    markupOverridePercent: markupOverridePercent.nullable(),
+    xeroReference: z.string().max(256).nullable(),
+    servicem8Reference: z.string().max(256).nullable(),
+    barcodeGtin: z.string().max(128).nullable(),
+    selectedOfferId: boundedText(128).nullable(),
     costCents: cents,
     sellPriceCents: cents,
     gstBasis,
+    sellPriceGstBasis: gstBasis,
+    updatedAt: timestamp,
+  })
+  .strict();
+
+export const BrandRecordSchema = z
+  .object({
+    id: boundedText(128),
+    name: boundedText(256),
+    markupHundredths: z.number().int().min(0).max(99_999).nullable(),
+    updatedAt: timestamp,
+  })
+  .strict();
+
+export const CatalogueSupplierSchema = z
+  .object({
+    id: boundedText(128),
+    name: boundedText(256),
+    active: z.boolean(),
+    externalReference: z.string().max(256).nullable(),
+    updatedAt: timestamp,
+  })
+  .strict();
+
+export const SupplierOfferRecordSchema = z
+  .object({
+    id: boundedText(128),
+    productId: boundedText(128),
+    supplierId: boundedText(128),
+    supplierSku: boundedText(256),
+    costCents: cents,
+    gstBasis,
+    currency: z.literal('AUD'),
+    active: z.boolean(),
+    isPreferred: z.boolean(),
+    validFrom: instant.nullable(),
+    validUntil: instant.nullable(),
+    provenanceType: z.enum(['legacy-local', 'manual', 'supplier-file', 'xero']),
+    provenanceReference: z.string().max(256).nullable(),
+    observedAt: instant,
+  })
+  .strict()
+  .superRefine((offer, context) => {
+    if (
+      offer.validFrom !== null &&
+      offer.validUntil !== null &&
+      Date.parse(offer.validFrom) > Date.parse(offer.validUntil)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['validUntil'],
+        message: 'The offer end time must not be earlier than its start time.',
+      });
+    }
+  });
+
+export const OfferSelectionRecordSchema = z
+  .object({
+    productId: boundedText(128),
+    offerId: boundedText(128),
+    selectedBy: boundedText(128),
+    reason: boundedText(1000),
+    selectedAt: instant,
+  })
+  .strict();
+
+export const ProductMetadataUpdateSchema = z
+  .object({
+    productId: boundedText(128),
+    itemKind,
+    brandId: boundedText(128).nullable(),
+    markupOverridePercent: markupOverridePercent.nullable(),
+    xeroReference: z.string().max(256).nullable(),
+    servicem8Reference: z.string().max(256).nullable(),
+    barcodeGtin: z.string().max(128).nullable(),
     updatedAt: timestamp,
   })
   .strict();
@@ -97,6 +190,77 @@ export const PriceHistoryVersionSchema = z
     costCents: cents,
     sellPriceCents: cents,
     approvalId: boundedText(128),
+    selectedOfferId: boundedText(128).nullable(),
+    supplierId: boundedText(128).nullable(),
+    supplierName: z.string().max(256).nullable(),
+    supplierSku: z.string().max(256).nullable(),
+    costGstBasis: gstBasis.nullable(),
+    sellPriceGstBasis: gstBasis,
+    currency: z.literal('AUD').nullable(),
+    costBasisCents: cents,
+    markupSourceType: z.enum(['product', 'brand', 'global', 'legacy-global']),
+    markupSourceId: boundedText(128).nullable(),
+    appliedMarkupHundredths: z.number().int().min(0).max(99_999).nullable(),
+    brandId: boundedText(128).nullable(),
+    itemKind: itemKind.nullable(),
+    pricingExplanation: z.string().max(2000).nullable(),
+    ruleVersion: boundedText(64),
+    provenanceState: z.enum(['resolved', 'legacy-unresolved']),
+    recordedAt: timestamp,
+  })
+  .strict();
+
+export const SettingsAuditRecordSchema = z
+  .object({
+    id: boundedText(128),
+    previous: SettingsSchema.nullable(),
+    current: SettingsSchema,
+    changedBy: boundedText(128),
+    changedAt: timestamp,
+  })
+  .strict();
+
+const syncSummary = z
+  .record(z.string().max(128), z.unknown())
+  .refine((value) => JSON.stringify(value).length <= 16_384, 'Sync summary is too large');
+
+export const SyncRunRecordSchema = z
+  .object({
+    id: boundedText(128),
+    system: z.enum(['xero', 'servicem8']),
+    direction: z.enum(['upstream-read', 'downstream-write']),
+    status: z.enum(['preview', 'running', 'completed', 'partial', 'failed']),
+    mode: z.enum(['preview', 'approved']),
+    startedAt: timestamp,
+    completedAt: timestamp.nullable(),
+    approvedBy: boundedText(128).nullable(),
+    summary: syncSummary,
+  })
+  .strict();
+
+export const SyncCheckpointRecordSchema = z
+  .object({
+    id: boundedText(128),
+    runId: boundedText(128),
+    cursorValue: boundedText(1000),
+    recordedAt: timestamp,
+  })
+  .strict();
+
+export const SyncItemOutcomeRecordSchema = z
+  .object({
+    id: boundedText(128),
+    runId: boundedText(128),
+    itemId: boundedText(128).nullable(),
+    externalId: z.string().max(256).nullable(),
+    action: z.enum(['create', 'update', 'read', 'skip']),
+    status: z.enum(['planned', 'succeeded', 'skipped', 'failed']),
+    idempotencyKey: boundedText(256),
+    attemptCount: z.number().int().min(0).max(100),
+    retryable: z.boolean(),
+    errorClass: z.string().max(128).nullable(),
+    reconciliation: z.enum(['not-run', 'matched', 'mismatch', 'not-applicable']),
+    message: z.string().max(1000),
     recordedAt: timestamp,
   })
   .strict();
@@ -106,6 +270,25 @@ export const PublishedChangeSchema = z
     item: CatalogueItemSchema,
     approval: ApprovalRecordSchema,
     priceHistory: PriceHistoryVersionSchema,
+  })
+  .strict();
+
+export const PricingApprovalProvenanceSchema = z
+  .object({
+    selectedOfferId: boundedText(128),
+    supplierId: boundedText(128),
+    supplierName: boundedText(256),
+    supplierSku: boundedText(256),
+    costGstBasis: z.enum(['inc-gst', 'ex-gst']),
+    currency: z.literal('AUD'),
+    markupPercent: markupOverridePercent,
+    markupSource: z.enum(['product', 'brand', 'global']),
+    markupSourceId: boundedText(128).nullable(),
+    brandId: boundedText(128).nullable(),
+    itemKind,
+    sellPriceGstBasis: z.enum(['inc-gst', 'ex-gst']),
+    explanation: boundedText(2000),
+    ruleVersion: boundedText(64),
   })
   .strict();
 
@@ -640,6 +823,14 @@ export const BackupRecordCountsSchema = z
     profiles: z.number().int().min(0),
     aliases: z.number().int().min(0),
     settings: z.number().int().min(0).max(1),
+    brands: z.number().int().min(0),
+    suppliers: z.number().int().min(0),
+    productSupplierOffers: z.number().int().min(0),
+    productOfferSelections: z.number().int().min(0),
+    syncRuns: z.number().int().min(0),
+    syncCheckpoints: z.number().int().min(0),
+    syncItemOutcomes: z.number().int().min(0),
+    settingsAudit: z.number().int().min(0),
   })
   .strict();
 

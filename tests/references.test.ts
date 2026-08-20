@@ -70,6 +70,7 @@ function row(id: string, code: string, description: string): ComparisonRow {
     proposedSell: '130.00',
     targetBasis: 'excluding-gst',
     pricing: null,
+    pricingProvenance: null,
     costDelta: '10.00',
     priceDelta: null,
     duplicateSourceRows: [],

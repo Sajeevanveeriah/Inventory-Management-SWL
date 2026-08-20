@@ -64,9 +64,8 @@ export function buildAuditText(input: AuditInput): string {
   push();
   push('Business rules');
   push('-'.repeat(60));
-  push(
-    `Markup:              ${comparison.markupPercent}% on supplier cost (selling price = cost × ${(1 + Number(comparison.markupPercent) / 100).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')})`,
-  );
+  push(`Global markup:       ${comparison.markupPercent}% on GST-exclusive supplier cost`);
+  push('Markup precedence: product override > brand blanket > global default');
   push(`Rounding:            ${ROUNDING_RULE_LABEL}`);
   push(`Supplier cost basis: ${input.taxHandling}`);
   push(`ServiceM8 price basis: taken per row from that row's own "Price Includes Taxes" column`);
@@ -102,7 +101,7 @@ export function buildAuditText(input: AuditInput): string {
     const kind = r.status === 'new-item' ? 'NEW' : 'PRICE';
     const before = r.s8?.existingSell != null ? formatAud(r.s8.existingSell) : 'no prior price';
     push(
-      `  [${kind}] ${id} - cost ${formatAud(r.supplier?.cost ?? '0.00')}; price ${before} → ${formatAud(r.proposedSell ?? '0.00')} (${r.pricing?.explanation ?? r.matchMethod})`,
+      `  [${kind}] ${id} - offer ${r.pricingProvenance?.offerId ?? 'unresolved'} from ${r.pricingProvenance?.supplierName ?? 'unresolved supplier'} (${r.pricingProvenance?.supplierSku ?? 'no supplier SKU'}); ${r.pricingProvenance?.markupPercent ?? comparison.markupPercent}% ${r.pricingProvenance?.markupSource ?? 'global'} markup; cost ${formatAud(r.pricingProvenance?.costAmount ?? r.supplier?.cost ?? '0.00')}; price ${before} -> ${formatAud(r.proposedSell ?? '0.00')} (${r.pricingProvenance?.offerExplanation ?? r.matchMethod}; ${r.pricingProvenance?.markupExplanation ?? 'global fallback'}; ${r.pricing?.explanation ?? 'no derivation'})`,
     );
   }
   if (importRows.length === 0) push('  (none)');

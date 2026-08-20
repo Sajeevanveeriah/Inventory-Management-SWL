@@ -1,22 +1,40 @@
 # Configuration reference
 
-The application exposes a versioned TypeScript registry in `src/core/configRegistry.ts`. Each setting has a stable key, category, type, default value, range or enum, unit, supported scopes, confirmation flag, impact-preview flag, help text, audit mode, schema version, migration mode and locked status.
+`SETTING_DEFINITIONS` in `src/core/settings.ts` is the single authoritative definition for every
+adjustable global setting. The runtime schema, defaults and settings editor consume the same four
+definitions.
 
-Scopes resolve in this order: run, product, category, supplier, global, default.
+## Adjustable global settings
 
-## Categories
+- `markupPercent`: global markup from 30% to 999.99%, with a 0.01% step. It applies only when the
+  product and its brand have no override.
+- `taxHandling`: whether supplier purchase costs exclude GST, include GST or are not yet
+  configured. Pricing and export remain blocked while this fact is not configured.
+- `theme`: system, light or dark.
+- `glassTint`: clear or blue tinted glass.
 
-- Pricing and tax: strategy, markup, floor, GST, rounding, fixed add, target margin, competitor strategies, approval thresholds and price freeze.
-- File parsing: file types, CSV controls, encoding, row, sheet, cell and preview limits.
-- File-role and mapping automation: profile confidence, sheet confidence, mapping confidence, trusted saved mapping use and suggestion confirmation.
-- Matching: identifiers, aliases, normalisation, brand, GTIN, pack, fuzzy suggestions, ambiguity and duplicate handling.
-- Validation: missing, zero, negative, currency, GST, outlier, staleness, stock, condition and required-review policies.
-- Workflow and approvals: comparison automation, repeat-run controls, bulk limits, pagination, density and undo depth for reversible exclusions. Once published, approvals and their price-history versions are append-only and cannot be withdrawn through session undo controls.
-- Competitor evidence: approved local collection methods, validity, currency, GST, confidence, strategy, selection and floor behaviour.
-- Output: ServiceM8 Materials & Services CSV, report shape, summary sheet and audit detail.
-- Display and accessibility: theme, density, dates and timezone.
-- Privacy and retention: metadata, snapshots, retention, profile and alias retention.
-- Locked safety invariants: local business-file processing, no production writes, no scraping, ambiguous and invalid blocking, missing-item non-deletion, formula protection, leading-zero preservation, no raw-row persistence by default, approved-valid-changed-only output, floor enforcement, no arbitrary expressions and no release action. The only optional external runtime call is an explicit, budgeted competitor query through the reviewed native desktop adapter or supervised local Node adapter; it never includes imported rows, costs, sell prices, notes or customer data. Static GitHub Pages performs no provider search.
+Changing a pricing setting requires confirmation, persists through the active platform service,
+creates an audit record and invalidates any stale comparison result. Appearance changes persist but
+do not alter business data.
+
+## Catalogue pricing rules
+
+Product and brand markups are typed catalogue records, not global settings. Precedence is fixed:
+
+1. product override;
+2. brand override;
+3. global markup.
+
+`null` means fall through to the next level. An explicit numeric zero remains an explicit rule; it
+is then rejected by the separate 30% minimum markup-on-cost floor. Supplier costs and sell prices
+are normalised to their confirmed GST-exclusive basis before the floor is evaluated.
+
+## Locked behaviour
+
+File-size limits, mapping safety, identifier normalisation, ambiguity blocking, formula protection,
+leading-zero preservation, selected-offer requirements, no silent cheapest-offer selection, the 30%
+floor, provider direction and release controls are implementation invariants. They are not editable
+settings and cannot be changed by a configuration import.
 
 ## Import and export
 

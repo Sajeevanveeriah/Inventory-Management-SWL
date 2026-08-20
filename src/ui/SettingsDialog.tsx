@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { ROUNDING_RULE_LABEL } from '../core/money';
 import {
-  GLASS_TINT_OPTIONS,
-  TAX_HANDLING_OPTIONS,
+  DEFAULT_SETTINGS,
+  SETTING_DEFINITIONS,
+  SETTING_DEFINITION_LIST,
+  SettingsSchema,
   type AppearanceTheme,
   type GlassTint,
   type Settings,
@@ -36,21 +38,30 @@ export function SettingsDialog({
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const markupValid = /^\d{1,3}(\.\d{1,2})?$/.test(markup) && Number(markup) >= 30;
+  const markupDefinition = SETTING_DEFINITIONS.markupPercent;
+  const taxDefinition = SETTING_DEFINITIONS.taxHandling;
+  const themeDefinition = SETTING_DEFINITIONS.theme;
+  const glassDefinition = SETTING_DEFINITIONS.glassTint;
+  const pricingDefinitions = SETTING_DEFINITION_LIST.filter(
+    (definition) => definition.group === 'Pricing',
+  );
+  const markupValid = markupDefinition.schema.safeParse(markup).success;
   const changed = markup !== state.settings.markupPercent || tax !== state.settings.taxHandling;
   const busy = saving || appearanceSaving;
 
   const apply = async () => {
-    const next: Settings = {
+    const parsed = SettingsSchema.safeParse({
       ...state.settings,
       markupPercent: markup,
       taxHandling: tax,
-    };
+    });
+    if (!parsed.success) return;
+    const next = parsed.data;
     const parts: string[] = [];
     if (markup !== state.settings.markupPercent)
       parts.push(`markup changed ${state.settings.markupPercent}% → ${markup}%`);
     if (tax !== state.settings.taxHandling)
-      parts.push(`supplier cost basis changed to “${TAX_HANDLING_OPTIONS[tax]}”`);
+      parts.push(`supplier cost basis changed to “${taxDefinition.options[tax]}”`);
     setSaving(true);
     let saved: boolean;
     try {
@@ -73,65 +84,86 @@ export function SettingsDialog({
     >
       {!confirming ? (
         <div>
-          <div className="field">
-            <label htmlFor="setting-markup">Markup percentage (on cost)</label>
-            <span className="help">
-              Selling price = supplier cost × (1 + markup ÷ 100). The confirmed business rule is
-              30%. Rounding: {ROUNDING_RULE_LABEL}.
-            </span>
-            <input
-              id="setting-markup"
-              type="text"
-              inputMode="decimal"
-              value={markup}
-              onChange={(e) => setMarkup(e.target.value)}
-              aria-invalid={!markupValid}
-              aria-describedby="markup-error"
-            />
-            {!markupValid && (
-              <span
-                id="markup-error"
-                className="small"
-                style={{ color: 'var(--danger)' }}
-                role="alert"
-              >
-                Enter a number between 30 and 999.99. The minimum is 30%.
-              </span>
-            )}
+          {pricingDefinitions.map((definition) => {
+            if (definition.key === 'markupPercent') {
+              return (
+                <div className="field" key={definition.key}>
+                  <label htmlFor="setting-markup">
+                    {definition.name} ({definition.unit})
+                  </label>
+                  <span className="help">
+                    {definition.help} Selling price = supplier cost × (1 + markup ÷ 100). Rounding:{' '}
+                    {ROUNDING_RULE_LABEL}.
+                  </span>
+                  <input
+                    id="setting-markup"
+                    type="number"
+                    min={definition.min}
+                    max={definition.max}
+                    step={definition.step}
+                    value={markup}
+                    onChange={(event) => setMarkup(event.target.value)}
+                    aria-invalid={!markupValid}
+                    aria-describedby="markup-error"
+                  />
+                  {!markupValid && (
+                    <span
+                      id="markup-error"
+                      className="small"
+                      style={{ color: 'var(--danger)' }}
+                      role="alert"
+                    >
+                      Enter a number between {definition.min} and {definition.max}. The minimum is{' '}
+                      {definition.min}%.
+                    </span>
+                  )}
+                </div>
+              );
+            }
+            if (definition.key === 'taxHandling') {
+              return (
+                <fieldset key={definition.key}>
+                  <legend>{definition.name}</legend>
+                  <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
+                    {definition.help} Export stays blocked until this is set.
+                  </p>
+                  <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
+                    This does <strong>not</strong> decide whether each ServiceM8 price includes GST.
+                    That is read from each row and is never assumed.
+                  </p>
+                  {(Object.keys(definition.options) as TaxHandling[]).map((key) => (
+                    <label
+                      key={key}
+                      style={{ display: 'block', fontWeight: 400, marginBottom: '0.3rem' }}
+                    >
+                      <input
+                        type="radio"
+                        name="tax-handling"
+                        value={key}
+                        checked={tax === key}
+                        onChange={() => setTax(key)}
+                      />{' '}
+                      {definition.options[key]}
+                    </label>
+                  ))}
+                </fieldset>
+              );
+            }
+            return null;
+          })}
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={busy}
+              onClick={() => {
+                setMarkup(DEFAULT_SETTINGS.markupPercent);
+                setTax(DEFAULT_SETTINGS.taxHandling);
+              }}
+            >
+              Reset pricing settings to defaults
+            </button>
           </div>
-          <fieldset>
-            <legend>Supplier cost basis (GST)</legend>
-            <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
-              State how your supplier quotes its costs. It is the one fact this tool cannot read
-              from the files, and the markup must be applied to a GST-exclusive cost, so reading it
-              wrongly moves every generated price by the full GST rate. Export stays blocked until
-              it is set.
-            </p>
-            <p className="help small muted" style={{ margin: '0.2rem 0 0.5rem' }}>
-              This does <strong>not</strong> decide whether each ServiceM8 price includes GST. That
-              is read per row from that row&rsquo;s own &ldquo;Price Includes Taxes&rdquo; column
-              and is never assumed.
-            </p>
-            {(Object.keys(TAX_HANDLING_OPTIONS) as TaxHandling[]).map((key) => (
-              <label
-                key={key}
-                style={{
-                  display: 'block',
-                  fontWeight: 400,
-                  marginBottom: '0.3rem',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="tax-handling"
-                  value={key}
-                  checked={tax === key}
-                  onChange={() => setTax(key)}
-                />{' '}
-                {TAX_HANDLING_OPTIONS[key]}
-              </label>
-            ))}
-          </fieldset>
           <section className="appearance-settings" aria-labelledby="appearance-settings-title">
             <div className="appearance-settings-copy">
               <h3 id="appearance-settings-title">Appearance</h3>
@@ -142,7 +174,7 @@ export function SettingsDialog({
             </div>
             <div className="appearance-settings-controls">
               <div className="field appearance-field">
-                <span className="field-label">Theme</span>
+                <span className="field-label">{themeDefinition.name}</span>
                 <AppearanceControl
                   value={state.settings.theme}
                   disabled={busy}
@@ -152,9 +184,9 @@ export function SettingsDialog({
                 />
               </div>
               <div className="field appearance-field">
-                <span className="field-label">Glass finish</span>
-                <div className="glass-tint-control" role="group" aria-label="Glass finish">
-                  {(Object.keys(GLASS_TINT_OPTIONS) as GlassTint[]).map((glassTint) => (
+                <span className="field-label">{glassDefinition.name}</span>
+                <div className="glass-tint-control" role="group" aria-label={glassDefinition.name}>
+                  {(Object.keys(glassDefinition.options) as GlassTint[]).map((glassTint) => (
                     <button
                       key={glassTint}
                       type="button"
@@ -171,11 +203,27 @@ export function SettingsDialog({
                         className={`glass-swatch glass-swatch-${glassTint}`}
                         aria-hidden="true"
                       />
-                      {GLASS_TINT_OPTIONS[glassTint]}
+                      {glassDefinition.options[glassTint]}
                     </button>
                   ))}
                 </div>
               </div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={busy}
+                onClick={() => {
+                  void onAppearanceChange(
+                    {
+                      theme: DEFAULT_SETTINGS.theme,
+                      glassTint: DEFAULT_SETTINGS.glassTint,
+                    },
+                    'appearance reset to defaults',
+                  );
+                }}
+              >
+                Reset appearance to defaults
+              </button>
             </div>
           </section>
           <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
@@ -207,7 +255,7 @@ export function SettingsDialog({
               )}
               {tax !== state.settings.taxHandling && (
                 <li>
-                  Supplier cost basis: <strong>{TAX_HANDLING_OPTIONS[tax]}</strong>
+                  Supplier cost basis: <strong>{taxDefinition.options[tax]}</strong>
                 </li>
               )}
             </ul>
