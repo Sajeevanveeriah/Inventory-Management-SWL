@@ -490,7 +490,7 @@ export function CompetitorsPage() {
       actions.announce(
         liveSearchSourceEnabled
           ? 'Live search is not ready. Check the credential and approved budget.'
-          : 'The licensed live API source is disabled in the Source registry.',
+          : 'The licensed live API source is disabled in Price sources.',
       );
       return;
     }
@@ -754,7 +754,7 @@ export function CompetitorsPage() {
         ) : (
           <p>
             {!liveSearchSourceEnabled
-              ? 'The licensed live API source is disabled in Source registry. Enable it before searching.'
+              ? 'The licensed live API source is disabled in Price sources. Enable it before searching.'
               : 'Live provider search is unavailable. Use the manual evidence form below with an operator-verified HTTPS source.'}
           </p>
         )}
@@ -762,7 +762,7 @@ export function CompetitorsPage() {
           {health === 'checking'
             ? 'Checking live search availability…'
             : !liveSearchSourceEnabled
-              ? 'Licensed live API retrieval is disabled in Source registry. No provider request can start.'
+              ? 'Licensed live API retrieval is disabled in Price sources. No provider request can start.'
               : health === null
                 ? platform.kind === 'desktop'
                   ? 'Native search is unavailable or offline. Manual entry works now.'
@@ -876,7 +876,7 @@ export function CompetitorsPage() {
                 ? 'Search by part number, barcode or description. The configured official API returns direct offers, and the application compares only offers with a supported delivered-price basis. GST remains unverified unless evidence establishes it.'
                 : 'Search by part number, barcode or description. First select the exact product candidate; the application then retrieves direct merchant offers and compares only offers with a supported total-price basis. GST remains unverified unless evidence establishes it.'
               : !liveSearchSourceEnabled
-                ? 'Enable the licensed live API source in Source registry before searching. No provider request is made while it is disabled.'
+                ? 'Enable the licensed live API source in Price sources before searching. No provider request is made while it is disabled.'
                 : 'Static Pages is provider-free and session-only. Record an observed price through the manual form below; no Node service or provider request is used.'
           }
         />
@@ -1205,14 +1205,14 @@ const ACCESS_LABELS: Record<string, string> = {
   'file-import': 'Legacy file-import record (not available)',
 };
 
-/** Source registry: every source, how it is accessed, and an enable toggle. */
+/** Price sources: every source, how it is accessed, and an enable toggle. */
 export function SourcesPage() {
   const state = useAppState();
   const actions = useActions();
   const platform = usePlatform();
   return (
     <Page
-      title="Source registry"
+      title="Price sources"
       lead="The sources competitor search may use, and how each one is reached."
     >
       <div className="table-scroll" role="region" aria-label="Registered sources" tabIndex={0}>

@@ -7,10 +7,10 @@ import {
   type Dispatch,
   type ReactNode,
 } from 'react';
-import type { ComparisonResult } from '../core/compare';
+import type { CataloguePricingContext, ComparisonResult } from '../core/compare';
 import { runComparison } from '../core/compare';
 import { deriveTaxConvention } from '../core/conventions';
-import { costBasisFromTaxHandling } from '../core/pricing';
+import { costBasisFromTaxHandling, resolvePricingDecision } from '../core/pricing';
 import type { ColumnMapping, MappingProfile } from '../core/mapping';
 import { extractS8Records, extractSupplierRecords } from '../core/records';
 import {
@@ -39,10 +39,24 @@ import {
 } from '../core/settings';
 import type { FileRole, ParsedTable } from '../core/table';
 import type { GeneratedOutput } from '../io/exportWorkbooks';
-import type { AliasRecord } from '../platform/contracts';
+import type {
+  AliasRecord,
+  BrandRecord,
+  CatalogueItem,
+  CatalogueSupplier,
+  OfferSelectionRecord,
+  SettingsAuditRecord,
+  SupplierOfferRecord,
+  SyncCheckpointRecord,
+  SyncItemOutcomeRecord,
+  SyncRunRecord,
+} from '../platform/contracts';
 import type { PlatformService } from '../platform/contracts';
 import { usePlatform } from '../platform/context';
 import { normalizeIdentifier } from '../core/normalize';
+import { centsToAud } from '../core/liveSearch';
+import { resolveSupplierOffer, type SupplierOffer } from '../core/offers';
+import type { CatalogueSearchRecord } from '../core/search';
 
 export interface FileSlotState {
   table: ParsedTable | null;
@@ -82,6 +96,15 @@ export interface AppState {
   activeProfileVersion: number;
   profiles: MappingProfile[];
   aliases: AliasRecord[];
+  catalogueItems: CatalogueItem[];
+  brands: BrandRecord[];
+  catalogueSuppliers: CatalogueSupplier[];
+  supplierOffers: SupplierOfferRecord[];
+  offerSelections: OfferSelectionRecord[];
+  settingsAudit: SettingsAuditRecord[];
+  syncRuns: SyncRunRecord[];
+  syncCheckpoints: SyncCheckpointRecord[];
+  syncItemOutcomes: SyncItemOutcomeRecord[];
   /** Session-only aliases approved during this comparison (not yet persisted). */
   sessionAliases: AliasRecord[];
   settings: Settings;
@@ -123,6 +146,15 @@ export const INITIAL_STATE: AppState = {
   activeProfileVersion: 1,
   profiles: [],
   aliases: [],
+  catalogueItems: [],
+  brands: [],
+  catalogueSuppliers: [],
+  supplierOffers: [],
+  offerSelections: [],
+  settingsAudit: [],
+  syncRuns: [],
+  syncCheckpoints: [],
+  syncItemOutcomes: [],
   sessionAliases: [],
   settings: DEFAULT_SETTINGS,
   settingsChanges: [],
@@ -157,11 +189,33 @@ export type Action =
       profiles: MappingProfile[];
       aliases: AliasRecord[];
       sources: CompetitorSource[];
+      catalogueItems: CatalogueItem[];
+      brands: BrandRecord[];
+      catalogueSuppliers: CatalogueSupplier[];
+      supplierOffers: SupplierOfferRecord[];
+      offerSelections: OfferSelectionRecord[];
+      settingsAudit: SettingsAuditRecord[];
+      syncRuns: SyncRunRecord[];
+      syncCheckpoints: SyncCheckpointRecord[];
+      syncItemOutcomes: SyncItemOutcomeRecord[];
+    }
+  | {
+      type: 'catalogue-domain-loaded';
+      catalogueItems: CatalogueItem[];
+      brands: BrandRecord[];
+      catalogueSuppliers: CatalogueSupplier[];
+      supplierOffers: SupplierOfferRecord[];
+      offerSelections: OfferSelectionRecord[];
+      settingsAudit: SettingsAuditRecord[];
+      syncRuns: SyncRunRecord[];
+      syncCheckpoints: SyncCheckpointRecord[];
+      syncItemOutcomes: SyncItemOutcomeRecord[];
     }
   | { type: 'configuration-hydration-failed'; error: string }
   | { type: 'profile-applied'; profile: MappingProfile }
   | { type: 'profile-saved'; profile: MappingProfile }
   | { type: 'settings-loaded'; settings: Settings }
+  | { type: 'catalogue-items-published'; items: CatalogueItem[] }
   | {
       type: 'settings-changed';
       settings: Settings;
@@ -279,11 +333,33 @@ export function reducer(state: AppState, action: Action): AppState {
         profiles: action.profiles,
         aliases: action.aliases,
         competitorSources: action.sources,
+        catalogueItems: action.catalogueItems,
+        brands: action.brands,
+        catalogueSuppliers: action.catalogueSuppliers,
+        supplierOffers: action.supplierOffers,
+        offerSelections: action.offerSelections,
+        settingsAudit: action.settingsAudit,
+        syncRuns: action.syncRuns,
+        syncCheckpoints: action.syncCheckpoints,
+        syncItemOutcomes: action.syncItemOutcomes,
         configurationHydration: {
           ...state.configurationHydration,
           status: 'ready',
           error: null,
         },
+      });
+    case 'catalogue-domain-loaded':
+      return invalidateComparison({
+        ...state,
+        catalogueItems: action.catalogueItems,
+        brands: action.brands,
+        catalogueSuppliers: action.catalogueSuppliers,
+        supplierOffers: action.supplierOffers,
+        offerSelections: action.offerSelections,
+        settingsAudit: action.settingsAudit,
+        syncRuns: action.syncRuns,
+        syncCheckpoints: action.syncCheckpoints,
+        syncItemOutcomes: action.syncItemOutcomes,
       });
     case 'configuration-hydration-failed':
       return invalidateComparison({
@@ -315,6 +391,16 @@ export function reducer(state: AppState, action: Action): AppState {
     }
     case 'settings-loaded':
       return invalidateComparison({ ...state, settings: action.settings });
+    case 'catalogue-items-published': {
+      const published = new Map(action.items.map((item) => [item.id, item]));
+      return {
+        ...state,
+        catalogueItems: [
+          ...state.catalogueItems.filter((item) => !published.has(item.id)),
+          ...action.items,
+        ].sort((left, right) => left.itemNumber.localeCompare(right.itemNumber)),
+      };
+    }
     case 'settings-changed': {
       if (!action.businessRule) {
         return { ...state, settings: action.settings };
@@ -453,6 +539,15 @@ export function reducer(state: AppState, action: Action): AppState {
         profiles: state.profiles,
         aliases: state.aliases,
         settings: state.settings,
+        catalogueItems: state.catalogueItems,
+        brands: state.brands,
+        catalogueSuppliers: state.catalogueSuppliers,
+        supplierOffers: state.supplierOffers,
+        offerSelections: state.offerSelections,
+        settingsAudit: state.settingsAudit,
+        syncRuns: state.syncRuns,
+        syncCheckpoints: state.syncCheckpoints,
+        syncItemOutcomes: state.syncItemOutcomes,
         outputRevision: state.outputRevision + 1,
         configurationHydration: state.configurationHydration,
         announcement: 'Session data cleared. Saved profiles, aliases and settings are unchanged.',
@@ -472,13 +567,230 @@ export function effectiveAliases(state: AppState): Map<string, string> {
   return map;
 }
 
+function percentFromHundredths(value: number | null): string | null {
+  if (value === null) return null;
+  return (value / 100)
+    .toFixed(2)
+    .replace(/\.00$/u, '')
+    .replace(/(\.\d)0$/u, '$1');
+}
+
+export function buildCataloguePricingIndex(state: AppState): {
+  byIdentifier: ReadonlyMap<string, CataloguePricingContext>;
+  conflicts: ReadonlySet<string>;
+} {
+  const byIdentifier = new Map<string, CataloguePricingContext>();
+  const conflicts = new Set<string>();
+  const brands = new Map(state.brands.map((brand) => [brand.id, brand]));
+  const suppliers = new Map(state.catalogueSuppliers.map((supplier) => [supplier.id, supplier]));
+  const selections = new Map(
+    state.offerSelections.map((selection) => [selection.productId, selection.offerId]),
+  );
+
+  for (const item of state.catalogueItems) {
+    const brand = item.brandId ? brands.get(item.brandId) : undefined;
+    const itemOffers: SupplierOffer[] = state.supplierOffers
+      .filter(
+        (offer) =>
+          offer.productId === item.id &&
+          offer.gstBasis !== 'unknown' &&
+          suppliers.get(offer.supplierId)?.active === true,
+      )
+      .map((offer) => ({
+        id: offer.id,
+        productId: offer.productId,
+        supplierId: offer.supplierId,
+        supplierSku: offer.supplierSku,
+        costAmount: centsToAud(offer.costCents),
+        costBasis: offer.gstBasis === 'inc-gst' ? 'including-gst' : 'excluding-gst',
+        currency: offer.currency,
+        active: offer.active,
+        preferred: offer.isPreferred,
+        observedAt: offer.observedAt,
+        effectiveAt: offer.validFrom,
+        validUntil: offer.validUntil,
+        provenance: {
+          sourceSystem: offer.provenanceType,
+          sourceRecordId: offer.provenanceReference ?? offer.id,
+          evidenceKind:
+            offer.provenanceType === 'xero'
+              ? 'upstream-read'
+              : offer.provenanceType === 'supplier-file'
+                ? 'supplier-import'
+                : offer.provenanceType === 'manual'
+                  ? 'operator-selection'
+                  : 'supplier-offer',
+          observedAt: offer.observedAt,
+          description: `Catalogue offer ${offer.id}`,
+        },
+      }));
+    const context: CataloguePricingContext = {
+      productId: item.id,
+      itemKind: item.itemKind,
+      brandId: item.brandId,
+      brandName: brand?.name ?? null,
+      brandMarkupPercent: percentFromHundredths(brand?.markupHundredths ?? null),
+      productMarkupPercent: item.markupOverridePercent,
+      xeroReference: item.xeroReference,
+      servicem8Reference: item.servicem8Reference,
+      barcodeGtin: item.barcodeGtin,
+      offers: itemOffers,
+      selectedOfferId: selections.get(item.id) ?? item.selectedOfferId,
+      supplierNames: new Map(
+        itemOffers.map((offer) => [
+          offer.supplierId,
+          suppliers.get(offer.supplierId)?.name ?? offer.supplierId,
+        ]),
+      ),
+    };
+    const identifiers = [
+      item.itemNumber,
+      item.xeroReference,
+      item.servicem8Reference,
+      item.barcodeGtin,
+      ...itemOffers.map((offer) => offer.supplierSku),
+    ];
+    for (const identifier of identifiers) {
+      if (!identifier) continue;
+      const key = normalizeIdentifier(identifier);
+      if (key === '') continue;
+      const existing = byIdentifier.get(key);
+      if (existing && existing.productId !== context.productId) {
+        byIdentifier.delete(key);
+        conflicts.add(key);
+      } else if (!conflicts.has(key)) {
+        byIdentifier.set(key, context);
+      }
+    }
+  }
+  return { byIdentifier, conflicts };
+}
+
+export function buildCatalogueSearchRecords(
+  state: AppState,
+  asOf: string,
+): CatalogueSearchRecord[] {
+  const pricingIndex = buildCataloguePricingIndex(state);
+  return state.catalogueItems.map((item) => {
+    const key = normalizeIdentifier(item.itemNumber);
+    const context = pricingIndex.byIdentifier.get(key);
+    const aliases = state.aliases
+      .filter(
+        (alias) => normalizeIdentifier(alias.itemNumber) === normalizeIdentifier(item.itemNumber),
+      )
+      .map((alias) => alias.supplierCode);
+    const document = {
+      productId: item.id,
+      kind: item.itemKind,
+      name: item.itemNumber,
+      description: item.description,
+      xeroItemCode: item.xeroReference,
+      servicem8ItemNumber: item.servicem8Reference ?? item.itemNumber,
+      supplierSkus: context?.offers.map((offer) => offer.supplierSku) ?? [],
+      approvedAliases: aliases,
+      barcodeGtin: item.barcodeGtin,
+      brandName: context?.brandName ?? null,
+    };
+    if (pricingIndex.conflicts.has(key)) {
+      return {
+        document,
+        price: {
+          kind: 'ambiguous' as const,
+          explanation:
+            'This identifier belongs to more than one product. Choose the product explicitly before resolving a price.',
+          candidateOfferIds: [],
+        },
+      };
+    }
+    if (!context) {
+      return {
+        document,
+        price: {
+          kind: 'unavailable' as const,
+          explanation: 'No current supplier offer is recorded for this product.',
+          candidateOfferIds: [],
+        },
+      };
+    }
+    const selected = resolveSupplierOffer({
+      productId: item.id,
+      offers: context.offers,
+      selectedOfferId: context.selectedOfferId,
+      asOf,
+    });
+    if (!selected.ok) {
+      return {
+        document,
+        price: {
+          kind:
+            selected.reason === 'ambiguous-offers' ||
+            selected.reason === 'multiple-preferred-offers'
+              ? ('ambiguous' as const)
+              : ('unavailable' as const),
+          explanation: selected.explanation,
+          candidateOfferIds: selected.candidateOfferIds,
+        },
+      };
+    }
+    if (item.sellPriceGstBasis === 'unknown') {
+      return {
+        document,
+        price: {
+          kind: 'unavailable' as const,
+          explanation: 'The sell-price GST basis must be confirmed before a price can be shown.',
+          candidateOfferIds: [selected.offer.id],
+        },
+      };
+    }
+    const { markup, pricing } = resolvePricingDecision({
+      costAmount: selected.offer.costAmount,
+      costBasis: selected.offer.costBasis,
+      targetBasis: item.sellPriceGstBasis === 'inc-gst' ? 'including-gst' : 'excluding-gst',
+      globalMarkupPercent: state.settings.markupPercent,
+      brandMarkupPercent: context.brandMarkupPercent,
+      productMarkupPercent: context.productMarkupPercent,
+    });
+    if (pricing.floor?.blocked) {
+      return {
+        document,
+        price: {
+          kind: 'unavailable' as const,
+          explanation: pricing.floor.explanation,
+          candidateOfferIds: [selected.offer.id],
+        },
+      };
+    }
+    return {
+      document,
+      price: {
+        kind: 'resolved' as const,
+        offerId: selected.offer.id,
+        supplierId: selected.offer.supplierId,
+        supplierName:
+          context.supplierNames.get(selected.offer.supplierId) ?? selected.offer.supplierId,
+        supplierSku: selected.offer.supplierSku,
+        purchaseCost: selected.offer.costAmount,
+        costBasis: selected.offer.costBasis,
+        currency: selected.offer.currency,
+        observedAt: selected.offer.observedAt,
+        markupPercent: markup.markupPercent,
+        markupSource: markup.level,
+        sellPrice: pricing.price,
+        sellPriceBasis: item.sellPriceGstBasis === 'inc-gst' ? 'including-gst' : 'excluding-gst',
+        explanation: `${selected.explanation}; ${markup.explanation}; ${pricing.explanation}`,
+      },
+    };
+  });
+}
+
 /** Run (or re-run) the comparison from current files, mappings and aliases. */
-export function computeComparison(state: AppState): ComparisonResult | null {
+export function computeComparison(state: AppState, asOf?: string): ComparisonResult | null {
   if (state.configurationHydration.status !== 'ready') return null;
   if (state.supplier.table === null || state.servicem8.table === null) return null;
   const supplierRecords = extractSupplierRecords(state.supplier.table, state.supplierMapping);
   const s8Records = extractS8Records(state.servicem8.table, state.s8Mapping);
   const costBasis = costBasisFromTaxHandling(state.settings.taxHandling);
+  const cataloguePricing = buildCataloguePricingIndex(state);
   return runComparison(supplierRecords, s8Records, effectiveAliases(state), {
     markupPercent: state.settings.markupPercent,
     // An unconfirmed supplier basis still classifies every record so the data
@@ -486,6 +798,9 @@ export function computeComparison(state: AppState): ComparisonResult | null {
     costBasis: costBasis ?? 'excluding-gst',
     costBasisConfirmed: costBasis !== null,
     newItemConvention: deriveTaxConvention(s8Records),
+    cataloguePricingByIdentifier: cataloguePricing.byIdentifier,
+    catalogueIdentifierConflicts: cataloguePricing.conflicts,
+    ...(asOf === undefined ? {} : { asOf }),
   });
 }
 
@@ -497,36 +812,100 @@ export type LoadedPersistentConfiguration = {
   profiles: MappingProfile[];
   aliases: AliasRecord[];
   sources: CompetitorSource[];
+  catalogueItems: CatalogueItem[];
+  brands: BrandRecord[];
+  catalogueSuppliers: CatalogueSupplier[];
+  supplierOffers: SupplierOfferRecord[];
+  offerSelections: OfferSelectionRecord[];
+  settingsAudit: SettingsAuditRecord[];
+  syncRuns: SyncRunRecord[];
+  syncCheckpoints: SyncCheckpointRecord[];
+  syncItemOutcomes: SyncItemOutcomeRecord[];
 };
 
 export async function loadPersistentConfiguration(
   platform: PlatformService,
 ): Promise<{ ok: true; value: LoadedPersistentConfiguration } | { ok: false; error: string }> {
-  let settings: Awaited<ReturnType<PlatformService['settings']['load']>>;
-  let profiles: Awaited<ReturnType<PlatformService['profiles']['list']>>;
-  let aliases: Awaited<ReturnType<PlatformService['aliases']['list']>>;
-  let sources: Awaited<ReturnType<PlatformService['sources']['list']>>;
+  let loadedResults: Awaited<
+    ReturnType<
+      typeof Promise.all<
+        [
+          ReturnType<PlatformService['settings']['load']>,
+          ReturnType<PlatformService['profiles']['list']>,
+          ReturnType<PlatformService['aliases']['list']>,
+          ReturnType<PlatformService['sources']['list']>,
+          ReturnType<PlatformService['catalogue']['list']>,
+          ReturnType<PlatformService['brands']['list']>,
+          ReturnType<PlatformService['suppliers']['list']>,
+          ReturnType<PlatformService['offers']['list']>,
+          ReturnType<PlatformService['offers']['listSelections']>,
+          ReturnType<PlatformService['settings']['audit']>,
+          ReturnType<PlatformService['sync']['listRuns']>,
+          ReturnType<PlatformService['sync']['listCheckpoints']>,
+          ReturnType<PlatformService['sync']['listItemOutcomes']>,
+        ]
+      >
+    >
+  >;
   try {
-    [settings, profiles, aliases, sources] = await Promise.all([
+    loadedResults = await Promise.all([
       platform.settings.load(),
       platform.profiles.list(),
       platform.aliases.list(),
       platform.sources.list(),
-    ]);
+      platform.catalogue.list(),
+      platform.brands.list(),
+      platform.suppliers.list(),
+      platform.offers.list(),
+      platform.offers.listSelections(),
+      platform.settings.audit(),
+      platform.sync.listRuns(),
+      platform.sync.listCheckpoints(),
+      platform.sync.listItemOutcomes(),
+    ] as const);
   } catch {
     return {
       ok: false,
       error: 'Stored configuration could not be loaded safely.',
     };
   }
-  const failed = [settings, profiles, aliases, sources].find((result) => !result.ok);
+  const [
+    settings,
+    profiles,
+    aliases,
+    sources,
+    catalogueItems,
+    brands,
+    catalogueSuppliers,
+    supplierOffers,
+    offerSelections,
+    settingsAudit,
+    syncRuns,
+    syncCheckpoints,
+    syncItemOutcomes,
+  ] = loadedResults;
+  const failed = loadedResults.find((result) => !result.ok);
   if (failed && !failed.ok) {
     return {
       ok: false,
       error: `Stored configuration could not be loaded safely. ${failed.error.message}`,
     };
   }
-  if (!settings.ok || !profiles.ok || !aliases.ok || !sources.ok) {
+  if (
+    !settings.ok ||
+    !profiles.ok ||
+    !aliases.ok ||
+    !sources.ok ||
+    !catalogueItems.ok ||
+    !brands.ok ||
+    !catalogueSuppliers.ok ||
+    !supplierOffers.ok ||
+    !offerSelections.ok ||
+    !settingsAudit.ok ||
+    !syncRuns.ok ||
+    !syncCheckpoints.ok ||
+    !syncItemOutcomes.ok
+  ) {
     return {
       ok: false,
       error: 'Stored configuration could not be loaded safely.',
@@ -562,6 +941,15 @@ export async function loadPersistentConfiguration(
       profiles: profiles.value,
       aliases: aliases.value,
       sources: sources.value,
+      catalogueItems: catalogueItems.value,
+      brands: brands.value,
+      catalogueSuppliers: catalogueSuppliers.value,
+      supplierOffers: supplierOffers.value,
+      offerSelections: offerSelections.value,
+      settingsAudit: settingsAudit.value,
+      syncRuns: syncRuns.value,
+      syncCheckpoints: syncCheckpoints.value,
+      syncItemOutcomes: syncItemOutcomes.value,
     },
   };
 }

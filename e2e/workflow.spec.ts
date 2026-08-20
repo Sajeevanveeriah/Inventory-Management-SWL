@@ -179,7 +179,7 @@ test('complete synthetic workflow: load, map, validate, review, export, verify, 
   expect(identifiers).not.toContain('FIC-900'); // missing: never deleted or added
 
   const audit = fs.readFileSync(saved[4]!, 'utf8');
-  expect(audit).toContain('30% on supplier cost');
+  expect(audit).toContain('30% on GST-exclusive supplier cost');
   expect(audit).toContain('Superseded fictional line');
   expect(audit).toContain('Round half up to 2 decimal places');
 
@@ -197,7 +197,7 @@ test('complete synthetic workflow: load, map, validate, review, export, verify, 
 test('settings change requires confirmation and re-prices the comparison', async ({ page }) => {
   await loadDemoAndCompare(page);
   await page.getByRole('button', { name: 'Open settings' }).click();
-  await page.getByLabel('Markup percentage (on cost)').fill('40');
+  await page.getByRole('spinbutton', { name: 'Global markup (%)' }).fill('40');
   await page.getByRole('button', { name: 'Apply changes…' }).click();
   await expect(page.getByText('Confirm business-rule change.')).toBeVisible();
   await page.getByRole('button', { name: 'Confirm and apply' }).click();

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PublishedChangeSchema } from '../src/platform/schemas';
 
 type Response = {
   status: number;
@@ -189,6 +190,83 @@ describe('Node loopback request boundary', () => {
     const api = await apiRequest({ port, path: '/api/health' });
     expect(api.headers['x-content-type-options']).toBe('nosniff');
     expect(api.headers['x-frame-options']).toBe('DENY');
+    await stopChild(child);
+  });
+
+  it('accepts the exact schema-4 web publication contract and returns resolved history', async () => {
+    const port = await reserveLoopbackPort();
+    const dataDirectory = mkdtempSync(join(tmpdir(), 'swl-publication-contract-test-'));
+    temporaryDirectories.add(dataDirectory);
+    const child = await startFixtureServer(port, dataDirectory);
+    const origin = `http://127.0.0.1:${port}`;
+    const change = {
+      item: {
+        id: 'CONTRACT-ITEM',
+        itemNumber: 'CONTRACT-ITEM',
+        description: 'Synthetic schema-4 contract item',
+        itemKind: 'physical-product',
+        brandId: null,
+        markupOverridePercent: null,
+        xeroReference: null,
+        servicem8Reference: 'CONTRACT-ITEM',
+        barcodeGtin: null,
+        selectedOfferId: 'offer-CONTRACT-ITEM',
+        costCents: 10_000,
+        sellPriceCents: 13_000,
+        gstBasis: 'ex-gst',
+        sellPriceGstBasis: 'ex-gst',
+        updatedAt: '2026-08-20T00:00:00.000Z',
+      },
+      approvedBy: 'Synthetic operator',
+      reason: 'Schema-4 boundary contract test',
+      pricingProvenance: {
+        selectedOfferId: 'offer-CONTRACT-ITEM',
+        supplierId: 'supplier-contract',
+        supplierName: 'Synthetic contract supplier',
+        supplierSku: 'SUPPLIER-CONTRACT-ITEM',
+        costGstBasis: 'ex-gst',
+        currency: 'AUD',
+        markupPercent: '30',
+        markupSource: 'global',
+        markupSourceId: null,
+        brandId: null,
+        itemKind: 'physical-product',
+        sellPriceGstBasis: 'ex-gst',
+        explanation: 'Untrusted client explanation',
+        ruleVersion: 'pricing-rule-v1',
+      },
+    };
+    const response = await apiRequest({
+      port,
+      path: '/api/publish-approved-changes',
+      method: 'POST',
+      headers: {
+        origin,
+        'sec-fetch-site': 'same-origin',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ changes: [change] }),
+    });
+    expect(response.status).toBe(201);
+    const parsed = PublishedChangeSchema.array().parse(JSON.parse(response.body));
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]).toMatchObject({
+      item: {
+        id: 'CONTRACT-ITEM',
+        selectedOfferId: 'offer-CONTRACT-ITEM',
+        sellPriceGstBasis: 'ex-gst',
+      },
+      priceHistory: {
+        selectedOfferId: 'offer-CONTRACT-ITEM',
+        supplierId: 'supplier-contract',
+        appliedMarkupHundredths: 3_000,
+        provenanceState: 'resolved',
+        ruleVersion: 'pricing-rule-v1',
+      },
+    });
+    expect(parsed[0]?.priceHistory.pricingExplanation).not.toContain(
+      'Untrusted client explanation',
+    );
     await stopChild(child);
   });
 

@@ -128,18 +128,23 @@ test('competitor search: empty, live results, no-results, provider failure; sour
   await expect(page.getByText('The search provider returned an error')).toBeVisible();
   await expectNoWcagViolations(page, 'competitor-search-provider-error');
 
-  await page.getByRole('button', { name: 'Source registry' }).click();
-  await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
-  await expectNoWcagViolations(page, 'source-registry');
+  await page.getByRole('button', { name: 'Price sources' }).click();
+  await expect(page.getByRole('heading', { name: 'Price sources' }).first()).toBeVisible();
+  await expectNoWcagViolations(page, 'price-sources');
 });
 
 test('dashboard, catalogue search and approvals with demo data', async ({ page }) => {
   await demoToValidate(page);
   await page.getByRole('button', { name: 'Dashboard' }).click();
   await expectNoWcagViolations(page, 'dashboard');
-  await page.getByRole('button', { name: 'Inventory search' }).click();
-  await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
-  await expectNoWcagViolations(page, 'inventory-search');
+  await page.getByRole('button', { name: 'Find a product' }).click();
+  await page
+    .getByLabel('Search products by item code, supplier SKU, barcode, brand or description')
+    .fill('deadbolt');
+  // Scan the visible destination state, not an intermediate opacity frame of
+  // the purposeful result-entry transition.
+  await expect(page.locator('.search-result-card').first()).toHaveCSS('opacity', '1');
+  await expectNoWcagViolations(page, 'find-a-product');
   await page.getByRole('button', { name: 'Expansion catalogue' }).click();
   await expectNoWcagViolations(page, 'expansion-catalogue');
   await page.getByRole('button', { name: 'Approvals' }).click();
@@ -150,6 +155,22 @@ test('dashboard, catalogue search and approvals with demo data', async ({ page }
   await page.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Exceptions' }).click();
   await expectNoWcagViolations(page, 'exceptions');
+});
+
+test('products and suppliers and connect systems task pages', async ({ page }) => {
+  await page.goto('/#/suppliers');
+  await expect(
+    page.getByRole('heading', { name: 'Products and suppliers', level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Catalogue products' })).toBeVisible();
+  await expectNoWcagViolations(page, 'products-and-suppliers');
+
+  await page.getByRole('button', { name: 'Connect systems' }).click();
+  await expect(page.getByRole('heading', { name: 'Connect systems', level: 1 })).toBeFocused();
+  await expect(
+    page.getByText('External connections started from this page: none.', { exact: true }),
+  ).toBeVisible();
+  await expectNoWcagViolations(page, 'connect-systems');
 });
 
 test('dark theme keeps contrast on the review screen', async ({ page }) => {

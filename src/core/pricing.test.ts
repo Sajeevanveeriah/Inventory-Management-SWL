@@ -1,10 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import Big from 'big.js';
-import { basisFromIncludesTaxes, costBasisFromTaxHandling, derivePrice } from './pricing';
+import {
+  basisFromIncludesTaxes,
+  costBasisFromTaxHandling,
+  derivePrice,
+  resolvePricingDecision,
+} from './pricing';
 import { addGst, removeGst } from './money';
 
 describe('derivePrice', () => {
+  it('resolves precedence, GST conversion, price and floor in one production decision', () => {
+    const decision = resolvePricingDecision({
+      costAmount: '110.00',
+      costBasis: 'including-gst',
+      targetBasis: 'including-gst',
+      globalMarkupPercent: '30',
+      brandMarkupPercent: '35',
+      productMarkupPercent: '40',
+    });
+    expect(decision.markup).toMatchObject({ level: 'product', markupPercent: '40' });
+    expect(decision.pricing).toMatchObject({
+      costExGst: '100.00',
+      sellExGst: '140.00',
+      price: '154.00',
+      floor: { blocked: false, minimumSellExGst: '130.00' },
+    });
+  });
+
   it('marks up a GST-exclusive cost and leaves a GST-exclusive target alone', () => {
     const result = derivePrice({
       costAmount: '48.00',
@@ -41,6 +64,30 @@ describe('derivePrice', () => {
     });
     expect(result.costExGst).toBe('100.00');
     expect(result.price).toBe('130.00');
+    expect(result.floor).toMatchObject({ blocked: false, minimumSellExGst: '130.00' });
+  });
+
+  it('evaluates the floor against the GST-exclusive cost for both supplier bases', () => {
+    const exclusive = derivePrice({
+      costAmount: '100.00',
+      costBasis: 'excluding-gst',
+      markupPercent: '20',
+      targetBasis: 'including-gst',
+    });
+    const inclusive = derivePrice({
+      costAmount: '110.00',
+      costBasis: 'including-gst',
+      markupPercent: '20',
+      targetBasis: 'including-gst',
+    });
+    expect(exclusive.costExGst).toBe('100.00');
+    expect(inclusive.costExGst).toBe('100.00');
+    expect(exclusive.floor).toEqual(inclusive.floor);
+    expect(exclusive.floor).toMatchObject({
+      blocked: true,
+      proposedSellExGst: '120.00',
+      minimumSellExGst: '130.00',
+    });
   });
 
   it('never marks up the tax component', () => {

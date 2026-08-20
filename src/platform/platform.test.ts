@@ -7,7 +7,12 @@ import { sha256Hex } from '../io/hash';
 import type { GeneratedOutput } from '../io/exportWorkbooks';
 import { createDesktopPlatformService, type InvokeFunction } from './desktop';
 import { createPlatformService, detectPlatformKind } from './index';
-import { canonicalConfigurationPayload, type AliasRecord } from './contracts';
+import {
+  canonicalConfigurationPayload,
+  type AliasRecord,
+  type CatalogueItem,
+  type PricingApprovalProvenance,
+} from './contracts';
 import { createWebPlatformService, type WebConfigurationStorage } from './web';
 
 const OPERATIONAL_OUTPUT_FILENAMES = [
@@ -17,6 +22,50 @@ const OPERATIONAL_OUTPUT_FILENAMES = [
   '20260809-Rollback.xlsx',
   '20260809-Audit-Summary.txt',
 ] as const;
+
+function catalogueItem(overrides: Partial<CatalogueItem> = {}): CatalogueItem {
+  return {
+    id: '000123',
+    itemNumber: '000123',
+    description: 'Synthetic lock',
+    itemKind: 'physical-product',
+    brandId: null,
+    markupOverridePercent: null,
+    xeroReference: 'XERO-000123',
+    servicem8Reference: '000123',
+    barcodeGtin: null,
+    selectedOfferId: 'offer-000123',
+    costCents: 10_000,
+    sellPriceCents: 13_000,
+    gstBasis: 'ex-gst',
+    sellPriceGstBasis: 'ex-gst',
+    updatedAt: '2026-08-09T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function pricingProvenance(
+  item: CatalogueItem,
+  overrides: Partial<PricingApprovalProvenance> = {},
+): PricingApprovalProvenance {
+  return {
+    selectedOfferId: item.selectedOfferId ?? `offer-${item.id}`,
+    supplierId: 'supplier-synthetic',
+    supplierName: 'Synthetic supplier',
+    supplierSku: item.itemNumber,
+    costGstBasis: 'ex-gst',
+    currency: 'AUD',
+    markupPercent: '30',
+    markupSource: 'global',
+    markupSourceId: null,
+    brandId: item.brandId,
+    itemKind: item.itemKind,
+    sellPriceGstBasis: 'ex-gst',
+    explanation: 'Synthetic sole-offer price using the global markup.',
+    ruleVersion: 'pricing-rule-v1',
+    ...overrides,
+  };
+}
 
 function syntheticOperationalOutputs(firstSize = 1): GeneratedOutput[] {
   return OPERATIONAL_OUTPUT_FILENAMES.map((filename, index) => ({
@@ -118,26 +167,22 @@ describe('platform selection', () => {
       location: { protocol: 'https:', hostname: 'example.github.io' },
       staticDemo: true,
     });
-    const item = {
+    const item = catalogueItem({
       id: 'static-000123',
-      itemNumber: '000123',
       description: 'Synthetic static demonstration lock',
-      costCents: 10_000,
-      sellPriceCents: 13_000,
-      gstBasis: 'unknown' as const,
-      updatedAt: '2026-08-09T00:00:00.000Z',
-    };
+    });
 
     expect(service.capabilities.liveSearch).toBe(false);
-    expect(
-      await service.catalogue.publishApproved([
-        {
-          item,
-          approvedBy: 'Demonstration operator',
-          reason: 'Explicit synthetic approval',
-        },
-      ]),
-    ).toMatchObject({ ok: true, value: [{ item }] });
+    const publication = await service.catalogue.publishApproved([
+      {
+        item,
+        approvedBy: 'Demonstration operator',
+        reason: 'Explicit synthetic approval',
+        pricingProvenance: pricingProvenance(item),
+      },
+    ]);
+    if (!publication.ok) throw new Error(publication.error.message);
+    expect(publication).toMatchObject({ ok: true, value: [{ item }] });
     expect(await service.catalogue.list()).toMatchObject({
       ok: true,
       value: [item],
@@ -176,6 +221,338 @@ describe('platform selection', () => {
     expect(await refreshed.catalogue.list()).toEqual({ ok: true, value: [] });
   });
 
+  it('stages supplier provenance atomically and rejects stale session pricing facts', async () => {
+    const service = createWebPlatformService(undefined, { sessionOnly: true });
+    const item = catalogueItem({
+      id: 'session-000123',
+      itemNumber: 'SESSION-000123',
+      xeroReference: null,
+      servicem8Reference: 'SESSION-000123',
+      selectedOfferId: 'offer-session-000123',
+      updatedAt: new Date().toISOString(),
+    });
+    const provenance = pricingProvenance(item, {
+      selectedOfferId: 'offer-session-000123',
+      supplierSku: 'SUPPLIER-SESSION-000123',
+    });
+
+    const first = await service.catalogue.publishApproved([
+      {
+        item,
+        approvedBy: 'Synthetic operator',
+        reason: 'Explicit synthetic approval',
+        pricingProvenance: provenance,
+      },
+    ]);
+    expect(first.ok).toBe(true);
+    expect(await service.suppliers.list()).toMatchObject({
+      ok: true,
+      value: [
+        expect.objectContaining({
+          id: provenance.supplierId,
+          name: provenance.supplierName,
+          active: true,
+        }),
+      ],
+    });
+    const offers = await service.offers.list(item.id);
+    expect(offers).toMatchObject({
+      ok: true,
+      value: [
+        expect.objectContaining({
+          id: provenance.selectedOfferId,
+          productId: item.id,
+          supplierId: provenance.supplierId,
+          supplierSku: provenance.supplierSku,
+          currency: 'AUD',
+        }),
+      ],
+    });
+    expect(await service.offers.listSelections()).toMatchObject({
+      ok: true,
+      value: [
+        expect.objectContaining({
+          productId: item.id,
+          offerId: provenance.selectedOfferId,
+        }),
+      ],
+    });
+    expect(await service.priceHistory.list(item.id)).toMatchObject({
+      ok: true,
+      value: [
+        expect.objectContaining({
+          selectedOfferId: provenance.selectedOfferId,
+          supplierId: provenance.supplierId,
+          supplierSku: provenance.supplierSku,
+          sellPriceGstBasis: 'ex-gst',
+          markupSourceType: 'global',
+          ruleVersion: 'pricing-rule-v1',
+          provenanceState: 'resolved',
+        }),
+      ],
+    });
+
+    const markupTamper = await service.catalogue.publishApproved([
+      {
+        item,
+        approvedBy: 'Synthetic operator',
+        reason: 'Stale synthetic preview',
+        pricingProvenance: { ...provenance, markupPercent: '31' },
+      },
+    ]);
+    expect(markupTamper).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', message: expect.stringContaining('markup rule changed') },
+    });
+
+    const priceTamper = await service.catalogue.publishApproved([
+      {
+        item: { ...item, sellPriceCents: item.sellPriceCents + 1_000 },
+        approvedBy: 'Synthetic operator',
+        reason: 'Above-floor but rule-inconsistent synthetic price',
+        pricingProvenance: provenance,
+      },
+    ]);
+    expect(priceTamper).toMatchObject({
+      ok: false,
+      error: {
+        code: 'conflict',
+        message: expect.stringContaining('sell price no longer matches the resolved markup rule'),
+      },
+    });
+
+    if (!offers.ok) throw new Error(offers.error.message);
+    const expiredOffer = { ...offers.value[0]!, validUntil: '2000-01-01T00:00:00Z' };
+    expect(await service.offers.save(expiredOffer)).toMatchObject({ ok: true });
+    const offerTamper = await service.catalogue.publishApproved([
+      {
+        item: { ...item, updatedAt: '2000-01-01T00:00:00Z' },
+        approvedBy: 'Synthetic operator',
+        reason: 'Expired synthetic preview',
+        pricingProvenance: provenance,
+      },
+    ]);
+    expect(offerTamper).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', message: expect.stringContaining('supplier offer changed') },
+    });
+    expect(await service.approvals.list(item.id)).toMatchObject({
+      ok: true,
+      value: [expect.objectContaining({ itemId: item.id })],
+    });
+    expect(await service.priceHistory.list(item.id)).toMatchObject({
+      ok: true,
+      value: [expect.objectContaining({ itemId: item.id })],
+    });
+  });
+
+  it('canonicalises brand, supplier and offer identities and rejects preferred collisions', async () => {
+    const service = createWebPlatformService(undefined, { sessionOnly: true });
+    const item = catalogueItem({
+      id: 'identity-product',
+      itemNumber: 'IDENTITY-PRODUCT',
+      xeroReference: null,
+      servicem8Reference: 'IDENTITY-PRODUCT',
+      selectedOfferId: 'identity-offer',
+      updatedAt: new Date().toISOString(),
+    });
+    const provenance = pricingProvenance(item, {
+      selectedOfferId: 'identity-offer',
+      supplierId: 'identity-supplier',
+      supplierName: 'Identity Supplier',
+      supplierSku: 'SUPPLIER-IDENTITY',
+    });
+    expect(
+      await service.catalogue.publishApproved([
+        {
+          item,
+          approvedBy: 'Synthetic operator',
+          reason: 'Identity boundary fixture',
+          pricingProvenance: provenance,
+        },
+      ]),
+    ).toMatchObject({ ok: true });
+
+    const timestamp = new Date().toISOString();
+    expect(
+      await service.brands.save({
+        id: 'brand-one',
+        name: '  Synthetic   Brand  ',
+        markupHundredths: null,
+        updatedAt: timestamp,
+      }),
+    ).toMatchObject({ ok: true, value: { name: 'Synthetic Brand' } });
+    expect(
+      await service.brands.save({
+        id: 'brand-two',
+        name: 'synthetic brand',
+        markupHundredths: null,
+        updatedAt: timestamp,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    expect(
+      await service.suppliers.save({
+        id: 'second-supplier',
+        name: '  Second   Supplier ',
+        active: true,
+        externalReference: null,
+        updatedAt: timestamp,
+      }),
+    ).toMatchObject({ ok: true, value: { name: 'Second Supplier' } });
+    const baseOffer = {
+      id: 'duplicate-identity-offer',
+      productId: item.id,
+      supplierId: provenance.supplierId,
+      supplierSku: ' supplier-identity ',
+      costCents: item.costCents,
+      gstBasis: 'ex-gst' as const,
+      currency: 'AUD' as const,
+      active: true,
+      isPreferred: false,
+      validFrom: null,
+      validUntil: null,
+      provenanceType: 'manual' as const,
+      provenanceReference: null,
+      observedAt: timestamp,
+    };
+    expect(await service.offers.save(baseOffer)).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
+    expect(
+      await service.offers.save({
+        ...baseOffer,
+        id: 'second-preferred-offer',
+        supplierId: 'second-supplier',
+        supplierSku: 'SECOND-SKU',
+        isPreferred: true,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
+  it.each([
+    ['global', { sellPriceCents: 14_000 }, {}],
+    [
+      'product',
+      { markupOverridePercent: '40', sellPriceCents: 15_000 },
+      { markupPercent: '40', markupSource: 'product', markupSourceId: 'rule-product' },
+    ],
+    [
+      'GST-inclusive global',
+      {
+        costCents: 11_000,
+        sellPriceCents: 14_400,
+        gstBasis: 'inc-gst',
+        sellPriceGstBasis: 'inc-gst',
+      },
+      { costGstBasis: 'inc-gst', sellPriceGstBasis: 'inc-gst' },
+    ],
+  ] as Array<[string, Partial<CatalogueItem>, Partial<PricingApprovalProvenance>]>)(
+    'rejects an above-floor %s sell price that is inconsistent with its rule',
+    async (_case, itemOverrides, provenanceOverrides) => {
+      const service = createWebPlatformService(undefined, { sessionOnly: true });
+      const item = catalogueItem({
+        id: 'rule-product',
+        itemNumber: 'RULE-PRODUCT',
+        xeroReference: null,
+        servicem8Reference: 'RULE-PRODUCT',
+        selectedOfferId: 'offer-rule-product',
+        updatedAt: new Date().toISOString(),
+        ...itemOverrides,
+      });
+      const result = await service.catalogue.publishApproved([
+        {
+          item,
+          approvedBy: 'Synthetic operator',
+          reason: 'Rule-inconsistent price guard',
+          pricingProvenance: pricingProvenance(item, {
+            selectedOfferId: 'offer-rule-product',
+            supplierSku: 'RULE-PRODUCT',
+            ...provenanceOverrides,
+          }),
+        },
+      ]);
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: 'conflict',
+          message: expect.stringContaining('sell price no longer matches the resolved markup rule'),
+        },
+      });
+    },
+  );
+
+  it('rejects a brand-rule price tamper and preserves explicit zero until the floor check', async () => {
+    const service = createWebPlatformService(undefined, { sessionOnly: true });
+    const timestamp = new Date().toISOString();
+    expect(
+      await service.brands.save({
+        id: 'rule-brand',
+        name: 'Rule Brand',
+        markupHundredths: 3_500,
+        updatedAt: timestamp,
+      }),
+    ).toMatchObject({ ok: true });
+    const brandItem = catalogueItem({
+      id: 'brand-rule-product',
+      itemNumber: 'BRAND-RULE-PRODUCT',
+      brandId: 'rule-brand',
+      xeroReference: null,
+      servicem8Reference: 'BRAND-RULE-PRODUCT',
+      selectedOfferId: 'offer-brand-rule-product',
+      sellPriceCents: 14_000,
+      updatedAt: timestamp,
+    });
+    expect(
+      await service.catalogue.publishApproved([
+        {
+          item: brandItem,
+          approvedBy: 'Synthetic operator',
+          reason: 'Brand rule tamper guard',
+          pricingProvenance: pricingProvenance(brandItem, {
+            selectedOfferId: 'offer-brand-rule-product',
+            supplierSku: 'BRAND-RULE-PRODUCT',
+            markupPercent: '35',
+            markupSource: 'brand',
+            markupSourceId: 'rule-brand',
+            brandId: 'rule-brand',
+          }),
+        },
+      ]),
+    ).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    const zeroItem = catalogueItem({
+      id: 'zero-rule-product',
+      itemNumber: 'ZERO-RULE-PRODUCT',
+      markupOverridePercent: '0',
+      xeroReference: null,
+      servicem8Reference: 'ZERO-RULE-PRODUCT',
+      selectedOfferId: 'offer-zero-rule-product',
+      sellPriceCents: 10_000,
+      updatedAt: timestamp,
+    });
+    expect(
+      await service.catalogue.publishApproved([
+        {
+          item: zeroItem,
+          approvedBy: 'Synthetic operator',
+          reason: 'Explicit zero floor guard',
+          pricingProvenance: pricingProvenance(zeroItem, {
+            selectedOfferId: 'offer-zero-rule-product',
+            supplierSku: 'ZERO-RULE-PRODUCT',
+            markupPercent: '0',
+            markupSource: 'product',
+            markupSourceId: 'zero-rule-product',
+          }),
+        },
+      ]),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_input', message: expect.stringContaining('30 percent markup floor') },
+    });
+  });
+
   it('directs connected-web credential changes to the local Node service', async () => {
     const service = createWebPlatformService();
     expect(await service.search.configureCredential('synthetic-placeholder')).toMatchObject({
@@ -196,6 +573,31 @@ describe('platform selection', () => {
 });
 
 describe('desktop adapter command mapping', () => {
+  it('maps native stale-write rejections to a non-retryable conflict', async () => {
+    const service = createDesktopPlatformService(<T>(command: string) => {
+      expect(command).toBe('update_product_metadata');
+      return Promise.reject(
+        'The product metadata update is stale; reload the latest product.',
+      ) as Promise<T>;
+    });
+
+    expect(
+      await service.productMetadata.update({
+        productId: 'product-1',
+        itemKind: 'physical-product',
+        brandId: null,
+        markupOverridePercent: null,
+        xeroReference: null,
+        servicem8Reference: null,
+        barcodeGtin: null,
+        updatedAt: '2026-08-20T00:00:00.000Z',
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', retryable: false },
+    });
+  });
+
   it('preserves the native selection-expired state', async () => {
     const service = createDesktopPlatformService(<T>(command: string) => {
       expect(command).toBe('search_competitors');
@@ -232,15 +634,7 @@ describe('desktop adapter command mapping', () => {
         list_catalogue_items: [],
         publish_approved_changes: [
           {
-            item: {
-              id: '000123',
-              itemNumber: '000123',
-              description: 'Synthetic lock',
-              costCents: 10_000,
-              sellPriceCents: 13_000,
-              gstBasis: 'unknown',
-              updatedAt: '2026-08-09T00:00:00.000Z',
-            },
+            item: catalogueItem(),
             approval: {
               id: 'approval-1',
               itemId: '000123',
@@ -257,6 +651,21 @@ describe('desktop adapter command mapping', () => {
               costCents: 10_000,
               sellPriceCents: 13_000,
               approvalId: 'approval-1',
+              selectedOfferId: 'offer-000123',
+              supplierId: 'supplier-synthetic',
+              supplierName: 'Synthetic supplier',
+              supplierSku: '000123',
+              costGstBasis: 'ex-gst',
+              currency: 'AUD',
+              costBasisCents: 10_000,
+              markupSourceType: 'global',
+              markupSourceId: null,
+              appliedMarkupHundredths: 3_000,
+              brandId: null,
+              itemKind: 'physical-product',
+              pricingExplanation: 'Synthetic sole-offer price using the global markup.',
+              ruleVersion: 'pricing-rule-v1',
+              provenanceState: 'resolved',
               recordedAt: '2026-08-09T00:00:00.000Z',
             },
           },
@@ -306,17 +715,10 @@ describe('desktop adapter command mapping', () => {
     await service.catalogue.list();
     await service.catalogue.publishApproved([
       {
-        item: {
-          id: '000123',
-          itemNumber: '000123',
-          description: 'Synthetic lock',
-          costCents: 10_000,
-          sellPriceCents: 13_000,
-          gstBasis: 'unknown',
-          updatedAt: '2026-08-09T00:00:00.000Z',
-        },
+        item: catalogueItem(),
         approvedBy: 'Local operator',
         reason: 'Explicit operator approval',
+        pricingProvenance: pricingProvenance(catalogueItem()),
       },
     ]);
     await service.profiles.list();
@@ -375,17 +777,10 @@ describe('desktop adapter command mapping', () => {
     });
     const result = await service.catalogue.publishApproved([
       {
-        item: {
-          id: '000123',
-          itemNumber: '000123',
-          description: 'Synthetic lock',
-          costCents: 10_000,
-          sellPriceCents: 13_000,
-          gstBasis: 'unknown',
-          updatedAt: '2026-08-09T00:00:00.000Z',
-        },
+        item: catalogueItem(),
         approvedBy: 'Local operator',
         reason: 'Explicit operator approval',
+        pricingProvenance: pricingProvenance(catalogueItem()),
       },
     ]);
     expect(result).toMatchObject({ ok: false });

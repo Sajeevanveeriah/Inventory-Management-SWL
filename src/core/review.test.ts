@@ -21,6 +21,7 @@ function row(id: string, status: BaseStatus, proposedSell: string | null = '13.0
     proposedSell,
     targetBasis: 'excluding-gst',
     pricing: null,
+    pricingProvenance: null,
     costDelta: null,
     priceDelta: null,
     duplicateSourceRows: [],

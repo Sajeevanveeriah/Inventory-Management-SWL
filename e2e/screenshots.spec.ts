@@ -230,8 +230,10 @@ test.describe('operations shell', () => {
     await demoToValidate(page);
     await page.getByRole('button', { name: 'Dashboard' }).click();
     await shot(page, '23-dashboard-loaded');
-    await page.getByRole('button', { name: 'Inventory search' }).click();
-    await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
+    await page.getByRole('button', { name: 'Find a product' }).click();
+    await page
+      .getByLabel('Search products by item code, supplier SKU, barcode, brand or description')
+      .fill('deadbolt');
     await shot(page, '24-search-results');
     await page.getByRole('button', { name: 'Exceptions' }).click();
     await shot(page, '25-exceptions');
@@ -241,13 +243,13 @@ test.describe('operations shell', () => {
     await expect(page.getByRole('dialog', { name: 'Confirm approval' })).toBeVisible();
     await viewportShot(page, '26a-approval-confirmation');
     await page.getByRole('button', { name: 'Cancel' }).click();
-    await page.getByRole('button', { name: 'Integrations' }).click();
+    await page.getByRole('button', { name: 'Connect systems' }).click();
     await shot(page, '27-integrations');
-    await page.getByRole('button', { name: 'Suppliers' }).click();
-    await shot(page, '28-suppliers');
+    await page.getByRole('button', { name: 'Products and suppliers' }).click();
+    await shot(page, '28-products-and-suppliers');
   });
 
-  test('competitor search: all five live states and source registry', async ({ page }) => {
+  test('competitor search: all five live states and price sources', async ({ page }) => {
     await installLiveSearchApiMock(page);
     await page.goto('/#/competitors');
     await shot(page, '30-competitor-search-empty');
@@ -281,12 +283,12 @@ test.describe('operations shell', () => {
     await expect(page.getByText('Approved search allowance is exhausted')).toBeVisible();
     await shot(page, '35-competitor-search-quota');
 
-    await page.getByRole('button', { name: 'Source registry' }).click();
-    await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
-    await shot(page, '36-source-registry');
+    await page.getByRole('button', { name: 'Price sources' }).click();
+    await expect(page.getByRole('heading', { name: 'Price sources' }).first()).toBeVisible();
+    await shot(page, '36-price-sources');
   });
 
-  test('competitor search and source registry on mobile 390px', async ({ page }) => {
+  test('competitor search and price sources on mobile 390px', async ({ page }) => {
     await installLiveSearchApiMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/#/competitors');
@@ -297,9 +299,9 @@ test.describe('operations shell', () => {
     await page.getByRole('button', { name: 'Compare this exact product' }).click();
     await expect(page.getByRole('region', { name: 'Live search results' })).toBeVisible();
     await shot(page, '38-competitor-search-mobile-results');
-    await navigateFromCompactMenu(page, 'Source registry');
-    await expect(page.getByRole('heading', { name: 'Source registry' }).first()).toBeVisible();
-    await shot(page, '39-source-registry-mobile');
+    await navigateFromCompactMenu(page, 'Price sources');
+    await expect(page.getByRole('heading', { name: 'Price sources' }).first()).toBeVisible();
+    await shot(page, '39-price-sources-mobile');
   });
 
   test('dark competitor results at desktop and mobile widths', async ({ page }) => {
@@ -349,8 +351,10 @@ test.describe('operations shell', () => {
   test('search on mobile 390px', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await demoToValidate(page);
-    await navigateFromCompactMenu(page, 'Inventory search');
-    await page.getByLabel('Search products by code, item number or description').fill('deadbolt');
+    await navigateFromCompactMenu(page, 'Find a product');
+    await page
+      .getByLabel('Search products by item code, supplier SKU, barcode, brand or description')
+      .fill('deadbolt');
     await shot(page, '29-search-mobile');
   });
 });

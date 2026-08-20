@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { APP_VERSION } from '../core/audit';
 import { DEFAULT_SETTINGS, SettingsSchema } from '../core/settings';
 import { centsToAud, type LiveHealth, type LiveSearchOutcome } from '../core/liveSearch';
+import { resolvePricingDecision } from '../core/pricing';
 import {
   defaultSources,
   withoutLegacySyntheticSources,
@@ -13,6 +14,8 @@ import type {
   ApprovalRecord,
   BackupReason,
   BackupSummary,
+  BrandRecord,
+  CatalogueSupplier,
   CatalogueItem,
   CompetitorReferenceRecord,
   ConfigurationEnvelope,
@@ -21,9 +24,16 @@ import type {
   PlatformResult,
   PlatformService,
   PriceHistoryVersion,
+  PricingApprovalProvenance,
   ProviderStatus,
   ResetPreview,
   RestorePreview,
+  SettingsAuditRecord,
+  SupplierOfferRecord,
+  OfferSelectionRecord,
+  SyncCheckpointRecord,
+  SyncItemOutcomeRecord,
+  SyncRunRecord,
 } from './contracts';
 import {
   canonicalConfigurationPayload,
@@ -34,6 +44,8 @@ import {
 import {
   AliasRecordSchema,
   ApprovalRecordSchema,
+  BrandRecordSchema,
+  CatalogueSupplierSchema,
   CatalogueItemSchema,
   CompetitorObservationSchema,
   CompetitorReferenceRecordSchema,
@@ -43,22 +55,46 @@ import {
   LiveSearchResultSchema,
   LiveSearchOutcomeSchema,
   MappingProfileSchema,
+  OfferSelectionRecordSchema,
   PriceHistoryVersionSchema,
+  PricingApprovalProvenanceSchema,
+  ProductMetadataUpdateSchema,
   PublishedChangeSchema,
+  SettingsAuditRecordSchema,
+  SupplierOfferRecordSchema,
+  SyncCheckpointRecordSchema,
+  SyncItemOutcomeRecordSchema,
+  SyncRunRecordSchema,
 } from './schemas';
 
 const MAX_CONFIGURATION_BYTES = 10 * 1024 * 1024;
 const RESET_CONFIRMATION = 'ERASE SWL LOCAL DATA';
 const REQUEST_TIMEOUT_MS = 25_000;
 
+function canonicalIdentityLabel(value: string): string {
+  return value.trim().replace(/\s+/gu, ' ');
+}
+
+function normalisedIdentityLabel(value: string): string {
+  return canonicalIdentityLabel(value).toLocaleLowerCase('en-AU');
+}
+
 const WebCatalogueItemSchema = z.object({
   id: z.string().min(1).max(128),
   sku: z.string().min(1).max(128).optional(),
   itemNumber: z.string().min(1).max(128).optional(),
   description: z.string().max(2000),
+  itemKind: z.enum(['physical-product', 'service', 'labour']).optional(),
+  brandId: z.string().min(1).max(128).nullable().optional(),
+  markupOverridePercent: z.string().max(8).nullable().optional(),
+  xeroReference: z.string().max(256).nullable().optional(),
+  servicem8Reference: z.string().max(256).nullable().optional(),
+  barcodeGtin: z.string().max(128).nullable().optional(),
+  selectedOfferId: z.string().min(1).max(128).nullable().optional(),
   costCents: z.number().int().min(0).max(1_000_000_000),
   sellPriceCents: z.number().int().min(0).max(1_000_000_000),
   gstBasis: z.enum(['inc-gst', 'ex-gst', 'unknown']).optional(),
+  sellPriceGstBasis: z.enum(['inc-gst', 'ex-gst', 'unknown']).optional(),
   updatedAt: z.string().min(1).max(64),
 });
 
@@ -76,6 +112,7 @@ const SessionApprovedChangeSchema = z
     item: CatalogueItemSchema,
     approvedBy: z.string().trim().min(1).max(128),
     reason: z.string().trim().min(1).max(500),
+    pricingProvenance: PricingApprovalProvenanceSchema,
   })
   .strict();
 
@@ -271,6 +308,14 @@ function emptyRecordCounts() {
     profiles: 0,
     aliases: 0,
     settings: 0,
+    brands: 0,
+    suppliers: 0,
+    productSupplierOffers: 0,
+    productOfferSelections: 0,
+    syncRuns: 0,
+    syncCheckpoints: 0,
+    syncItemOutcomes: 0,
+    settingsAudit: 0,
   };
 }
 
@@ -283,6 +328,29 @@ function settingsEqual(
     left.taxHandling === right.taxHandling &&
     left.theme === right.theme &&
     left.glassTint === right.glassTint
+  );
+}
+
+function centsExGst(cents: number, basis: 'inc-gst' | 'ex-gst'): number {
+  return basis === 'inc-gst' ? Math.trunc((cents * 10 + 5) / 11) : cents;
+}
+
+function percentFromHundredths(value: number | null): string | null {
+  if (value === null) return null;
+  return (value / 100)
+    .toFixed(2)
+    .replace(/\.00$/u, '')
+    .replace(/(\.\d)0$/u, '$1');
+}
+
+function offerIsCurrent(offer: SupplierOfferRecord, asOf: string): boolean {
+  const asOfMs = Date.parse(asOf);
+  const validFromMs = offer.validFrom === null ? null : Date.parse(offer.validFrom);
+  const validUntilMs = offer.validUntil === null ? null : Date.parse(offer.validUntil);
+  return (
+    Number.isFinite(asOfMs) &&
+    (validFromMs === null || (Number.isFinite(validFromMs) && validFromMs <= asOfMs)) &&
+    (validUntilMs === null || (Number.isFinite(validUntilMs) && validUntilMs >= asOfMs))
   );
 }
 
@@ -369,9 +437,18 @@ export function createWebPlatformService(
   >();
   const backups = new Map<string, { summary: BackupSummary; envelope: ConfigurationEnvelope }>();
   const sessionCatalogue = new Map<string, CatalogueItem>();
+  const sessionBrands = new Map<string, BrandRecord>();
+  const sessionSuppliers = new Map<string, CatalogueSupplier>();
+  const sessionOffers = new Map<string, SupplierOfferRecord>();
+  const sessionOfferSelections = new Map<string, OfferSelectionRecord>();
   const sessionApprovals: ApprovalRecord[] = [];
   const sessionPriceHistory: PriceHistoryVersion[] = [];
+  const sessionSettingsAudit: SettingsAuditRecord[] = [];
+  const sessionSyncRuns = new Map<string, SyncRunRecord>();
+  const sessionSyncCheckpoints: SyncCheckpointRecord[] = [];
+  const sessionSyncItemOutcomes: SyncItemOutcomeRecord[] = [];
   const sessionReferences: CompetitorReferenceRecord[] = [];
+  let sessionSettings = DEFAULT_SETTINGS;
   let sessionSources = defaultSources();
 
   const publishSessionChanges: PlatformService['catalogue']['publishApproved'] = async (
@@ -381,11 +458,18 @@ export function createWebPlatformService(
     if (!parsed.success) {
       return platformFail('invalid_input', 'The approved catalogue batch is invalid.');
     }
+    const settings = sessionSettings;
+    const publicationTime = new Date().toISOString();
     const stagedCatalogue = new Map(sessionCatalogue);
+    const stagedSuppliers = new Map(sessionSuppliers);
+    const stagedOffers = new Map(sessionOffers);
+    const stagedSelections = new Map(sessionOfferSelections);
+    const verifiedProvenance = new Map<string, PricingApprovalProvenance>();
     const batchIds = new Set<string>();
     const batchNumbers = new Set<string>();
     for (const change of parsed.data) {
-      const { item } = change;
+      const { item, pricingProvenance } = change;
+      const storedItem = stagedCatalogue.get(item.id);
       if (batchIds.has(item.id) || batchNumbers.has(item.itemNumber)) {
         return platformFail(
           'conflict',
@@ -403,19 +487,163 @@ export function createWebPlatformService(
           'The item number already belongs to another catalogue item.',
         );
       }
-      // Integer cents and half-up rounding: cost * 1.30, rounded to cents.
-      const minimumSellCents = Math.trunc((item.costCents * 130 + 50) / 100);
-      if (item.sellPriceCents < minimumSellCents) {
+      if (
+        item.selectedOfferId !== pricingProvenance.selectedOfferId ||
+        item.itemKind !== pricingProvenance.itemKind ||
+        item.brandId !== pricingProvenance.brandId ||
+        item.gstBasis !== pricingProvenance.costGstBasis ||
+        item.sellPriceGstBasis !== pricingProvenance.sellPriceGstBasis
+      ) {
+        return platformFail(
+          'conflict',
+          'The approved price source changed after review. Re-run the preview before publishing.',
+        );
+      }
+      if (
+        storedItem &&
+        (storedItem.itemKind !== item.itemKind ||
+          storedItem.brandId !== item.brandId ||
+          storedItem.markupOverridePercent !== item.markupOverridePercent ||
+          storedItem.xeroReference !== item.xeroReference ||
+          storedItem.servicem8Reference !== item.servicem8Reference ||
+          storedItem.barcodeGtin !== item.barcodeGtin ||
+          storedItem.selectedOfferId !== item.selectedOfferId)
+      ) {
+        return platformFail(
+          'conflict',
+          'The stored product or supplier selection changed after review. Reload and review it again.',
+        );
+      }
+      const brand = item.brandId === null ? null : sessionBrands.get(item.brandId);
+      if (item.brandId !== null && !brand) {
+        return platformFail('conflict', 'The selected brand no longer exists.');
+      }
+      const pricingDecision = resolvePricingDecision({
+        costAmount: centsToAud(item.costCents),
+        costBasis: pricingProvenance.costGstBasis === 'inc-gst' ? 'including-gst' : 'excluding-gst',
+        targetBasis:
+          pricingProvenance.sellPriceGstBasis === 'inc-gst' ? 'including-gst' : 'excluding-gst',
+        globalMarkupPercent: settings.markupPercent,
+        brandMarkupPercent: percentFromHundredths(brand?.markupHundredths ?? null),
+        productMarkupPercent: item.markupOverridePercent,
+      });
+      const expectedMarkup = pricingDecision.markup;
+      const expectedMarkupSourceId =
+        expectedMarkup.level === 'product'
+          ? item.id
+          : expectedMarkup.level === 'brand'
+            ? item.brandId
+            : null;
+      if (
+        pricingProvenance.markupSource !== expectedMarkup.level ||
+        pricingProvenance.markupSourceId !== expectedMarkupSourceId ||
+        Math.round(Number(pricingProvenance.markupPercent) * 100) !==
+          Math.round(Number(expectedMarkup.markupPercent) * 100) ||
+        pricingProvenance.ruleVersion !== 'pricing-rule-v1'
+      ) {
+        return platformFail(
+          'conflict',
+          'The markup rule changed after review. Re-run the preview before publishing.',
+        );
+      }
+      let selectedOffer = stagedOffers.get(pricingProvenance.selectedOfferId);
+      if (!selectedOffer && storedItem) {
+        return platformFail(
+          'conflict',
+          'The selected supplier offer no longer exists. Re-run the preview before publishing.',
+        );
+      }
+      if (!selectedOffer) {
+        const storedSupplier = stagedSuppliers.get(pricingProvenance.supplierId);
+        if (storedSupplier && storedSupplier.name !== pricingProvenance.supplierName) {
+          return platformFail(
+            'conflict',
+            'The supplier identity does not match the stored supplier.',
+          );
+        }
+        if (!storedSupplier) {
+          stagedSuppliers.set(pricingProvenance.supplierId, {
+            id: pricingProvenance.supplierId,
+            name: pricingProvenance.supplierName,
+            active: true,
+            externalReference: null,
+            updatedAt: publicationTime,
+          });
+        }
+        selectedOffer = {
+          id: pricingProvenance.selectedOfferId,
+          productId: item.id,
+          supplierId: pricingProvenance.supplierId,
+          supplierSku: pricingProvenance.supplierSku,
+          costCents: item.costCents,
+          gstBasis: pricingProvenance.costGstBasis,
+          currency: 'AUD',
+          active: true,
+          isPreferred: true,
+          validFrom: null,
+          validUntil: null,
+          provenanceType: 'supplier-file',
+          provenanceReference: null,
+          observedAt: publicationTime,
+        };
+        stagedOffers.set(selectedOffer.id, selectedOffer);
+        stagedSelections.set(item.id, {
+          productId: item.id,
+          offerId: selectedOffer.id,
+          selectedBy: change.approvedBy,
+          reason: 'Initial approved supplier offer',
+          selectedAt: publicationTime,
+        });
+      }
+      const selectedSupplier = stagedSuppliers.get(selectedOffer.supplierId);
+      if (
+        selectedOffer.productId !== item.id ||
+        selectedOffer.supplierId !== pricingProvenance.supplierId ||
+        selectedOffer.supplierSku !== pricingProvenance.supplierSku ||
+        selectedOffer.costCents !== item.costCents ||
+        selectedOffer.gstBasis !== pricingProvenance.costGstBasis ||
+        selectedOffer.currency !== pricingProvenance.currency ||
+        !selectedOffer.active ||
+        !offerIsCurrent(selectedOffer, publicationTime) ||
+        !selectedSupplier ||
+        !selectedSupplier.active ||
+        selectedSupplier.name !== pricingProvenance.supplierName
+      ) {
+        return platformFail(
+          'conflict',
+          'The selected supplier offer changed after review. Re-run the preview before publishing.',
+        );
+      }
+      const costExGstCents = centsExGst(item.costCents, pricingProvenance.costGstBasis);
+      const sellExGstCents = centsExGst(item.sellPriceCents, pricingProvenance.sellPriceGstBasis);
+      const minimumSellCents = Math.trunc((costExGstCents * 130 + 50) / 100);
+      const derivedPrice = pricingDecision.pricing;
+      if (centsToAud(item.sellPriceCents) !== derivedPrice.price) {
+        return platformFail(
+          'conflict',
+          'The proposed sell price no longer matches the resolved markup rule. Re-run the preview before publishing.',
+        );
+      }
+      if (sellExGstCents < minimumSellCents) {
         return platformFail(
           'invalid_input',
           'The proposed sell price is below the required 30 percent markup floor.',
         );
       }
+      verifiedProvenance.set(item.id, {
+        ...pricingProvenance,
+        markupPercent: expectedMarkup.markupPercent,
+        markupSource: expectedMarkup.level,
+        markupSourceId: expectedMarkupSourceId,
+        explanation: `Selected supplier offer ${selectedOffer.id} from ${selectedSupplier.name}; ${expectedMarkup.explanation}; ${derivedPrice.explanation}; exact resolved price passes the 30% minimum floor.`,
+        ruleVersion: 'pricing-rule-v1',
+      });
       stagedCatalogue.set(item.id, item);
     }
 
     const published = parsed.data.map(({ item, approvedBy, reason }) => {
-      const approvedAt = new Date().toISOString();
+      const pricingProvenance = verifiedProvenance.get(item.id)!;
+      const approvedAt = publicationTime;
       const approval: ApprovalRecord = {
         id: crypto.randomUUID(),
         itemId: item.id,
@@ -432,12 +660,34 @@ export function createWebPlatformService(
         costCents: item.costCents,
         sellPriceCents: item.sellPriceCents,
         approvalId: approval.id,
+        selectedOfferId: pricingProvenance.selectedOfferId,
+        supplierId: pricingProvenance.supplierId,
+        supplierName: pricingProvenance.supplierName,
+        supplierSku: pricingProvenance.supplierSku,
+        costGstBasis: pricingProvenance.costGstBasis,
+        sellPriceGstBasis: pricingProvenance.sellPriceGstBasis,
+        currency: pricingProvenance.currency,
+        costBasisCents: centsExGst(item.costCents, pricingProvenance.costGstBasis),
+        markupSourceType: pricingProvenance.markupSource,
+        markupSourceId: pricingProvenance.markupSourceId,
+        appliedMarkupHundredths: Math.round(Number(pricingProvenance.markupPercent) * 100),
+        brandId: pricingProvenance.brandId,
+        itemKind: pricingProvenance.itemKind,
+        pricingExplanation: pricingProvenance.explanation,
+        ruleVersion: pricingProvenance.ruleVersion,
+        provenanceState: 'resolved',
         recordedAt: approvedAt,
       };
       return { item, approval, priceHistory };
     });
     sessionCatalogue.clear();
     for (const [id, item] of stagedCatalogue) sessionCatalogue.set(id, item);
+    sessionSuppliers.clear();
+    for (const [id, supplier] of stagedSuppliers) sessionSuppliers.set(id, supplier);
+    sessionOffers.clear();
+    for (const [id, offer] of stagedOffers) sessionOffers.set(id, offer);
+    sessionOfferSelections.clear();
+    for (const [id, selection] of stagedSelections) sessionOfferSelections.set(id, selection);
     sessionApprovals.push(...published.map(({ approval }) => approval));
     sessionPriceHistory.push(...published.map(({ priceHistory }) => priceHistory));
     return platformOk(published);
@@ -509,9 +759,17 @@ export function createWebPlatformService(
             id: item.id,
             itemNumber,
             description: item.description,
+            itemKind: item.itemKind ?? 'physical-product',
+            brandId: item.brandId ?? null,
+            markupOverridePercent: item.markupOverridePercent ?? null,
+            xeroReference: item.xeroReference ?? null,
+            servicem8Reference: item.servicem8Reference ?? null,
+            barcodeGtin: item.barcodeGtin ?? null,
+            selectedOfferId: item.selectedOfferId ?? null,
             costCents: item.costCents,
             sellPriceCents: item.sellPriceCents,
             gstBasis: item.gstBasis ?? 'unknown',
+            sellPriceGstBasis: item.sellPriceGstBasis ?? 'unknown',
             updatedAt: item.updatedAt,
           };
           const parsed = CatalogueItemSchema.safeParse(canonical);
@@ -532,6 +790,151 @@ export function createWebPlatformService(
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ changes }),
             }),
+    },
+    brands: {
+      async list() {
+        return platformOk([...sessionBrands.values()].sort((a, b) => a.name.localeCompare(b.name)));
+      },
+      async save(brand) {
+        const parsed = BrandRecordSchema.safeParse(brand);
+        if (!parsed.success) return platformFail('invalid_input', 'The brand details are invalid.');
+        const canonical = { ...parsed.data, name: canonicalIdentityLabel(parsed.data.name) };
+        const normalised = normalisedIdentityLabel(canonical.name);
+        const collision = [...sessionBrands.values()].some(
+          (existing) =>
+            existing.id !== canonical.id && normalisedIdentityLabel(existing.name) === normalised,
+        );
+        if (collision) return platformFail('conflict', 'A brand with this name already exists.');
+        sessionBrands.set(canonical.id, canonical);
+        return platformOk(canonical);
+      },
+    },
+    suppliers: {
+      async list() {
+        return platformOk(
+          [...sessionSuppliers.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      },
+      async save(supplier) {
+        const parsed = CatalogueSupplierSchema.safeParse(supplier);
+        if (!parsed.success) {
+          return platformFail('invalid_input', 'The supplier details are invalid.');
+        }
+        const canonical = { ...parsed.data, name: canonicalIdentityLabel(parsed.data.name) };
+        const normalised = normalisedIdentityLabel(canonical.name);
+        const collision = [...sessionSuppliers.values()].some(
+          (existing) =>
+            existing.id !== canonical.id && normalisedIdentityLabel(existing.name) === normalised,
+        );
+        if (collision) return platformFail('conflict', 'A supplier with this name already exists.');
+        sessionSuppliers.set(canonical.id, canonical);
+        return platformOk(canonical);
+      },
+    },
+    offers: {
+      async list(productId) {
+        const offers = [...sessionOffers.values()];
+        return platformOk(
+          productId ? offers.filter((offer) => offer.productId === productId) : offers,
+        );
+      },
+      async save(offer) {
+        const parsed = SupplierOfferRecordSchema.safeParse(offer);
+        if (!parsed.success) return platformFail('invalid_input', 'The supplier offer is invalid.');
+        const canonical = {
+          ...parsed.data,
+          supplierSku: canonicalIdentityLabel(parsed.data.supplierSku),
+        };
+        if (!sessionCatalogue.has(canonical.productId)) {
+          return platformFail('conflict', 'The product must exist before an offer can be saved.');
+        }
+        if (!sessionSuppliers.has(canonical.supplierId)) {
+          return platformFail('conflict', 'The supplier must exist before an offer can be saved.');
+        }
+        const identityCollision = [...sessionOffers.values()].some(
+          (existing) =>
+            existing.id !== canonical.id &&
+            existing.productId === canonical.productId &&
+            existing.supplierId === canonical.supplierId &&
+            normalisedIdentityLabel(existing.supplierSku) ===
+              normalisedIdentityLabel(canonical.supplierSku),
+        );
+        if (identityCollision) {
+          return platformFail(
+            'conflict',
+            'This product, supplier and supplier SKU already identify another offer.',
+          );
+        }
+        const preferredCollision =
+          canonical.active &&
+          canonical.isPreferred &&
+          [...sessionOffers.values()].some(
+            (existing) =>
+              existing.id !== canonical.id &&
+              existing.productId === canonical.productId &&
+              existing.active &&
+              existing.isPreferred,
+          );
+        if (preferredCollision) {
+          return platformFail(
+            'conflict',
+            'Another active preferred offer exists. Choose the preferred offer explicitly.',
+          );
+        }
+        sessionOffers.set(canonical.id, canonical);
+        return platformOk(canonical);
+      },
+      async listSelections() {
+        return platformOk([...sessionOfferSelections.values()]);
+      },
+      async select(selection) {
+        const parsed = OfferSelectionRecordSchema.safeParse(selection);
+        if (!parsed.success) {
+          return platformFail('invalid_input', 'The supplier offer selection is invalid.');
+        }
+        const offer = sessionOffers.get(parsed.data.offerId);
+        const selectedAt = new Date().toISOString();
+        if (
+          !offer ||
+          offer.productId !== parsed.data.productId ||
+          !offer.active ||
+          !offerIsCurrent(offer, selectedAt)
+        ) {
+          return platformFail(
+            'conflict',
+            'The selected offer is not active, current and owned by this product.',
+          );
+        }
+        const verifiedSelection = { ...parsed.data, selectedAt };
+        sessionOfferSelections.set(parsed.data.productId, verifiedSelection);
+        const item = sessionCatalogue.get(parsed.data.productId);
+        if (item) sessionCatalogue.set(item.id, { ...item, selectedOfferId: offer.id });
+        return platformOk(verifiedSelection);
+      },
+    },
+    productMetadata: {
+      async update(update) {
+        const parsed = ProductMetadataUpdateSchema.safeParse(update);
+        if (!parsed.success) {
+          return platformFail('invalid_input', 'The product details are invalid.');
+        }
+        const item = sessionCatalogue.get(parsed.data.productId);
+        if (!item) return platformFail('unavailable', 'The product was not found.');
+        if (parsed.data.brandId !== null && !sessionBrands.has(parsed.data.brandId)) {
+          return platformFail('conflict', 'The selected brand was not found.');
+        }
+        sessionCatalogue.set(item.id, {
+          ...item,
+          itemKind: parsed.data.itemKind,
+          brandId: parsed.data.brandId,
+          markupOverridePercent: parsed.data.markupOverridePercent,
+          xeroReference: parsed.data.xeroReference,
+          servicem8Reference: parsed.data.servicem8Reference,
+          barcodeGtin: parsed.data.barcodeGtin,
+          updatedAt: parsed.data.updatedAt,
+        });
+        return platformOk(parsed.data);
+      },
     },
     approvals: {
       async list(itemId) {
@@ -726,7 +1129,9 @@ export function createWebPlatformService(
     settings: {
       async load() {
         try {
-          return platformOk(await storage.loadSettings());
+          const loaded = await storage.loadSettings();
+          sessionSettings = loaded;
+          return platformOk(loaded);
         } catch {
           return platformFail('integrity_failed', 'Stored settings could not be read safely.');
         }
@@ -737,11 +1142,108 @@ export function createWebPlatformService(
           return platformFail('invalid_input', 'The settings are invalid.');
         }
         try {
+          const previous = await storage.loadSettings();
           await storage.saveSettings(parsed.data);
+          sessionSettings = parsed.data;
+          sessionSettingsAudit.push({
+            id: crypto.randomUUID(),
+            previous,
+            current: parsed.data,
+            changedBy: 'Local operator',
+            changedAt: new Date().toISOString(),
+          });
           return platformOk(parsed.data);
         } catch {
           return platformFail('integrity_failed', 'The settings could not be saved safely.');
         }
+      },
+      async audit() {
+        const parsed = z.array(SettingsAuditRecordSchema).safeParse(sessionSettingsAudit);
+        return parsed.success
+          ? platformOk(parsed.data)
+          : platformFail('integrity_failed', 'The settings audit is invalid.');
+      },
+    },
+    sync: {
+      async listRuns() {
+        return platformOk([...sessionSyncRuns.values()]);
+      },
+      async saveRun(run) {
+        const parsed = SyncRunRecordSchema.safeParse(run);
+        if (!parsed.success) return platformFail('invalid_input', 'The sync run is invalid.');
+        if (parsed.data.system === 'xero' && parsed.data.direction !== 'upstream-read') {
+          return platformFail('invalid_input', 'Xero is read-only and must remain upstream.');
+        }
+        if (parsed.data.system === 'servicem8' && parsed.data.direction !== 'downstream-write') {
+          return platformFail('invalid_input', 'ServiceM8 writes must remain downstream.');
+        }
+        if (
+          parsed.data.system === 'servicem8' &&
+          parsed.data.mode === 'approved' &&
+          parsed.data.approvedBy === null
+        ) {
+          return platformFail('invalid_input', 'An approved ServiceM8 write needs an approver.');
+        }
+        const existing = sessionSyncRuns.get(parsed.data.id);
+        if (
+          existing &&
+          (existing.system !== parsed.data.system ||
+            existing.direction !== parsed.data.direction ||
+            existing.mode !== parsed.data.mode ||
+            existing.startedAt !== parsed.data.startedAt ||
+            existing.approvedBy !== parsed.data.approvedBy)
+        ) {
+          return platformFail('conflict', 'Immutable sync-run facts changed after creation.');
+        }
+        sessionSyncRuns.set(parsed.data.id, parsed.data);
+        return platformOk(parsed.data);
+      },
+      async listCheckpoints(runId) {
+        return platformOk(
+          runId
+            ? sessionSyncCheckpoints.filter((checkpoint) => checkpoint.runId === runId)
+            : [...sessionSyncCheckpoints],
+        );
+      },
+      async appendCheckpoint(checkpoint) {
+        const parsed = SyncCheckpointRecordSchema.safeParse(checkpoint);
+        if (!parsed.success)
+          return platformFail('invalid_input', 'The sync checkpoint is invalid.');
+        if (!sessionSyncRuns.has(parsed.data.runId)) {
+          return platformFail('conflict', 'The sync run was not found.');
+        }
+        if (sessionSyncCheckpoints.some((record) => record.id === parsed.data.id)) {
+          return platformFail('conflict', 'The sync checkpoint already exists.');
+        }
+        sessionSyncCheckpoints.push(parsed.data);
+        return platformOk(parsed.data);
+      },
+      async listItemOutcomes(runId) {
+        return platformOk(
+          runId
+            ? sessionSyncItemOutcomes.filter((outcome) => outcome.runId === runId)
+            : [...sessionSyncItemOutcomes],
+        );
+      },
+      async appendItemOutcome(outcome) {
+        const parsed = SyncItemOutcomeRecordSchema.safeParse(outcome);
+        if (!parsed.success) return platformFail('invalid_input', 'The sync outcome is invalid.');
+        if (!sessionSyncRuns.has(parsed.data.runId)) {
+          return platformFail('conflict', 'The sync run was not found.');
+        }
+        if (
+          sessionSyncItemOutcomes.some(
+            (record) =>
+              record.id === parsed.data.id ||
+              (record.runId === parsed.data.runId &&
+                record.idempotencyKey === parsed.data.idempotencyKey &&
+                record.attemptCount === parsed.data.attemptCount),
+          )
+        ) {
+          return platformFail('conflict', 'The sync outcome was already recorded.');
+        }
+        sessionSyncItemOutcomes.push(parsed.data);
+        return platformOk(parsed.data);
       },
     },
     configuration: {

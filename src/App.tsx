@@ -153,7 +153,7 @@ function MappingProfilesPage({ goToNewRun }: { goToNewRun: () => void }) {
   };
   return (
     <Page
-      title="Mapping profiles"
+      title="Saved import layouts"
       lead="Saved supplier column layouts; the ServiceM8 side is a fixed contract and cannot be remapped."
       primary={
         <button type="button" className="btn btn-primary" onClick={goToNewRun}>
@@ -167,7 +167,12 @@ function MappingProfilesPage({ goToNewRun }: { goToNewRun: () => void }) {
             No profiles saved yet. Map a supplier&rsquo;s columns in a run, then save the layout.
           </p>
         ) : (
-          <div className="table-scroll" role="region" aria-label="Mapping profiles" tabIndex={0}>
+          <div
+            className="table-scroll"
+            role="region"
+            aria-label="Saved import layouts"
+            tabIndex={0}
+          >
             <table className="data-table">
               <thead>
                 <tr>
@@ -393,7 +398,7 @@ export default function App() {
               >
                 {state.configurationHydration.status === 'loading' ? (
                   <p role="status">
-                    Verifying settings, mapping profiles, aliases and source registry before
+                    Verifying settings, saved import layouts, aliases and price sources before
                     enabling the workflow.
                   </p>
                 ) : (

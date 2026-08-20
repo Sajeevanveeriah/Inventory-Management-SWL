@@ -28,12 +28,37 @@ export function centsToAmount(cents) {
   return `${negative ? '-' : ''}${whole}.${rem.toString().padStart(2, '0')}`;
 }
 
+function roundHalfUpRatio(numerator, denominator) {
+  return (numerator + denominator / 2n) / denominator;
+}
+
+/** Convert an AUD amount to its GST-exclusive integer-cent basis. */
+export function amountExGstCents(amountCents, basis) {
+  if (basis === 'ex-gst') return amountCents;
+  if (basis !== 'inc-gst') throw new TypeError('A confirmed GST basis is required.');
+  return Number(roundHalfUpRatio(BigInt(amountCents) * 10n, 11n));
+}
+
+/**
+ * Apply a percentage expressed in hundredths (3000 = 30.00%) to the
+ * GST-exclusive cost and return the requested GST basis, rounding half up at
+ * each currency boundary to match the application pricing contract.
+ */
+export function deriveSellPriceCents(costCents, costBasis, markupHundredths, sellPriceBasis) {
+  const costExGst = amountExGstCents(costCents, costBasis);
+  const sellExGst = Number(
+    roundHalfUpRatio(BigInt(costExGst) * (10_000n + BigInt(markupHundredths)), 10_000n),
+  );
+  if (sellPriceBasis === 'ex-gst') return sellExGst;
+  if (sellPriceBasis !== 'inc-gst')
+    throw new TypeError('A confirmed sell-price GST basis is required.');
+  return Number(roundHalfUpRatio(BigInt(sellExGst) * 110n, 100n));
+}
+
 /**
  * The settled business rule, in integer cents: minimum sell = cost x 1.30
  * (markup on cost), rounded half up. 10000 cents -> 13000 cents.
  */
 export function minimumSellPriceCents(costCents) {
-  const scaled = BigInt(costCents) * 130n; // cost x 130, still in cents x 100
-  const rounded = (scaled + 50n) / 100n; // integer division with half-up rounding
-  return Number(rounded);
+  return Number(roundHalfUpRatio(BigInt(costCents) * 130n, 100n));
 }

@@ -3,6 +3,16 @@ name: Windows desktop
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Existing approved semver tag version, without the v prefix'
+        required: false
+        type: string
+      create_draft_release:
+        description: 'Create a draft release from the selected existing tag after verification'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -78,6 +88,8 @@ jobs:
         run: |
           npm ci
           node scripts/patch-tauri-service-edge-driver-label.mjs
+      - name: Verify release workflow structure and application version alignment
+        run: npm run check:release-workflow
       - name: Run TypeScript, ESLint, Vitest and web production build
         run: npm run verify
       - name: Scan current tree for business data
@@ -530,3 +542,120 @@ jobs:
             test-results/**
           if-no-files-found: ignore
           retention-days: 14
+
+  draft-release:
+    name: Create verified draft release
+    needs: [history-secret-scan, verify-and-package]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_draft_release }}
+    runs-on: windows-2025
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: swl-windows-unsigned-internal-${{ github.sha }}
+          path: ${{ runner.temp }}/swl-release-download
+      - name: Resolve the approved existing semver tag and aligned version
+        id: release
+        shell: pwsh
+        env:
+          MANUAL_RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -or $env:GITHUB_REF_TYPE -ne 'tag') {
+            throw 'A draft release must be manually dispatched against an existing tag ref.'
+          }
+          $version = $env:MANUAL_RELEASE_VERSION
+          if ($version -cnotmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') {
+            throw 'The release version must be strict stable SemVer (major.minor.patch).'
+          }
+          $tag = "v$version"
+          if ($env:GITHUB_REF_NAME -cne $tag) {
+            throw 'The selected existing tag does not exactly match the approved release version.'
+          }
+          $tagCommit = (& git rev-list -n 1 --verify "refs/tags/$tag").Trim()
+          if ($LASTEXITCODE -ne 0 -or $tagCommit -cne $env:GITHUB_SHA) {
+            throw 'The approved tag does not resolve to the verified workflow source commit.'
+          }
+          $env:SWL_EXPECTED_RELEASE_VERSION = $version
+          node scripts/check-windows-release-workflow.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Release version alignment failed.' }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Stage and prove the exact non-empty release asset set
+        id: assets
+        shell: pwsh
+        run: |
+          $download = [IO.Path]::GetFullPath("${{ runner.temp }}/swl-release-download")
+          $stage = [IO.Path]::GetFullPath("${{ runner.temp }}/swl-release-assets")
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          $requiredNames = @(
+            'SHA256SUMS.txt',
+            'BUILD-METADATA.json',
+            'WebView2-Evidence.json',
+            'Installer-Smoke.json',
+            'Upgrade-Smoke.json',
+            'NATIVE-RENDER-SCOPE.json',
+            'RENDER-EVIDENCE-SCOPE.txt'
+          )
+          $sourceFiles = @(Get-ChildItem -LiteralPath $download -File -Recurse)
+          $installers = @($sourceFiles | Where-Object { $_.Extension -ieq '.exe' })
+          if ($installers.Count -ne 1) { throw "Expected exactly one installer; found $($installers.Count)." }
+          $selected = @($installers[0])
+          foreach ($name in $requiredNames) {
+            $matches = @($sourceFiles | Where-Object { $_.Name -ceq $name })
+            if ($matches.Count -ne 1) { throw "Expected exactly one $name asset; found $($matches.Count)." }
+            $selected += $matches[0]
+          }
+          if ($selected.Count -ne 8) { throw 'The exact release asset count is not eight.' }
+          foreach ($file in $selected) {
+            if ($file.Length -le 0) { throw "Release asset $($file.Name) is empty." }
+            Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $stage $file.Name)
+          }
+          $staged = @(Get-ChildItem -LiteralPath $stage -File)
+          if ($staged.Count -ne 8 -or @($staged | Where-Object { $_.Length -le 0 }).Count -ne 0) {
+            throw 'The staged release asset set failed exact count or non-empty validation.'
+          }
+          $metadata = Get-Content -LiteralPath (Join-Path $stage 'BUILD-METADATA.json') -Raw | ConvertFrom-Json
+          if ($metadata.version -cne '${{ steps.release.outputs.version }}' -or
+              $metadata.sourceCommit -cne $env:GITHUB_SHA -or
+              $metadata.installer -cne $installers[0].Name) {
+            throw 'Build metadata does not match the approved version, source commit and installer.'
+          }
+          "directory=$stage" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Create draft release only and verify remote read-back
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_ASSET_DIRECTORY: ${{ steps.assets.outputs.directory }}
+        run: |
+          $existing = gh release view $env:RELEASE_TAG --json tagName,isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'A release already exists for the approved tag.' }
+          $assets = @(Get-ChildItem -LiteralPath $env:RELEASE_ASSET_DIRECTORY -File | Sort-Object Name)
+          gh release create $env:RELEASE_TAG @($assets.FullName) --draft --verify-tag --title "SWL Pricing and Inventory Control $env:RELEASE_VERSION" --notes "Unsigned internal evaluation build. Review all attached evidence before any publication decision."
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed.' }
+          $release = gh release view $env:RELEASE_TAG --json tagName,targetCommitish,isDraft,assets | ConvertFrom-Json
+          if (!$release.isDraft -or $release.tagName -cne $env:RELEASE_TAG) {
+            throw 'Remote release read-back is not the expected draft.'
+          }
+          $remoteAssets = @($release.assets)
+          $localNames = @($assets.Name | Sort-Object)
+          $remoteNames = @($remoteAssets.name | Sort-Object)
+          if ($remoteAssets.Count -ne 8 -or
+              (Compare-Object $localNames $remoteNames).Count -ne 0 -or
+              @($remoteAssets | Where-Object { $_.size -le 0 }).Count -ne 0) {
+            throw 'Remote draft-release assets failed exact name, count or non-empty read-back.'
+          }

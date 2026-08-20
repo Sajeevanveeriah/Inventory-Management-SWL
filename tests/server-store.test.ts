@@ -52,6 +52,67 @@ function seedItem(store: ReturnType<typeof createStore>, id = 'LW4570') {
   });
 }
 
+function approvedChange(
+  itemOverrides: Record<string, unknown> = {},
+  changeOverrides: Record<string, unknown> = {},
+) {
+  const item = {
+    id: 'SYNTHETIC-ITEM',
+    itemNumber: 'SYNTHETIC-ITEM',
+    description: 'Synthetic approved catalogue item',
+    itemKind: 'physical-product',
+    brandId: null,
+    markupOverridePercent: null,
+    xeroReference: null,
+    servicem8Reference: 'SYNTHETIC-ITEM',
+    barcodeGtin: null,
+    selectedOfferId: 'offer-SYNTHETIC-ITEM',
+    costCents: 10_000,
+    sellPriceCents: 13_000,
+    gstBasis: 'ex-gst',
+    sellPriceGstBasis: 'ex-gst',
+    updatedAt: '2026-08-09T00:00:00.000Z',
+    ...itemOverrides,
+  };
+  const selectedOfferId = String(item.selectedOfferId);
+  return {
+    item,
+    approvedBy: 'Synthetic operator',
+    reason: 'Explicit synthetic approval',
+    pricingProvenance: {
+      selectedOfferId,
+      supplierId: 'supplier-synthetic',
+      supplierName: 'Synthetic supplier',
+      supplierSku: String(item.itemNumber),
+      costGstBasis: item.gstBasis,
+      currency: 'AUD',
+      markupPercent: '30',
+      markupSource: 'global',
+      markupSourceId: null,
+      brandId: item.brandId,
+      itemKind: item.itemKind,
+      sellPriceGstBasis: item.sellPriceGstBasis,
+      explanation: 'Synthetic client explanation that the server must replace.',
+      ruleVersion: 'pricing-rule-v1',
+    },
+    ...changeOverrides,
+  };
+}
+
+function approvedChangeWithProvenance(
+  itemOverrides: Record<string, unknown> = {},
+  provenanceOverrides: Record<string, unknown> = {},
+) {
+  const change = approvedChange(itemOverrides);
+  return {
+    ...change,
+    pricingProvenance: {
+      ...change.pricingProvenance,
+      ...provenanceOverrides,
+    },
+  };
+}
+
 function syntheticObservation(overrides: Record<string, unknown> = {}) {
   return {
     searchQuery: 'LW4570',
@@ -233,49 +294,123 @@ describe('publication guards', () => {
   it('publishes a validated batch with catalogue, approval and history parity', () => {
     const { store } = tempStore();
     const published = store.publishApprovedChanges([
-      {
-        item: {
-          id: '000123',
-          itemNumber: '000123',
-          description: 'Synthetic restricted key',
-          costCents: 10_000,
-          sellPriceCents: 13_000,
-          gstBasis: 'unknown',
-          updatedAt: '2026-08-09T00:00:00.000Z',
-        },
-        approvedBy: 'Synthetic operator',
-        reason: 'Explicit test approval',
-      },
-      {
-        item: {
-          id: '000124',
-          itemNumber: '000124',
-          description: 'Synthetic padlock',
-          costCents: 9_999,
-          sellPriceCents: 12_999,
-          gstBasis: 'inc-gst',
-          updatedAt: '2026-08-09T00:00:00.000Z',
-        },
-        approvedBy: 'Synthetic operator',
-        reason: 'Explicit test approval',
-      },
+      approvedChange({
+        id: '000123',
+        itemNumber: '000123',
+        servicem8Reference: '000123',
+        selectedOfferId: 'offer-000123',
+        description: 'Synthetic restricted key',
+      }),
+      approvedChange({
+        id: '000124',
+        itemNumber: '000124',
+        servicem8Reference: '000124',
+        selectedOfferId: 'offer-000124',
+        description: 'Synthetic padlock',
+        costCents: 9_999,
+        sellPriceCents: 12_999,
+        gstBasis: 'inc-gst',
+        sellPriceGstBasis: 'inc-gst',
+      }),
     ]);
 
     expect(published).toHaveLength(2);
     expect(Object.keys(published[0].item).sort()).toEqual([
+      'barcodeGtin',
+      'brandId',
       'costCents',
       'description',
       'gstBasis',
       'id',
+      'itemKind',
       'itemNumber',
+      'markupOverridePercent',
+      'selectedOfferId',
       'sellPriceCents',
+      'sellPriceGstBasis',
+      'servicem8Reference',
       'updatedAt',
+      'xeroReference',
     ]);
     expect(published[0].item).not.toHaveProperty('sku');
     expect(store.listItems().map((item: { id: string }) => item.id)).toEqual(['000123', '000124']);
     expect(store.listApprovals()).toHaveLength(2);
     expect(store.listPriceHistory()).toHaveLength(2);
-    expect(store.listPriceHistory('000123')[0].approvalId).toBe(published[0].approval.id);
+    expect(store.listPriceHistory('000123')[0]).toMatchObject({
+      approvalId: published[0].approval.id,
+      selectedOfferId: 'offer-000123',
+      supplierId: 'supplier-synthetic',
+      markupSourceType: 'global',
+      appliedMarkupHundredths: 3_000,
+      provenanceState: 'resolved',
+    });
+    expect(store.listPriceHistory('000123')[0].pricingExplanation).not.toContain(
+      'client explanation',
+    );
+  });
+
+  it('requires resolved supplier and pricing provenance before any publication mutation', () => {
+    const { dir, store } = tempStore();
+    const before = publicationFileSnapshot(dir);
+    const withoutProvenance = structuredClone(approvedChange());
+    Reflect.deleteProperty(withoutProvenance, 'pricingProvenance');
+    expect(() => store.publishApprovedChanges([withoutProvenance])).toThrow(
+      /pricingProvenance|unsupported fields/u,
+    );
+    expect(publicationFileSnapshot(dir)).toEqual(before);
+  });
+
+  it.each([
+    ['global rule', { sellPriceCents: 14_000 }, {}],
+    [
+      'brand rule',
+      { brandId: 'brand-synthetic', sellPriceCents: 14_000 },
+      {
+        brandId: 'brand-synthetic',
+        markupPercent: '35',
+        markupSource: 'brand',
+        markupSourceId: 'brand-synthetic',
+      },
+    ],
+    [
+      'product rule',
+      { markupOverridePercent: '40', sellPriceCents: 15_000 },
+      { markupPercent: '40', markupSource: 'product', markupSourceId: 'SYNTHETIC-ITEM' },
+    ],
+    [
+      'GST-inclusive rule',
+      {
+        costCents: 11_000,
+        sellPriceCents: 14_400,
+        gstBasis: 'inc-gst',
+        sellPriceGstBasis: 'inc-gst',
+      },
+      { costGstBasis: 'inc-gst', sellPriceGstBasis: 'inc-gst' },
+    ],
+  ])(
+    'rejects an above-floor sell price that disagrees with the resolved %s',
+    (_name, item, provenance) => {
+      const { dir, store } = tempStore();
+      const before = publicationFileSnapshot(dir);
+      expect(() =>
+        store.publishApprovedChanges([approvedChangeWithProvenance(item, provenance)]),
+      ).toThrow(/sell price does not match the resolved markup rule/u);
+      expect(publicationFileSnapshot(dir)).toEqual(before);
+    },
+  );
+
+  it('preserves an explicit zero product markup but blocks it at the independent floor', () => {
+    const { dir, store } = tempStore();
+    const before = publicationFileSnapshot(dir);
+    expect(() =>
+      store.publishApprovedChanges([
+        approvedChangeWithProvenance(
+          { markupOverridePercent: '0', sellPriceCents: 10_000 },
+          { markupPercent: '0', markupSource: 'product', markupSourceId: 'SYNTHETIC-ITEM' },
+        ),
+      ]),
+    ).toThrow(FloorViolationError);
+    expect(publicationFileSnapshot(dir)).toEqual(before);
   });
 
   it('validates the complete batch before mutation', () => {
@@ -288,30 +423,31 @@ describe('publication guards', () => {
     };
     expect(() =>
       store.publishApprovedChanges([
-        {
-          item: {
-            id: 'GOOD',
-            itemNumber: 'GOOD',
-            description: 'First synthetic item',
-            costCents: 10_000,
-            sellPriceCents: 13_000,
-            gstBasis: 'unknown',
-          },
-          approvedBy: 'Synthetic operator',
-          reason: 'Explicit test approval',
-        },
-        {
-          item: {
+        approvedChange({
+          id: 'GOOD',
+          itemNumber: 'GOOD',
+          servicem8Reference: 'GOOD',
+          selectedOfferId: 'offer-GOOD',
+          description: 'First synthetic item',
+        }),
+        approvedChange(
+          {
             id: 'BAD',
             itemNumber: 'BAD',
+            servicem8Reference: 'BAD',
+            selectedOfferId: 'offer-BAD',
             description: 'Below-floor synthetic item',
-            costCents: 10_000,
             sellPriceCents: 12_999,
-            gstBasis: 'unknown',
           },
-          approvedBy: 'Synthetic operator',
-          reason: 'Explicit test approval',
-        },
+          {
+            pricingProvenance: {
+              ...approvedChange().pricingProvenance,
+              selectedOfferId: 'offer-BAD',
+              supplierSku: 'BAD',
+              markupPercent: '29.99',
+            },
+          },
+        ),
       ]),
     ).toThrow(FloorViolationError);
     expect(store.listItems()).toEqual(before.items);
@@ -340,17 +476,14 @@ describe('publication guards', () => {
     const before = publicationFileSnapshot(dir);
     expect(() =>
       store.publishApprovedChanges(
-        identities.map((identity) => ({
-          item: {
+        identities.map((identity) =>
+          approvedChange({
             ...identity,
+            servicem8Reference: identity.itemNumber,
+            selectedOfferId: `offer-${identity.id}`,
             description: 'Synthetic duplicate-guard item',
-            costCents: 10_000,
-            sellPriceCents: 13_000,
-            gstBasis: 'unknown',
-          },
-          approvedBy: 'Synthetic operator',
-          reason: 'Synthetic duplicate guard',
-        })),
+          }),
+        ),
       ),
     ).toThrow(PublicationValidationError);
     expect(publicationFileSnapshot(dir)).toEqual(before);
@@ -366,19 +499,14 @@ describe('publication guards', () => {
     expect(() => store.putItem({ ...existing, ...extra })).toThrow(PublicationValidationError);
     expect(() =>
       store.publishApprovedChanges([
-        {
-          item: {
-            id: 'STRICT',
-            itemNumber: 'STRICT',
-            description: 'Synthetic strict-schema item',
-            costCents: 10_000,
-            sellPriceCents: 13_000,
-            gstBasis: 'unknown',
-            ...extra,
-          },
-          approvedBy: 'Synthetic operator',
-          reason: 'Synthetic strict-schema guard',
-        },
+        approvedChange({
+          id: 'STRICT',
+          itemNumber: 'STRICT',
+          servicem8Reference: 'STRICT',
+          selectedOfferId: 'offer-STRICT',
+          description: 'Synthetic strict-schema item',
+          ...extra,
+        }),
       ]),
     ).toThrow(PublicationValidationError);
     expect(publicationFileSnapshot(dir)).toEqual(before);
@@ -826,18 +954,13 @@ describe('stored Node records are validated before read or publication', () => {
     const before = publicationFileSnapshot(dir);
     expect(() =>
       store.publishApprovedChanges([
-        {
-          item: {
-            id: 'SAFE',
-            itemNumber: 'SAFE',
-            description: 'Synthetic item',
-            costCents: 10_000,
-            sellPriceCents: 13_000,
-            gstBasis: 'unknown',
-          },
-          approvedBy: 'Synthetic operator',
-          reason: 'Synthetic publication',
-        },
+        approvedChange({
+          id: 'SAFE',
+          itemNumber: 'SAFE',
+          servicem8Reference: 'SAFE',
+          selectedOfferId: 'offer-SAFE',
+          description: 'Synthetic item',
+        }),
       ]),
     ).toThrow(PublicationValidationError);
     expect(publicationFileSnapshot(dir)).toEqual(before);

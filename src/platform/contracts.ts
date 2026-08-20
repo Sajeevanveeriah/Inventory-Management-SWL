@@ -1,6 +1,8 @@
 import type { CompetitorObservation } from '../core/competitors';
+import type { ItemKind } from '../core/catalogue';
 import type { LiveHealth, LiveSearchOutcome, LiveSearchResult } from '../core/liveSearch';
 import type { MappingProfile } from '../core/mapping';
+import type { MarkupSource } from '../core/pricingRules';
 import type { AppearanceTheme, Settings } from '../core/settings';
 import type { CompetitorSource } from '../core/sources';
 import type { GeneratedOutput } from '../io/exportWorkbooks';
@@ -61,9 +63,69 @@ export interface CatalogueItem {
   id: string;
   itemNumber: string;
   description: string;
+  itemKind: ItemKind;
+  brandId: string | null;
+  markupOverridePercent: string | null;
+  xeroReference: string | null;
+  servicem8Reference: string | null;
+  barcodeGtin: string | null;
+  selectedOfferId: string | null;
   costCents: number;
   sellPriceCents: number;
+  /** GST basis of the purchase cost. */
   gstBasis: 'inc-gst' | 'ex-gst' | 'unknown';
+  sellPriceGstBasis: 'inc-gst' | 'ex-gst' | 'unknown';
+  updatedAt: string;
+}
+
+export interface BrandRecord {
+  id: string;
+  name: string;
+  markupHundredths: number | null;
+  updatedAt: string;
+}
+
+export interface CatalogueSupplier {
+  id: string;
+  name: string;
+  active: boolean;
+  externalReference: string | null;
+  updatedAt: string;
+}
+
+export interface SupplierOfferRecord {
+  id: string;
+  productId: string;
+  supplierId: string;
+  supplierSku: string;
+  costCents: number;
+  gstBasis: 'inc-gst' | 'ex-gst' | 'unknown';
+  currency: 'AUD';
+  active: boolean;
+  isPreferred: boolean;
+  validFrom: string | null;
+  validUntil: string | null;
+  provenanceType: 'legacy-local' | 'manual' | 'supplier-file' | 'xero';
+  provenanceReference: string | null;
+  observedAt: string;
+}
+
+export interface OfferSelectionRecord {
+  productId: string;
+  offerId: string;
+  selectedBy: string;
+  reason: string;
+  selectedAt: string;
+}
+
+export interface ProductMetadataUpdate {
+  productId: string;
+  itemKind: ItemKind;
+  brandId: string | null;
+  markupOverridePercent: string | null;
+  xeroReference: string | null;
+  servicem8Reference: string | null;
+  barcodeGtin: string | null;
   updatedAt: string;
 }
 
@@ -84,6 +146,20 @@ export interface PriceHistoryInput {
   costCents: number;
   sellPriceCents: number;
   approvalId: string;
+  selectedOfferId: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  supplierSku: string | null;
+  costGstBasis: 'inc-gst' | 'ex-gst' | 'unknown' | null;
+  currency: 'AUD' | null;
+  costBasisCents: number;
+  markupSourceType: MarkupSource;
+  markupSourceId: string | null;
+  appliedMarkupHundredths: number;
+  brandId: string | null;
+  itemKind: ItemKind;
+  pricingExplanation: string;
+  ruleVersion: string;
   recordedAt?: string;
 }
 
@@ -95,6 +171,69 @@ export interface PriceHistoryVersion {
   costCents: number;
   sellPriceCents: number;
   approvalId: string;
+  selectedOfferId: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  supplierSku: string | null;
+  costGstBasis: 'inc-gst' | 'ex-gst' | 'unknown' | null;
+  sellPriceGstBasis: 'inc-gst' | 'ex-gst' | 'unknown';
+  currency: 'AUD' | null;
+  costBasisCents: number;
+  markupSourceType: MarkupSource | 'legacy-global';
+  markupSourceId: string | null;
+  appliedMarkupHundredths: number | null;
+  brandId: string | null;
+  itemKind: ItemKind | null;
+  pricingExplanation: string | null;
+  ruleVersion: string;
+  provenanceState: 'resolved' | 'legacy-unresolved';
+  recordedAt: string;
+}
+
+export interface SettingsAuditRecord {
+  id: string;
+  previous: Settings | null;
+  current: Settings;
+  changedBy: string;
+  changedAt: string;
+}
+
+export type SyncSystem = 'xero' | 'servicem8';
+export type SyncDirection = 'upstream-read' | 'downstream-write';
+export type SyncStatus = 'preview' | 'running' | 'completed' | 'partial' | 'failed';
+
+export interface SyncRunRecord {
+  id: string;
+  system: SyncSystem;
+  direction: SyncDirection;
+  status: SyncStatus;
+  mode: 'preview' | 'approved';
+  startedAt: string;
+  completedAt: string | null;
+  approvedBy: string | null;
+  summary: Record<string, unknown>;
+}
+
+export interface SyncCheckpointRecord {
+  id: string;
+  runId: string;
+  cursorValue: string;
+  recordedAt: string;
+}
+
+export interface SyncItemOutcomeRecord {
+  id: string;
+  runId: string;
+  itemId: string | null;
+  externalId: string | null;
+  action: 'create' | 'update' | 'read' | 'skip';
+  status: 'planned' | 'succeeded' | 'skipped' | 'failed';
+  idempotencyKey: string;
+  attemptCount: number;
+  retryable: boolean;
+  errorClass: string | null;
+  reconciliation: 'not-run' | 'matched' | 'mismatch' | 'not-applicable';
+  message: string;
   recordedAt: string;
 }
 
@@ -102,6 +241,24 @@ export interface ApprovedCatalogueChange {
   item: CatalogueItem;
   approvedBy: string;
   reason: string;
+  pricingProvenance: PricingApprovalProvenance;
+}
+
+export interface PricingApprovalProvenance {
+  selectedOfferId: string;
+  supplierId: string;
+  supplierName: string;
+  supplierSku: string;
+  costGstBasis: 'inc-gst' | 'ex-gst';
+  currency: 'AUD';
+  markupPercent: string;
+  markupSource: MarkupSource;
+  markupSourceId: string | null;
+  brandId: string | null;
+  itemKind: ItemKind;
+  sellPriceGstBasis: 'inc-gst' | 'ex-gst';
+  explanation: string;
+  ruleVersion: string;
 }
 
 export interface PublishedChange {
@@ -188,6 +345,14 @@ export interface BackupRecordCounts {
   profiles: number;
   aliases: number;
   settings: number;
+  brands: number;
+  suppliers: number;
+  productSupplierOffers: number;
+  productOfferSelections: number;
+  syncRuns: number;
+  syncCheckpoints: number;
+  syncItemOutcomes: number;
+  settingsAudit: number;
 }
 
 export interface BackupSummary {
@@ -262,6 +427,23 @@ export interface PlatformService {
       changes: readonly ApprovedCatalogueChange[],
     ): Promise<PlatformResult<PublishedChange[]>>;
   };
+  brands: {
+    list(): Promise<PlatformResult<BrandRecord[]>>;
+    save(brand: BrandRecord): Promise<PlatformResult<BrandRecord>>;
+  };
+  suppliers: {
+    list(): Promise<PlatformResult<CatalogueSupplier[]>>;
+    save(supplier: CatalogueSupplier): Promise<PlatformResult<CatalogueSupplier>>;
+  };
+  offers: {
+    list(productId?: string): Promise<PlatformResult<SupplierOfferRecord[]>>;
+    save(offer: SupplierOfferRecord): Promise<PlatformResult<SupplierOfferRecord>>;
+    listSelections(): Promise<PlatformResult<OfferSelectionRecord[]>>;
+    select(selection: OfferSelectionRecord): Promise<PlatformResult<OfferSelectionRecord>>;
+  };
+  productMetadata: {
+    update(update: ProductMetadataUpdate): Promise<PlatformResult<ProductMetadataUpdate>>;
+  };
   approvals: {
     list(itemId?: string): Promise<PlatformResult<ApprovalRecord[]>>;
   };
@@ -292,6 +474,19 @@ export interface PlatformService {
   settings: {
     load(): Promise<PlatformResult<Settings>>;
     save(settings: Settings): Promise<PlatformResult<Settings>>;
+    audit(): Promise<PlatformResult<SettingsAuditRecord[]>>;
+  };
+  sync: {
+    listRuns(): Promise<PlatformResult<SyncRunRecord[]>>;
+    saveRun(run: SyncRunRecord): Promise<PlatformResult<SyncRunRecord>>;
+    listCheckpoints(runId?: string): Promise<PlatformResult<SyncCheckpointRecord[]>>;
+    appendCheckpoint(
+      checkpoint: SyncCheckpointRecord,
+    ): Promise<PlatformResult<SyncCheckpointRecord>>;
+    listItemOutcomes(runId?: string): Promise<PlatformResult<SyncItemOutcomeRecord[]>>;
+    appendItemOutcome(
+      outcome: SyncItemOutcomeRecord,
+    ): Promise<PlatformResult<SyncItemOutcomeRecord>>;
   };
   configuration: {
     export(): Promise<PlatformResult<ConfigurationEnvelope>>;

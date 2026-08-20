@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ComparisonRow } from './compare';
 import type { S8Record, SupplierRecord } from './records';
-import { searchRows } from './search';
+import {
+  searchCatalogue,
+  searchRows,
+  type CataloguePriceResolution,
+  type CatalogueSearchRecord,
+} from './search';
 import { normalizeIdentifier } from './normalize';
 
 function supplier(code: string, description: string): SupplierRecord {
@@ -55,6 +60,7 @@ function row(
     proposedSell: sup?.cost ? '13.00' : null,
     targetBasis: 'excluding-gst',
     pricing: null,
+    pricingProvenance: null,
     costDelta: null,
     priceDelta: null,
     duplicateSourceRows: [],
@@ -137,5 +143,95 @@ describe('searchRows', () => {
     const a = searchRows(ROWS, 'lockwood deadlatch');
     const b = searchRows(ROWS, 'lockwood deadlatch');
     expect(a.map((h) => h.row.id)).toEqual(b.map((h) => h.row.id));
+  });
+});
+
+function catalogueRecord(
+  productId: string,
+  overrides: Partial<CatalogueSearchRecord['document']> = {},
+  price: CataloguePriceResolution = {
+    kind: 'resolved',
+    offerId: `offer-${productId}`,
+    supplierId: 'supplier-synthetic',
+    supplierName: 'Synthetic supplier',
+    supplierSku: `SUP-${productId}`,
+    purchaseCost: '100.00',
+    costBasis: 'excluding-gst',
+    currency: 'AUD',
+    observedAt: '2026-08-09T00:00:00.000Z',
+    markupPercent: '30',
+    markupSource: 'global',
+    sellPrice: '130.00',
+    sellPriceBasis: 'excluding-gst',
+    explanation: 'Synthetic resolved price.',
+  },
+): CatalogueSearchRecord {
+  return {
+    document: {
+      productId,
+      kind: 'physical-product',
+      name: `Product ${productId}`,
+      description: 'Lockwood digital deadlatch chrome',
+      xeroItemCode: `XERO-${productId}`,
+      servicem8ItemNumber: `SM8-${productId}`,
+      supplierSkus: [`SUP-${productId}`],
+      approvedAliases: [`ALIAS-${productId}`],
+      barcodeGtin: `930000000${productId}`,
+      brandName: 'Lockwood',
+      ...overrides,
+    },
+    price,
+  };
+}
+
+describe('searchCatalogue', () => {
+  const record = catalogueRecord('001');
+
+  it.each([
+    ['XERO-001', 'xero-item-code'],
+    ['SM8-001', 'servicem8-item-number'],
+    ['SUP-001', 'supplier-sku'],
+    ['ALIAS-001', 'approved-alias'],
+    ['930000000001', 'barcode-gtin'],
+    ['Lockwood', 'brand'],
+  ] as const)('matches %s through %s without losing resolved provenance', (query, matchedOn) => {
+    const hit = searchCatalogue([record], query)[0];
+    expect(hit?.matchedOn).toBe(matchedOn);
+    expect(hit?.price).toMatchObject({
+      kind: 'resolved',
+      offerId: 'offer-001',
+      supplierSku: 'SUP-001',
+    });
+  });
+
+  it('returns description similarity as identity-only and never attaches a price', () => {
+    const hit = searchCatalogue([record], 'digital deadlatch')[0];
+    expect(hit).toMatchObject({
+      matchedOn: 'description',
+      document: { productId: '001' },
+      price: { kind: 'identity-only' },
+    });
+    expect(hit?.price).not.toHaveProperty('purchaseCost');
+    expect(hit?.price).not.toHaveProperty('sellPrice');
+    expect(hit?.price).not.toHaveProperty('offerId');
+  });
+
+  it('keeps duplicate identifiers deterministic and ambiguous prices price-less', () => {
+    const ambiguous: CataloguePriceResolution = {
+      kind: 'ambiguous',
+      explanation: 'Two valid supplier offers require explicit selection.',
+      candidateOfferIds: ['offer-a', 'offer-b'],
+    };
+    const hits = searchCatalogue(
+      [
+        catalogueRecord('002', { xeroItemCode: 'DUPLICATE' }, ambiguous),
+        catalogueRecord('001', { xeroItemCode: 'DUPLICATE' }, ambiguous),
+      ],
+      'DUPLICATE',
+    );
+    expect(hits.map((hit) => hit.document.productId)).toEqual(['001', '002']);
+    expect(hits.every((hit) => hit.price.kind === 'ambiguous')).toBe(true);
+    expect(hits.every((hit) => !('purchaseCost' in hit.price))).toBe(true);
+    expect(hits.every((hit) => !('sellPrice' in hit.price))).toBe(true);
   });
 });

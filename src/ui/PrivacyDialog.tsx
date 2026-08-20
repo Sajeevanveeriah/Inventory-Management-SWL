@@ -100,7 +100,7 @@ export function PrivacyDialog({ open, onClose }: PrivacyDialogProps) {
           {platform.kind === 'desktop' && (
             <>
               <li>Catalogue items, append-only approvals and price history</li>
-              <li>Approved competitor references and source registry state</li>
+              <li>Approved competitor references and price-source preferences</li>
             </>
           )}
           <li>Mapping profiles - column layout names and positions only</li>

@@ -1,6 +1,13 @@
 import { addGst, applyMarkup, formatAmount, removeGst } from './money';
 import { GST_RATE_PERCENT } from './servicem8Format';
 import type { TaxHandling } from './settings';
+import {
+  evaluateMarkupFloor,
+  resolveMarkupRule,
+  type MarkupFloorResult,
+  type MarkupRuleInput,
+  type ResolvedMarkupRule,
+} from './pricingRules';
 
 /**
  * GST-aware sell price derivation.
@@ -50,6 +57,36 @@ export interface PricingResult {
   purchaseCost: string;
   /** Human-readable derivation shown wherever the proposed price appears. */
   explanation: string;
+  /** Independent 30% minimum markup gate, always evaluated ex GST. */
+  floor?: MarkupFloorResult;
+}
+
+export interface PricingDecisionInput
+  extends Omit<PricingInput, 'markupPercent'>, MarkupRuleInput {}
+
+export interface PricingDecision {
+  markup: ResolvedMarkupRule;
+  pricing: PricingResult & { floor: MarkupFloorResult };
+}
+
+/**
+ * The production pricing entrypoint. It resolves product > brand > global
+ * precedence, derives the GST-aware price and evaluates the independent floor
+ * as one observable decision so consumers cannot accidentally mix rules.
+ */
+export function resolvePricingDecision(input: PricingDecisionInput): PricingDecision {
+  const markup = resolveMarkupRule(input);
+  const pricing = derivePrice({
+    costAmount: input.costAmount,
+    costBasis: input.costBasis,
+    markupPercent: markup.markupPercent,
+    targetBasis: input.targetBasis,
+    ...(input.gstRatePercent === undefined ? {} : { gstRatePercent: input.gstRatePercent }),
+  });
+  if (pricing.floor === undefined) {
+    throw new Error('The pricing floor result is required.');
+  }
+  return { markup, pricing: { ...pricing, floor: pricing.floor } };
 }
 
 /**
@@ -91,6 +128,7 @@ export function derivePrice(input: PricingInput): PricingResult {
     price,
     purchaseCost,
     explanation: steps.join('; '),
+    floor: evaluateMarkupFloor(costExGst, sellExGst),
   };
 }
 

@@ -6,8 +6,9 @@ four places only. It avoids remote fonts, icon services, decorative charts and r
 text.
 
 Primary destinations are hash routes compatible with GitHub Pages: dashboard, new run, runs,
-inventory, expansion catalogue, suppliers, mapping profiles, pricing rules, competitors, source
-registry, exceptions, approvals, exports, integrations, audit, configuration and help. `src/ui/routes.ts`
+inventory, expansion catalogue, products and suppliers, saved import layouts, pricing rules,
+competitors, price sources, exceptions, approvals, exports, integrations, audit, settings and help.
+`src/ui/routes.ts`
 is the single table behind the rail, the zero-padded route index and the page kicker, so a route's
 group and its position can never drift apart.
 

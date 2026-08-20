@@ -268,7 +268,10 @@ describe('buildAllOutputs', () => {
 
     // --- audit -------------------------------------------------------------
     const auditText = await outputs[4]!.blob.text();
-    expect(auditText).toContain('Markup:              30% on supplier cost');
+    expect(auditText).toContain('Global markup:       30% on GST-exclusive supplier cost');
+    expect(auditText).toContain(
+      'Markup precedence: product override > brand blanket > global default',
+    );
     expect(auditText).toContain(supplierTable.sha256);
     expect(auditText).toContain('Excluded records (1)');
     expect(auditText).toContain('Fictional exclusion for testing');

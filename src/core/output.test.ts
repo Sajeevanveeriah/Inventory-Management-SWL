@@ -27,6 +27,33 @@ function row(
   cost: string | null = '10.00',
   proposedSell: string | null = '13.00',
 ): ComparisonRow {
+  const pricingProvenance =
+    cost === null || proposedSell === null
+      ? null
+      : {
+          productId: id,
+          itemKind: 'physical-product' as const,
+          brandId: null,
+          brandName: null,
+          xeroReference: null,
+          servicem8Reference: id,
+          barcodeGtin: null,
+          offerId: `offer-${id}`,
+          supplierId: 'supplier-synthetic',
+          supplierName: 'Synthetic supplier',
+          supplierSku: id,
+          currency: 'AUD' as const,
+          costAmount: cost,
+          costBasis: 'excluding-gst' as const,
+          observedAt: '2026-08-09T00:00:00.000Z',
+          selectionMethod: 'sole-valid' as const,
+          markupPercent: '30',
+          markupSource: 'global' as const,
+          markupSourceId: null,
+          markupExplanation: 'Global 30% markup fixture.',
+          offerExplanation: 'The sole valid supplier offer was selected.',
+          ruleVersion: 'pricing-rule-v1' as const,
+        };
   return {
     id,
     status,
@@ -46,6 +73,7 @@ function row(
             purchaseCost: cost,
             explanation: 'test fixture',
           },
+    pricingProvenance,
     costDelta: null,
     priceDelta: null,
     duplicateSourceRows: [],

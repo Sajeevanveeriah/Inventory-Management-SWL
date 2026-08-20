@@ -18,34 +18,33 @@ async function loadDemoAndCompare(page: Page) {
   ).toBeVisible();
 }
 
-test('product search: empty state, ranked results, filters and no-result state', async ({
-  page,
-}) => {
+test('product search: ranked catalogue results, filters and no-result state', async ({ page }) => {
   await page.goto('/#/inventory');
-  await expect(page.getByRole('heading', { name: 'No comparison data loaded' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Find a product', level: 1 })).toBeVisible();
 
-  await loadDemoAndCompare(page);
-  await page.getByRole('button', { name: 'Inventory search' }).click();
-  await expect(page.getByRole('heading', { name: 'Inventory search', level: 1 })).toBeVisible();
-
-  // All records visible with an empty query.
+  // The deterministic server seed supplies the persistent catalogue.
   const countLine = page.locator('.result-count');
-  await expect(countLine).toContainText('records');
+  await expect(countLine).toHaveText('12 of 12 catalogue products');
+  const results = page.getByRole('list', { name: 'Catalogue search results' });
 
   // Exact identifier search ranks the exact row first.
-  const search = page.getByLabel('Search products by code, item number or description');
-  await search.fill('FIC-002');
-  await expect(page.locator('tbody tr').first()).toContainText('FIC-002');
+  const search = page.getByLabel(
+    'Search products by item code, supplier SKU, barcode, brand or description',
+  );
+  await search.fill('LW4570');
+  await expect(results.getByRole('listitem').first()).toContainText('LW4570');
 
   // Description token search.
   await search.fill('deadbolt chrome');
-  await expect(page.locator('tbody tr').first()).toBeVisible();
+  await expect(results.getByRole('listitem').first()).toContainText('deadbolt');
 
-  // Status filter chips narrow the results.
+  // Product-type filters are deterministic and recoverable.
   await search.fill('');
-  await page.getByRole('button', { name: 'New item', exact: true }).click();
-  await expect(countLine).toContainText('2 of');
+  await page.getByRole('button', { name: 'Service', exact: true }).click();
+  await expect(countLine).toHaveText('0 of 12 catalogue products');
+  await expect(page.getByRole('heading', { name: 'No matching products' })).toBeVisible();
   await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(countLine).toHaveText('12 of 12 catalogue products');
 
   // No-result state with a helpful message.
   await search.fill('zzz-not-a-real-product');
@@ -55,9 +54,11 @@ test('product search: empty state, ranked results, filters and no-result state',
 test('global topbar search routes to the inventory search page', async ({ page }) => {
   await loadDemoAndCompare(page);
   const global = page.getByLabel('Search products across supplier and ServiceM8 data');
-  await global.fill('FIC-001');
-  await expect(page.getByRole('heading', { name: 'Inventory search', level: 1 })).toBeVisible();
-  await expect(page.locator('tbody tr').first()).toContainText('FIC-001');
+  await global.fill('LW4570');
+  await expect(page.getByRole('heading', { name: 'Find a product', level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Catalogue search results' }).getByRole('listitem').first(),
+  ).toContainText('LW4570');
 });
 
 test('expansion catalogue carries supplier categories out of scope and switches them on for review', async ({
@@ -95,7 +96,9 @@ test('exceptions queue supports search and exclude-with-reason', async ({ page }
   await expect(page.locator('.result-count')).toContainText('of');
 });
 
-test('approvals page records an immutable append-only approval', async ({ page }) => {
+test('approvals page refuses to record a proposal without resolved pricing provenance', async ({
+  page,
+}) => {
   await loadDemoAndCompare(page);
   await page.getByRole('button', { name: 'Approvals' }).click();
   await expect(page.getByRole('heading', { name: 'Approvals', level: 1 })).toBeVisible();
@@ -104,7 +107,10 @@ test('approvals page records an immutable append-only approval', async ({ page }
   await firstApprove.click();
   await expect(page.getByRole('dialog', { name: 'Confirm approval' })).toBeVisible();
   await page.getByRole('button', { name: 'Confirm approval' }).click();
-  await expect(page.getByText('Recorded, append-only').first()).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText(
+    'One or more selected records are blocked or already recorded.',
+  );
+  await expect(page.getByText('Recorded, append-only')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Withdraw approval' })).toHaveCount(0);
 });
 
@@ -138,24 +144,21 @@ test('mobile approvals expose their reason, decision and action without horizont
   await firstApprove.click();
   await expect(page.getByRole('dialog', { name: 'Confirm approval' })).toBeVisible();
   await page.getByRole('button', { name: 'Confirm approval' }).click();
-  await expect(page.getByText('Recorded, append-only').first()).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText(
+    'One or more selected records are blocked or already recorded.',
+  );
+  await expect(page.getByText('Recorded, append-only')).toHaveCount(0);
 });
 
-test('supplier profiles: save, export and delete with confirmation', async ({ page }) => {
+test('saved import layouts direct editing back to the guarded run workflow', async ({ page }) => {
   await loadDemoAndCompare(page);
-  await page.getByRole('button', { name: 'Suppliers' }).click();
-  await page.getByLabel('Profile name').fill('E2E Fictionville');
-  await page.getByRole('button', { name: 'Save profile' }).click();
-  await expect(page.getByRole('cell', { name: /E2E Fictionville/ })).toBeVisible();
-
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Export JSON' }).first().click();
-  expect((await download).suggestedFilename()).toContain('mapping-profile.json');
-
-  await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.getByRole('button', { name: 'Delete profile' }).click();
-  await expect(page.getByRole('cell', { name: /E2E Fictionville/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Saved import layouts' }).click();
+  await expect(page.getByRole('heading', { name: 'Saved import layouts', level: 1 })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Edit in a run' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Export JSON' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Edit in a run' }).click();
+  await expect(page.getByRole('heading', { name: 'New run', level: 1 })).toBeVisible();
 });
 
 test('run metadata uses a canonical date prefix and real file hashes', async ({ page }) => {
@@ -178,20 +181,112 @@ test('run metadata uses a canonical date prefix and real file hashes', async ({ 
 
 test('integrations page states the locked external boundaries', async ({ page }) => {
   await page.goto('/#/integrations');
+  await expect(page.getByRole('heading', { name: 'Connect systems', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'ServiceM8' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Xero' })).toBeVisible();
-  await expect(page.getByText('File handoff', { exact: true })).toBeVisible();
-  await expect(page.getByText('Locked', { exact: true })).toBeVisible();
-  await expect(page.getByText('Live Xero updates are locked off', { exact: false })).toBeVisible();
+  await expect(page.getByText('Read only', { exact: true })).toBeVisible();
+  await expect(page.getByText('Approved writes only', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(
+      'The application cannot change Xero Items or choose an operation beyond this fixed read.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText('Quantity-on-hand, deletion and deactivation')).toBeVisible();
+  await expect(
+    page.getByText('External connections started from this page: none.', { exact: true }),
+  ).toBeVisible();
+});
+
+test('task pages pass responsive, theme, motion, keyboard and runtime integrity checks', async ({
+  page,
+}) => {
+  const runtimeErrors: string[] = [];
+  page.on('pageerror', (error) => runtimeErrors.push(`pageerror: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') runtimeErrors.push(`console: ${message.text()}`);
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  await page.goto('/#/suppliers');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(
+    page.getByRole('heading', { name: 'Products and suppliers', level: 1 }),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Catalogue products' })).toBeVisible();
+  const reducedMotion = await page
+    .locator('.card')
+    .first()
+    .evaluate((element) => {
+      const runtime = globalThis as unknown as {
+        getComputedStyle(node: unknown): { animationName: string; transitionDuration: string };
+      };
+      const style = runtime.getComputedStyle(element);
+      return { animationName: style.animationName, transitionDuration: style.transitionDuration };
+    });
+  expect(reducedMotion).toEqual({ animationName: 'none', transitionDuration: '0s' });
+
+  const integrationsButton = page.getByRole('button', { name: 'Connect systems' });
+  await integrationsButton.focus();
+  await expect(integrationsButton).toBeFocused();
+  expect(await integrationsButton.evaluate((element) => element.matches(':focus-visible'))).toBe(
+    true,
+  );
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Connect systems', level: 1 })).toBeFocused();
+  const systemFilter = page.locator('main').getByRole('combobox');
+  await systemFilter.selectOption('xero');
+  await expect(systemFilter).toHaveValue('xero');
+  await systemFilter.selectOption('all');
+  await expect(systemFilter).toHaveValue('all');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await navigateFromCompactMenu(page, 'Products and suppliers');
+  await expect(
+    page.getByRole('heading', { name: 'Products and suppliers', level: 1 }),
+  ).toBeFocused();
+  const mobileOverflow = await page.evaluate(() => {
+    const runtime = globalThis as unknown as {
+      document: { documentElement: { scrollWidth: number; clientWidth: number } };
+    };
+    return (
+      runtime.document.documentElement.scrollWidth - runtime.document.documentElement.clientWidth
+    );
+  });
+  expect(mobileOverflow).toBeLessThanOrEqual(1);
+
+  // A half-width viewport is the existing harness's 200 percent zoom equivalent.
+  await page.setViewportSize({ width: 720, height: 450 });
+  await page.goto('/#/integrations');
+  const zoomHeading = page.getByRole('heading', { name: 'Connect systems', level: 1 });
+  await expect(zoomHeading).toBeVisible();
+  const zoomOverflow = await page.evaluate(() => {
+    const runtime = globalThis as unknown as {
+      document: { documentElement: { scrollWidth: number; clientWidth: number } };
+    };
+    return (
+      runtime.document.documentElement.scrollWidth - runtime.document.documentElement.clientWidth
+    );
+  });
+  expect(zoomOverflow).toBeLessThanOrEqual(1);
+
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  expect(runtimeErrors).toEqual([]);
 });
 
 test('mobile 390px: search page remains usable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loadDemoAndCompare(page);
-  await navigateFromCompactMenu(page, 'Inventory search');
-  const search = page.getByLabel('Search products by code, item number or description');
-  await search.fill('FIC-003');
-  await expect(page.locator('tbody tr').first()).toContainText('FIC-003');
+  await navigateFromCompactMenu(page, 'Find a product');
+  const search = page.getByLabel(
+    'Search products by item code, supplier SKU, barcode, brand or description',
+  );
+  await search.fill('LW4570');
+  await expect(
+    page.getByRole('list', { name: 'Catalogue search results' }).getByRole('listitem').first(),
+  ).toContainText('LW4570');
   // No horizontal page overflow: tables scroll inside their own container.
   interface DocLike {
     documentElement: { scrollWidth: number; clientWidth: number };
@@ -244,7 +339,7 @@ test('operator navigation focuses the new route while global search keeps typing
 
   const globalSearch = page.getByLabel('Search products across supplier and ServiceM8 data');
   await globalSearch.fill('FIC-001');
-  await expect(page.getByRole('heading', { name: 'Inventory search', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Find a product', level: 1 })).toBeVisible();
   await expect(globalSearch).toBeFocused();
 });
 

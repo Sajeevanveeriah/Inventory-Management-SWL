@@ -957,6 +957,7 @@ legend {
 }
 .form-grid label {
   display: grid;
+  min-width: 0;
   gap: var(--space-1);
   color: var(--ink-faint);
   font-family: var(--font-mono);
@@ -975,6 +976,10 @@ legend {
   font-size: var(--size-body-sm);
   text-transform: none;
   letter-spacing: normal;
+}
+.form-grid select {
+  width: 100%;
+  min-width: 0;
 }
 .config-textarea {
   width: 100%;
@@ -2123,6 +2128,92 @@ dialog .btn-row {
 .integration-head h2 {
   margin: 0;
 }
+.search-results-list {
+  display: grid;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.search-result-card {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.search-result-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.search-result-heading h2,
+.search-result-heading p {
+  margin: 0;
+}
+.status-pill {
+  display: inline-flex;
+  flex: none;
+  max-width: 100%;
+  border: var(--hairline) solid var(--border-strong);
+  background: var(--surface-subtle);
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  border-top: var(--hairline) solid var(--border);
+  border-left: var(--hairline) solid var(--border);
+  margin: 0 0 var(--space-4);
+}
+.detail-grid > div {
+  min-width: 0;
+  border-right: var(--hairline) solid var(--border);
+  border-bottom: var(--hairline) solid var(--border);
+  padding: var(--space-3);
+}
+.detail-grid dt {
+  margin-bottom: var(--space-1);
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--size-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.detail-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.search-price-state {
+  border-left: 3px solid var(--border-strong);
+  background: var(--surface-subtle);
+  padding: var(--space-3) var(--space-4);
+}
+.search-price-state-warning {
+  border-left-color: var(--status-warn-ink);
+  background: var(--status-warn-bg);
+  color: var(--status-warn-ink);
+}
+.search-price-state p {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+.search-result-card details {
+  border-top: var(--hairline) solid var(--border);
+  padding-top: var(--space-3);
+}
+.search-result-card summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.search-result-card summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
 .expansion-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.35fr);
@@ -2567,6 +2658,13 @@ dialog .btn-row {
     border-top: var(--rule) solid var(--border-strong);
     padding-left: 0;
   }
+  .search-result-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .status-pill {
+    align-self: flex-start;
+  }
 }
 
 @media (max-width: 560px) {
@@ -2712,6 +2810,18 @@ dialog .btn-row {
   }
   .side-nav {
     transition: transform 160ms ease;
+  }
+  .search-result-card {
+    animation: search-result-enter 140ms ease-out;
+  }
+}
+
+@keyframes search-result-enter {
+  from {
+    transform: translateY(4px);
+  }
+  to {
+    transform: translateY(0);
   }
 }
 
